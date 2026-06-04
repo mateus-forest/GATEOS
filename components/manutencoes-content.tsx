@@ -1,0 +1,332 @@
+"use client"
+
+import { useState } from "react"
+import {
+  Search,
+  Download,
+  Wrench,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Calendar,
+  MoreHorizontal,
+  Eye,
+  Edit,
+  User,
+  MapPin,
+} from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { maintenances } from "@/lib/mock-data"
+import { formatCurrency, formatDate } from "@/lib/utils"
+import { MockCreateDialog } from "@/components/mock-create-dialog"
+
+export function ManutencoesContent() {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [typeFilter, setTypeFilter] = useState("all")
+
+  const filteredMaintenances = maintenances.filter((m) => {
+    const matchesSearch = m.equipmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      m.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      m.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = statusFilter === "all" || m.status === statusFilter
+    const matchesType = typeFilter === "all" || m.type === typeFilter
+    return matchesSearch && matchesStatus && matchesType
+  })
+
+  const openMaintenances = maintenances.filter((m) => m.status === "open" || m.status === "in_progress").length
+  const completedThisMonth = maintenances.filter((m) => m.status === "completed").length
+  const avgResponseTime = "4.2h"
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "open":
+        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Aberto</Badge>
+      case "in_progress":
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Em Andamento</Badge>
+      case "completed":
+        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Concluído</Badge>
+      case "cancelled":
+        return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelado</Badge>
+      default:
+        return <Badge variant="secondary">{status}</Badge>
+    }
+  }
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return <Badge variant="destructive">Alta</Badge>
+      case "medium":
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Média</Badge>
+      case "low":
+        return <Badge variant="secondary">Baixa</Badge>
+      default:
+        return <Badge variant="secondary">{priority}</Badge>
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Manutenções</h1>
+          <p className="text-muted-foreground">Gestão de chamados e ordens de serviço</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Exportar
+          </Button>
+          <MockCreateDialog
+            title="Nova Manutencao"
+            description="Cadastro mockado de chamado de manutencao."
+            triggerLabel="Nova Manutencao"
+            toastMessage="Manutencao salva com sucesso"
+            fields={["Equipamento", "Cliente", "Tipo", "Prioridade", "Tecnico"]}
+          />
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Chamados</p>
+                <p className="text-2xl font-bold">{maintenances.length}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-primary/10">
+                <Wrench className="h-6 w-6 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Em Aberto</p>
+                <p className="text-2xl font-bold text-amber-600">{openMaintenances}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-100">
+                <Clock className="h-6 w-6 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Concluídos (mês)</p>
+                <p className="text-2xl font-bold text-emerald-600">{completedThisMonth}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-100">
+                <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Tempo Médio</p>
+                <p className="text-2xl font-bold">{avgResponseTime}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-blue-100">
+                <Calendar className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="todos" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="todos">Todos</TabsTrigger>
+          <TabsTrigger value="abertos">Em Aberto</TabsTrigger>
+          <TabsTrigger value="andamento">Em Andamento</TabsTrigger>
+          <TabsTrigger value="concluidos">Concluídos</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="todos" className="space-y-4">
+          {/* Filters */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por equipamento, cliente ou ticket..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="open">Aberto</SelectItem>
+                    <SelectItem value="in_progress">Em Andamento</SelectItem>
+                    <SelectItem value="completed">Concluído</SelectItem>
+                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os tipos</SelectItem>
+                    <SelectItem value="preventiva">Preventiva</SelectItem>
+                    <SelectItem value="corretiva">Corretiva</SelectItem>
+                    <SelectItem value="instalacao">Instalação</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Maintenances Table */}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ticket</TableHead>
+                    <TableHead>Equipamento</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Prioridade</TableHead>
+                    <TableHead>Técnico</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-12"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMaintenances.map((maintenance) => (
+                    <TableRow key={maintenance.id}>
+                      <TableCell className="font-mono font-medium">
+                        {maintenance.ticketNumber}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{maintenance.equipmentName}</p>
+                          <p className="text-sm text-muted-foreground">{maintenance.description}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          {maintenance.clientName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">{maintenance.type}</Badge>
+                      </TableCell>
+                      <TableCell>{getPriorityBadge(maintenance.priority)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {maintenance.technician.split(" ").map((n) => n[0]).join("")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{maintenance.technician}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(maintenance.status)}</TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Ver detalhes
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              <User className="mr-2 h-4 w-4" />
+                              Atribuir técnico
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="abertos">
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground">Mostrando apenas chamados em aberto...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="andamento">
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground">Mostrando chamados em andamento...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="concluidos">
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground">Mostrando chamados concluídos...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
