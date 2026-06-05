@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,8 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen, Download, Trash2, Eye, Grid, List, Plus, Filter, MoreVertical, Clock, User } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { createDocumentRecord } from "@/lib/data/documents"
+import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 
 const documentos = [
   { id: 1, nome: "Contrato Fribal 2024.pdf", tipo: "pdf", tamanho: "2.4 MB", categoria: "Contratos", cliente: "Fribal", dataUpload: "2024-01-15", usuario: "Admin" },
@@ -41,6 +44,12 @@ export function DocumentosContent() {
   const [categoriaFiltro, setCategoriaFiltro] = useState("Todos")
   const [visualizacao, setVisualizacao] = useState<"grid" | "list">("grid")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [documentName, setDocumentName] = useState("")
+  const [documentType, setDocumentType] = useState("")
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const documentosFiltrados = documentos.filter(doc => {
     const matchBusca = doc.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -57,6 +66,59 @@ export function DocumentosContent() {
       nome: cat,
       quantidade: documentos.filter(d => d.categoria === cat).length
     }))
+  }
+
+  const handleUpload = async () => {
+    setUploadError("")
+    if (selectedFiles.length === 0) {
+      setUploadError("Selecione pelo menos um arquivo.")
+      return
+    }
+    if (!documentName.trim()) {
+      setUploadError("Informe o nome do documento.")
+      return
+    }
+    if (!documentType) {
+      setUploadError("Selecione o tipo do documento.")
+      return
+    }
+    if (!isSupabaseConfigured()) {
+      setUploadError("Supabase Storage não está configurado. O upload não foi concluído.")
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    if (!supabase) {
+      setUploadError("Não foi possível iniciar a conexão com o Supabase Storage.")
+      return
+    }
+
+    setUploading(true)
+    try {
+      for (const file of selectedFiles) {
+        const path = `${Date.now()}-${file.name}`
+        const { error } = await supabase.storage.from("gate-documents").upload(path, file, { upsert: false })
+        if (error) throw error
+
+        await createDocumentRecord({
+          name: documentName,
+          file_name: file.name,
+          type: documentType,
+          bucket: "gate-documents",
+          path,
+          size: file.size,
+        })
+      }
+      toast.success("Documento enviado com sucesso")
+      setSelectedFiles([])
+      setDocumentName("")
+      setDocumentType("")
+      setDialogOpen(false)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Não foi possível enviar o documento.")
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -82,18 +144,41 @@ export function DocumentosContent() {
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
                 <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
                 <p className="text-sm text-muted-foreground mb-2">Arraste e solte arquivos aqui ou</p>
-                <Button variant="secondary" size="sm">Selecionar Arquivos</Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
+                />
+                <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  Selecionar Arquivos
+                </Button>
+                {selectedFiles.length > 0 && (
+                  <div className="mt-4 rounded-md bg-muted/50 p-3 text-left">
+                    <p className="text-sm font-medium">Arquivos selecionados</p>
+                    <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      {selectedFiles.map((file) => (
+                        <li key={`${file.name}-${file.size}`}>{file.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
               <div className="grid gap-4">
                 <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Select>
+                  <Label>Nome do documento</Label>
+                  <Input value={documentName} onChange={(event) => setDocumentName(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <Select value={documentType} onValueChange={setDocumentType}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione a categoria" />
+                      <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categorias.slice(1).map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      {["Contrato", "Boleto", "Recibo", "Nota fiscal", "Comprovante", "Petição", "Sentença", "Acordo", "Documento interno", "Outro"].map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -111,11 +196,16 @@ export function DocumentosContent() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Observações</Label>
+                  <Input placeholder="Observações sobre o documento" />
+                </div>
+                {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button onClick={() => setDialogOpen(false)}>Enviar</Button>
+              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={uploading}>Cancelar</Button>
+              <Button onClick={handleUpload} disabled={uploading}>{uploading ? "Enviando..." : "Enviar"}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

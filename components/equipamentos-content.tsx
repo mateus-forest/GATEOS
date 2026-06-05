@@ -160,17 +160,92 @@ export function EquipamentosContent() {
           </Button>
           <MockCreateDialog
             title="Novo Equipamento"
-            description="Cadastro de equipamento."
+            description="Preencha os dados do equipamento para salvar no Supabase."
             triggerLabel="Novo Equipamento"
             toastMessage="Equipamento salvo com sucesso"
-            fields={["Nome", "Numero de serie", "Cliente", "Valor", "Status"]}
+            sections={[
+              {
+                title: "Identificação",
+                fields: [
+                  { name: "name", label: "Nome do equipamento", required: true },
+                  {
+                    name: "category",
+                    label: "Categoria",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Servidor", value: "servidor" },
+                      { label: "Computador", value: "computador" },
+                      { label: "Impressora", value: "impressora" },
+                      { label: "Rede", value: "rede" },
+                      { label: "Telefonia", value: "telefonia" },
+                      { label: "Segurança", value: "seguranca" },
+                      { label: "Outro", value: "outro" },
+                    ],
+                  },
+                  { name: "brand", label: "Marca" },
+                  { name: "model", label: "Modelo" },
+                  { name: "configuration", label: "Configuração" },
+                  { name: "serial_number", label: "Número de série" },
+                ],
+              },
+              {
+                title: "Quantidade",
+                fields: [
+                  { name: "total_quantity", label: "Quantidade total", type: "number", required: true },
+                  { name: "available_quantity", label: "Quantidade disponível", type: "number" },
+                  { name: "rented_quantity", label: "Quantidade locada", type: "number" },
+                  { name: "reserved_quantity", label: "Quantidade reservada", type: "number" },
+                  { name: "maintenance_quantity", label: "Quantidade em manutenção", type: "number" },
+                ],
+              },
+              {
+                title: "Valores",
+                fields: [
+                  { name: "purchase_value", label: "Valor de compra unitário em R$", type: "money", required: true },
+                  { name: "sale_value", label: "Valor de venda em R$", type: "money" },
+                  { name: "rental_value", label: "Valor de locação mensal em R$", type: "money" },
+                ],
+              },
+              {
+                title: "Status",
+                fields: [
+                  {
+                    name: "status",
+                    label: "Status",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Disponível", value: "available" },
+                      { label: "Locado", value: "active" },
+                      { label: "Reservado", value: "reserved" },
+                      { label: "Manutenção", value: "maintenance" },
+                      { label: "Vendido", value: "sold" },
+                      { label: "Baixado", value: "disposed" },
+                    ],
+                  },
+                  { name: "notes", label: "Observações internas", type: "textarea" },
+                ],
+              },
+            ]}
             onSave={async (values) => {
               const created = await createEquipment({
-                name: values.Nome ?? "",
-                serial_number: values["Numero de serie"] ?? "",
-                client_name: values.Cliente ?? "",
-                value: Number(values.Valor ?? 0),
-                status: values.Status ?? "available",
+                name: values.name ?? "",
+                category: values.category ?? "",
+                brand: values.brand ?? "",
+                model: values.model ?? "",
+                configuration: values.configuration ?? "",
+                serial_number: values.serial_number ?? "",
+                total_quantity: Number(values.total_quantity ?? 0),
+                available_quantity: Number(values.available_quantity ?? 0),
+                rented_quantity: Number(values.rented_quantity ?? 0),
+                reserved_quantity: Number(values.reserved_quantity ?? 0),
+                maintenance_quantity: Number(values.maintenance_quantity ?? 0),
+                purchase_value: Number(values.purchase_value ?? 0),
+                sale_value: Number(values.sale_value ?? 0),
+                rental_value: Number(values.rental_value ?? 0),
+                status: values.status ?? "available",
+                notes: values.notes ?? "",
               })
               setEquipments((current) => [normalizeEquipment(created as Record<string, unknown>), ...current])
             }}

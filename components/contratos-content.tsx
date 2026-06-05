@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ContractView } from "@/lib/mock-data"
+import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
 import { createContract, getContracts } from "@/lib/data/contracts"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
@@ -94,9 +95,21 @@ export function ContratosContent() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
   const [contracts, setContracts] = useState<ContractView[]>([])
+  const [clientOptions, setClientOptions] = useState<Array<{ label: string; value: string }>>([])
 
   useEffect(() => {
     getContracts().then((items) => setContracts(items.map((item) => normalizeContract(item as Record<string, unknown>))))
+    getClients().then((items) =>
+      setClientOptions(
+        items.map((item) => {
+          const record = item as Record<string, unknown>
+          return {
+            label: String(record.name ?? record.nome_fantasia ?? record.razao_social ?? record.id ?? ""),
+            value: String(record.id ?? ""),
+          }
+        }).filter((item) => item.value)
+      )
+    )
   }, [])
 
   const filteredContracts = contracts.filter((c) => {
@@ -168,18 +181,106 @@ export function ContratosContent() {
           </Button>
           <MockCreateDialog
             title="Novo Contrato"
-            description="Cadastro de contrato."
+            description="Preencha os dados do contrato para salvar no Supabase."
             triggerLabel="Novo Contrato"
             toastMessage="Contrato salvo com sucesso"
-            fields={["Cliente", "Numero", "Tipo", "Valor mensal", "Vencimento"]}
+            sections={[
+              {
+                title: "Cliente",
+                fields: [
+                  { name: "client_id", label: "Cliente", type: "select", required: true, options: clientOptions },
+                  {
+                    name: "type",
+                    label: "Tipo de contrato",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Locação", value: "locacao" },
+                      { label: "Venda", value: "venda" },
+                      { label: "Serviço", value: "servico" },
+                    ],
+                  },
+                  {
+                    name: "status",
+                    label: "Status",
+                    type: "select",
+                    options: [
+                      { label: "Ativo", value: "active" },
+                      { label: "Encerrado", value: "closed" },
+                      { label: "Cancelado", value: "cancelled" },
+                      { label: "Inadimplente", value: "overdue" },
+                      { label: "Jurídico", value: "legal" },
+                    ],
+                  },
+                ],
+              },
+              {
+                title: "Dados do contrato",
+                fields: [
+                  { name: "number", label: "Número do contrato", required: true },
+                  { name: "start_date", label: "Data inicial", type: "date", required: true },
+                  { name: "end_date", label: "Data final", type: "date" },
+                  { name: "due_day", label: "Dia de vencimento", type: "number" },
+                  { name: "notes", label: "Observações", type: "textarea" },
+                ],
+              },
+              {
+                title: "Financeiro",
+                fields: [
+                  { name: "monthly_value", label: "Valor mensal em R$", type: "money" },
+                  { name: "total_value", label: "Valor total em R$", type: "money" },
+                  { name: "installments_count", label: "Quantidade de parcelas", type: "number", required: true },
+                  { name: "entry_value", label: "Entrada em R$", type: "money" },
+                  {
+                    name: "payment_method",
+                    label: "Forma de pagamento",
+                    type: "select",
+                    options: [
+                      { label: "PIX", value: "PIX" },
+                      { label: "TED", value: "TED" },
+                      { label: "Boleto", value: "Boleto" },
+                      { label: "Cartão", value: "Cartao" },
+                      { label: "Dinheiro", value: "Dinheiro" },
+                    ],
+                  },
+                  { name: "cost_center_name", label: "Centro de custo/lucro" },
+                  { name: "dre_category_name", label: "Categoria DRE" },
+                ],
+              },
+              {
+                title: "Equipamentos vinculados",
+                fields: [
+                  { name: "equipment_id", label: "Equipamento selecionável" },
+                  { name: "equipment_quantity", label: "Quantidade", type: "number" },
+                  { name: "linked_asset_value", label: "Valor patrimonial vinculado", type: "money" },
+                ],
+              },
+              {
+                title: "Anexos",
+                fields: [
+                  { name: "contract_pdf", label: "Contrato PDF", type: "file" },
+                  { name: "receipt_file", label: "Comprovante", type: "file" },
+                  { name: "other_file", label: "Outros documentos", type: "file" },
+                ],
+              },
+            ]}
             onSave={async (values) => {
               const created = await createContract({
-                client_name: values.Cliente ?? "",
-                number: values.Numero ?? "",
-                type: values.Tipo ?? "locacao",
-                monthly_value: Number(values["Valor mensal"] ?? 0),
-                end_date: values.Vencimento ?? "",
-                status: "active",
+                client_id: values.client_id ?? "",
+                number: values.number ?? "",
+                type: values.type ?? "locacao",
+                status: values.status ?? "active",
+                start_date: values.start_date ?? "",
+                end_date: values.end_date ?? "",
+                due_day: Number(values.due_day ?? 0),
+                monthly_value: Number(values.monthly_value ?? 0),
+                total_value: Number(values.total_value ?? 0),
+                installments_count: Number(values.installments_count ?? 0),
+                entry_value: Number(values.entry_value ?? 0),
+                payment_method: values.payment_method ?? "",
+                cost_center_name: values.cost_center_name ?? "",
+                dre_category_name: values.dre_category_name ?? "",
+                notes: values.notes ?? "",
               })
               setContracts((current) => [normalizeContract(created as Record<string, unknown>), ...current])
             }}

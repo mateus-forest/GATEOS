@@ -51,6 +51,7 @@ import {
   Tooltip,
 } from "recharts"
 import { assets } from "@/lib/mock-data"
+import { createAsset } from "@/lib/data/assets"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 
@@ -120,10 +121,87 @@ export function PatrimonioContent() {
           </Button>
           <MockCreateDialog
             title="Novo Ativo"
-            description="Cadastro mockado de ativo patrimonial."
+            description="Preencha os dados do ativo para salvar no Supabase."
             triggerLabel="Novo Ativo"
             toastMessage="Ativo salvo com sucesso"
-            fields={["Nome", "Codigo", "Categoria", "Valor", "Localizacao"]}
+            sections={[
+              {
+                title: "Dados do ativo",
+                fields: [
+                  { name: "name", label: "Nome", required: true },
+                  {
+                    name: "category",
+                    label: "Categoria",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Imóvel", value: "imovel" },
+                      { label: "Veículo", value: "veiculo" },
+                      { label: "Equipamento", value: "equipamento" },
+                      { label: "Mobiliário", value: "mobiliario" },
+                      { label: "Software", value: "software" },
+                      { label: "Outro", value: "outro" },
+                    ],
+                  },
+                  { name: "code", label: "Código patrimonial" },
+                  { name: "location", label: "Localização" },
+                  {
+                    name: "status",
+                    label: "Status",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Ativo", value: "active" },
+                      { label: "Manutenção", value: "maintenance" },
+                      { label: "Baixado", value: "disposed" },
+                      { label: "Vendido", value: "sold" },
+                    ],
+                  },
+                ],
+              },
+              {
+                title: "Valores",
+                fields: [
+                  { name: "acquisition_value", label: "Valor de aquisição em R$", type: "money", required: true },
+                  { name: "current_value", label: "Valor atual em R$", type: "money" },
+                  { name: "depreciation_value", label: "Depreciação acumulada em R$", type: "money" },
+                  { name: "acquisition_date", label: "Data de aquisição", type: "date" },
+                ],
+              },
+              {
+                title: "Vínculo",
+                fields: [
+                  { name: "equipment_id", label: "Equipamento relacionado" },
+                  { name: "contract_id", label: "Contrato relacionado" },
+                  { name: "client_id", label: "Cliente relacionado" },
+                ],
+              },
+              {
+                title: "Documentos",
+                fields: [
+                  { name: "invoice_file", label: "Nota fiscal", type: "file" },
+                  { name: "term_file", label: "Termo", type: "file" },
+                  { name: "receipt_file", label: "Comprovante", type: "file" },
+                  { name: "other_file", label: "Outros", type: "file" },
+                ],
+              },
+            ]}
+            onSave={async (values) => {
+              await createAsset({
+                name: values.name ?? "",
+                category: values.category ?? "",
+                code: values.code ?? "",
+                location: values.location ?? "",
+                status: values.status ?? "active",
+                acquisition_value: Number(values.acquisition_value ?? 0),
+                current_value: Number(values.current_value || values.acquisition_value || 0),
+                depreciation_value: Number(values.depreciation_value ?? 0),
+                acquisition_date: values.acquisition_date ?? null,
+                equipment_id: values.equipment_id || null,
+                contract_id: values.contract_id || null,
+                client_id: values.client_id || null,
+              })
+            }}
           />
         </div>
       </div>

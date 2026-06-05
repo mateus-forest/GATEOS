@@ -154,19 +154,86 @@ export function ClientesContent() {
           </Button>
           <MockCreateDialog
             title="Novo Cliente"
-            description="Cadastro de cliente."
+            description="Preencha os dados do cliente para salvar no Supabase."
             triggerLabel="Novo Cliente"
             toastMessage="Cliente salvo com sucesso"
-            fields={["Nome fantasia", "Razao social", "CNPJ", "Telefone", "Segmento"]}
+            sections={[
+              {
+                title: "Dados principais",
+                fields: [
+                  { name: "name", label: "Nome do cliente", required: true },
+                  { name: "company_name", label: "Razão social" },
+                  { name: "trade_name", label: "Nome fantasia" },
+                  { name: "document", label: "CPF/CNPJ", required: true },
+                  {
+                    name: "type",
+                    label: "Tipo de cliente",
+                    type: "select",
+                    options: [
+                      { label: "Pessoa física", value: "pf" },
+                      { label: "Pessoa jurídica", value: "pj" },
+                    ],
+                  },
+                  {
+                    name: "status",
+                    label: "Status",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Ativo", value: "active" },
+                      { label: "Inativo", value: "inactive" },
+                      { label: "Inadimplente", value: "overdue" },
+                    ],
+                  },
+                ],
+              },
+              {
+                title: "Contato",
+                fields: [
+                  { name: "email", label: "E-mail", type: "email" },
+                  { name: "phone", label: "Telefone", type: "tel" },
+                  { name: "whatsapp", label: "WhatsApp", type: "tel" },
+                ],
+              },
+              {
+                title: "Endereço",
+                fields: [
+                  { name: "zip_code", label: "CEP" },
+                  { name: "address", label: "Endereço" },
+                  { name: "address_number", label: "Número" },
+                  { name: "address_complement", label: "Complemento" },
+                  { name: "district", label: "Bairro" },
+                  { name: "city", label: "Cidade" },
+                  { name: "state", label: "Estado" },
+                ],
+              },
+              {
+                title: "Observações",
+                fields: [
+                  { name: "notes", label: "Observações internas", type: "textarea" },
+                ],
+              },
+            ]}
             onSave={async (values) => {
               const created = await createClient({
-                nome_fantasia: values["Nome fantasia"] ?? "",
-                razao_social: values["Razao social"] ?? "",
-                cnpj: values.CNPJ ?? "",
-                telefone: values.Telefone ?? "",
-                segmento: values.Segmento ?? "",
-                status: "active",
-                ativo: true,
+                name: values.name ?? "",
+                nome_fantasia: values.trade_name || values.name || "",
+                razao_social: values.company_name ?? "",
+                cnpj: values.document ?? "",
+                type: values.type ?? "pj",
+                status: values.status ?? "active",
+                email: values.email ?? "",
+                telefone: values.phone ?? "",
+                whatsapp: values.whatsapp ?? "",
+                cep: values.zip_code ?? "",
+                endereco: values.address ?? "",
+                numero: values.address_number ?? "",
+                complemento: values.address_complement ?? "",
+                bairro: values.district ?? "",
+                cidade: values.city ?? "",
+                estado: values.state ?? "",
+                observacoes: values.notes ?? "",
+                ativo: values.status !== "inactive",
               })
               setClients((current) => [normalizeClient(created as Record<string, unknown>), ...current])
             }}

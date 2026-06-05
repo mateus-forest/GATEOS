@@ -45,7 +45,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { getContracts } from "@/lib/data/contracts"
 import type { InstallmentView } from "@/lib/mock-data"
 import { createInstallment, getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
@@ -82,10 +84,83 @@ export function ParcelasContent() {
   const [selectedParcela, setSelectedParcela] = useState<InstallmentView | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [contracts, setContracts] = useState<Array<Record<string, unknown>>>([])
+  const [generateForm, setGenerateForm] = useState({
+    contract_id: "",
+    client_name: "",
+    total_value: "",
+    installments_count: "",
+    entry_value: "",
+    installment_value: "",
+    first_due_date: "",
+    due_day: "",
+    status: "open",
+    auto_fees: "no",
+    notes: "",
+  })
+  const [generateErrors, setGenerateErrors] = useState<Record<string, string>>({})
+  const [generateLoading, setGenerateLoading] = useState(false)
 
   useEffect(() => {
     getInstallments().then((items) => setParcelas(items.map((item) => normalizeInstallment(item as Record<string, unknown>))))
+    getContracts().then((items) => setContracts(items as Array<Record<string, unknown>>))
   }, [])
+
+  const setGenerateField = (field: keyof typeof generateForm, value: string) => {
+    setGenerateForm((current) => ({ ...current, [field]: value }))
+    setGenerateErrors((current) => ({ ...current, [field]: "" }))
+  }
+
+  const selectedContract = contracts.find((contract) => String(contract.id ?? "") === generateForm.contract_id)
+  const totalValue = Number(generateForm.total_value || selectedContract?.total_value || selectedContract?.monthly_value || 0)
+  const entryValue = Number(generateForm.entry_value || 0)
+  const installmentsCount = Number(generateForm.installments_count || 0)
+  const installmentValue = Number(generateForm.installment_value || (installmentsCount ? (totalValue - entryValue) / installmentsCount : 0))
+  const lastDueDate = generateForm.first_due_date && installmentsCount > 0
+    ? new Date(new Date(generateForm.first_due_date).setMonth(new Date(generateForm.first_due_date).getMonth() + installmentsCount - 1))
+    : null
+
+  const handleGenerateInstallments = async () => {
+    const nextErrors: Record<string, string> = {}
+    if (!generateForm.contract_id) nextErrors.contract_id = "Selecione o contrato."
+    if (!installmentsCount) nextErrors.installments_count = "Informe a quantidade."
+    if (!installmentValue) nextErrors.installment_value = "Informe o valor por parcela."
+    if (!generateForm.first_due_date) nextErrors.first_due_date = "Informe o primeiro vencimento."
+    setGenerateErrors(nextErrors)
+    if (Object.keys(nextErrors).length > 0) return
+
+    setGenerateLoading(true)
+    try {
+      const createdItems: InstallmentView[] = []
+      for (let index = 0; index < installmentsCount; index += 1) {
+        const dueDate = new Date(generateForm.first_due_date)
+        dueDate.setMonth(dueDate.getMonth() + index)
+        if (generateForm.due_day) dueDate.setDate(Number(generateForm.due_day))
+
+        const created = await createInstallment({
+          contract_id: generateForm.contract_id,
+          contract_number: String(selectedContract?.number ?? selectedContract?.numero ?? generateForm.contract_id),
+          client_name: generateForm.client_name || String(selectedContract?.client_name ?? selectedContract?.clientName ?? ""),
+          number: index + 1,
+          total_installments: installmentsCount,
+          amount: installmentValue,
+          due_date: dueDate.toISOString().slice(0, 10),
+          status: generateForm.status,
+          auto_fees: generateForm.auto_fees === "yes",
+          notes: generateForm.notes,
+        })
+        createdItems.push(normalizeInstallment(created as Record<string, unknown>))
+      }
+      setParcelas((current) => [...createdItems, ...current])
+      setGenerateOpen(false)
+      toast.success("Parcelas geradas com sucesso")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível gerar as parcelas.")
+    } finally {
+      setGenerateLoading(false)
+    }
+  }
 
   const filteredParcelas = parcelas.filter((p) => {
     const matchesSearch = p.contractNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -157,18 +232,7 @@ export function ParcelasContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <Button
-            onClick={async () => {
-              const created = await createInstallment({
-                status: "pending",
-                number: 1,
-                amount: 0,
-                due_date: new Date().toISOString().slice(0, 10),
-              })
-              setParcelas((current) => [normalizeInstallment(created as Record<string, unknown>), ...current])
-              toast.success("Parcela criada com sucesso")
-            }}
-          >
+          <Button onClick={() => setGenerateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Gerar Parcelas
           </Button>
@@ -407,6 +471,116 @@ export function ParcelasContent() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gerar Parcelas</DialogTitle>
+            <DialogDescription>Informe os dados para criar as parcelas no Supabase.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Contrato *</Label>
+                <Select
+                  value={generateForm.contract_id}
+                  onValueChange={(value) => {
+                    const contract = contracts.find((item) => String(item.id ?? "") === value)
+                    setGenerateForm((current) => ({
+                      ...current,
+                      contract_id: value,
+                      client_name: String(contract?.client_name ?? contract?.clientName ?? ""),
+                      total_value: String(contract?.total_value ?? contract?.valor_total ?? ""),
+                    }))
+                    setGenerateErrors((current) => ({ ...current, contract_id: "" }))
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione o contrato" /></SelectTrigger>
+                  <SelectContent>
+                    {contracts.length > 0 ? contracts.map((contract) => (
+                      <SelectItem key={String(contract.id)} value={String(contract.id)}>
+                        {String(contract.number ?? contract.numero ?? contract.id)}
+                      </SelectItem>
+                    )) : <SelectItem value="empty" disabled>Nenhum registro encontrado</SelectItem>}
+                  </SelectContent>
+                </Select>
+                {generateErrors.contract_id && <p className="text-xs text-destructive">{generateErrors.contract_id}</p>}
+              </div>
+              <div className="grid gap-2">
+                <Label>Cliente</Label>
+                <Input value={generateForm.client_name} onChange={(event) => setGenerateField("client_name", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Valor total do contrato em R$</Label>
+                <Input type="number" step="0.01" value={generateForm.total_value} onChange={(event) => setGenerateField("total_value", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Quantidade de parcelas *</Label>
+                <Input type="number" min="1" value={generateForm.installments_count} onChange={(event) => setGenerateField("installments_count", event.target.value)} />
+                {generateErrors.installments_count && <p className="text-xs text-destructive">{generateErrors.installments_count}</p>}
+              </div>
+              <div className="grid gap-2">
+                <Label>Valor de entrada em R$</Label>
+                <Input type="number" step="0.01" value={generateForm.entry_value} onChange={(event) => setGenerateField("entry_value", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Valor de cada parcela em R$ *</Label>
+                <Input type="number" step="0.01" value={generateForm.installment_value} onChange={(event) => setGenerateField("installment_value", event.target.value)} placeholder={installmentValue ? String(installmentValue.toFixed(2)) : ""} />
+                {generateErrors.installment_value && <p className="text-xs text-destructive">{generateErrors.installment_value}</p>}
+              </div>
+              <div className="grid gap-2">
+                <Label>Primeiro vencimento *</Label>
+                <Input type="date" value={generateForm.first_due_date} onChange={(event) => setGenerateField("first_due_date", event.target.value)} />
+                {generateErrors.first_due_date && <p className="text-xs text-destructive">{generateErrors.first_due_date}</p>}
+              </div>
+              <div className="grid gap-2">
+                <Label>Dia fixo de vencimento</Label>
+                <Input type="number" min="1" max="31" value={generateForm.due_day} onChange={(event) => setGenerateField("due_day", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Status inicial</Label>
+                <Select value={generateForm.status} onValueChange={(value) => setGenerateField("status", value)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Aberta</SelectItem>
+                    <SelectItem value="pending">A receber</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Aplicar multa/juros automáticos?</Label>
+                <Select value={generateForm.auto_fees} onValueChange={(value) => setGenerateField("auto_fees", value)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="no">Não</SelectItem>
+                    <SelectItem value="yes">Sim</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2 md:col-span-2">
+                <Label>Observações</Label>
+                <Input value={generateForm.notes} onChange={(event) => setGenerateField("notes", event.target.value)} />
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-4 text-sm">
+              <p className="font-medium">Resumo automático</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <span>Total a parcelar: {formatCurrency(Math.max(totalValue - entryValue, 0))}</span>
+                <span>Quantidade de parcelas: {installmentsCount || 0}</span>
+                <span>Valor por parcela: {formatCurrency(installmentValue || 0)}</span>
+                <span>Primeiro vencimento: {generateForm.first_due_date || "-"}</span>
+                <span>Último vencimento: {lastDueDate ? lastDueDate.toLocaleDateString("pt-BR") : "-"}</span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenerateOpen(false)} disabled={generateLoading}>Cancelar</Button>
+            <Button onClick={handleGenerateInstallments} disabled={generateLoading}>
+              {generateLoading ? "Salvando..." : "Salvar"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

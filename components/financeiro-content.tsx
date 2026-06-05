@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Plus,
   Search,
@@ -73,7 +73,7 @@ import {
 import { transactions, cashFlowData } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { createFinancialEntry } from "@/lib/data/financial"
+import { createFinancialEntry, getFinancialSelectOptions } from "@/lib/data/financial"
 import {
   addDreLaunch,
   attachmentTypes,
@@ -122,6 +122,26 @@ function NewLaunchDialog() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<NewLaunchForm>(initialLaunchForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [selectOptions, setSelectOptions] = useState({
+    dreCategories: [] as string[],
+    costCenters: [] as string[],
+    bankAccounts: [] as string[],
+  })
+
+  useEffect(() => {
+    getFinancialSelectOptions().then((options) => {
+      const label = (item: unknown) => {
+        const record = item as Record<string, unknown>
+        return String(record.name ?? record.nome ?? record.label ?? record.description ?? "")
+      }
+      setSelectOptions({
+        dreCategories: options.dreCategories.map(label).filter(Boolean),
+        costCenters: options.costCenters.map(label).filter(Boolean),
+        bankAccounts: options.bankAccounts.map(label).filter(Boolean),
+      })
+    })
+  }, [])
 
   const setField = (field: keyof NewLaunchForm, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value ?? "" }))

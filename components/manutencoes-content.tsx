@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { maintenances } from "@/lib/mock-data"
+import { createMaintenanceOrder } from "@/lib/data/maintenance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 
@@ -107,10 +108,110 @@ export function ManutencoesContent() {
           </Button>
           <MockCreateDialog
             title="Nova Manutencao"
-            description="Cadastro mockado de chamado de manutencao."
+            description="Preencha os dados da ordem de manutenção para salvar no Supabase."
             triggerLabel="Nova Manutencao"
             toastMessage="Manutencao salva com sucesso"
-            fields={["Equipamento", "Cliente", "Tipo", "Prioridade", "Tecnico"]}
+            sections={[
+              {
+                title: "Vínculos",
+                fields: [
+                  { name: "equipment_id", label: "Equipamento", required: true },
+                  { name: "client_id", label: "Cliente" },
+                  { name: "contract_id", label: "Contrato" },
+                ],
+              },
+              {
+                title: "Chamado",
+                fields: [
+                  { name: "ticket_number", label: "Número do ticket" },
+                  {
+                    name: "type",
+                    label: "Tipo",
+                    type: "select",
+                    options: [
+                      { label: "Preventiva", value: "preventiva" },
+                      { label: "Corretiva", value: "corretiva" },
+                      { label: "Emergencial", value: "emergencial" },
+                    ],
+                  },
+                  {
+                    name: "priority",
+                    label: "Prioridade",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Baixa", value: "low" },
+                      { label: "Média", value: "medium" },
+                      { label: "Alta", value: "high" },
+                      { label: "Crítica", value: "critical" },
+                    ],
+                  },
+                  {
+                    name: "status",
+                    label: "Status",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { label: "Aberto", value: "open" },
+                      { label: "Em andamento", value: "in_progress" },
+                      { label: "Concluído", value: "completed" },
+                      { label: "Cancelado", value: "cancelled" },
+                    ],
+                  },
+                ],
+              },
+              {
+                title: "Descrição",
+                fields: [
+                  { name: "problem", label: "Problema relatado", type: "textarea", required: true },
+                  { name: "diagnosis", label: "Diagnóstico", type: "textarea" },
+                  { name: "solution", label: "Solução", type: "textarea" },
+                ],
+              },
+              {
+                title: "Datas",
+                fields: [
+                  { name: "entry_date", label: "Data de entrada", type: "date" },
+                  { name: "expected_exit_date", label: "Data prevista de saída", type: "date" },
+                  { name: "completed_date", label: "Data de conclusão", type: "date" },
+                ],
+              },
+              {
+                title: "Custos",
+                fields: [
+                  { name: "cost", label: "Custo da manutenção em R$", type: "money" },
+                  { name: "technician", label: "Responsável / Técnico" },
+                ],
+              },
+              {
+                title: "Anexos",
+                fields: [
+                  { name: "photos", label: "Fotos", type: "file" },
+                  { name: "invoice", label: "Nota fiscal", type: "file" },
+                  { name: "receipt", label: "Comprovantes", type: "file" },
+                  { name: "technical_report", label: "Relatório técnico", type: "file" },
+                ],
+              },
+            ]}
+            onSave={async (values) => {
+              await createMaintenanceOrder({
+                equipment_id: values.equipment_id ?? "",
+                client_id: values.client_id || null,
+                contract_id: values.contract_id || null,
+                ticket_number: values.ticket_number ?? "",
+                type: values.type ?? "preventiva",
+                priority: values.priority ?? "medium",
+                status: values.status ?? "open",
+                problem: values.problem ?? "",
+                diagnosis: values.diagnosis ?? "",
+                solution: values.solution ?? "",
+                entry_date: values.entry_date || null,
+                expected_exit_date: values.expected_exit_date || null,
+                completed_date: values.completed_date || null,
+                cost: Number(values.cost ?? 0),
+                technician: values.technician ?? "",
+              })
+            }}
           />
         </div>
       </div>
