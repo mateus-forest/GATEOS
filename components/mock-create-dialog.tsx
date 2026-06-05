@@ -59,6 +59,7 @@ export function MockCreateDialog({
   const [open, setOpen] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState("")
   const [loading, setLoading] = useState(false)
 
   const formSections = sections ?? [
@@ -71,6 +72,7 @@ export function MockCreateDialog({
   const setField = (name: string, value: string) => {
     setValues((current) => ({ ...current, [name]: value }))
     setErrors((current) => ({ ...current, [name]: "" }))
+    setSubmitError("")
   }
 
   const validate = () => {
@@ -92,6 +94,7 @@ export function MockCreateDialog({
     if (!validate()) return
 
     setLoading(true)
+    setSubmitError("")
     try {
       await onSave?.(values)
       toast.success(toastMessage)
@@ -100,6 +103,8 @@ export function MockCreateDialog({
       setOpen(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível salvar. Verifique a conexão e tente novamente."
+      console.error(`[${title}] Falha ao salvar`, error)
+      setSubmitError(message)
       toast.error(message)
     } finally {
       setLoading(false)
@@ -199,6 +204,11 @@ export function MockCreateDialog({
                 </div>
               </div>
             ))}
+            {submitError && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {submitError}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>

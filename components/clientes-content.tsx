@@ -59,8 +59,8 @@ import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportCsv } from "@/lib/cta-actions"
 
 function normalizeClient(item: Record<string, unknown>): ClientView {
-  const name = String(item.name ?? item.nome_fantasia ?? item.nomeFantasia ?? item.razao_social ?? item.razaoSocial ?? "")
-  const companyName = String(item.companyName ?? item.razao_social ?? item.razaoSocial ?? name)
+  const name = String(item.name ?? item.trade_name ?? item.nome_fantasia ?? item.nomeFantasia ?? item.razao_social ?? item.razaoSocial ?? "")
+  const companyName = String(item.companyName ?? item.company_name ?? item.razao_social ?? item.razaoSocial ?? name)
   const document = String(item.document ?? item.cnpj ?? item.cpf ?? "")
   const phone = String(item.phone ?? item.telefone ?? "")
   const segment = String(item.segment ?? item.segmento ?? "")
@@ -224,26 +224,30 @@ export function ClientesContent() {
             ]}
             onSave={async (values) => {
               const created = await createClient({
-                name: values.name ?? "",
-                nome_fantasia: values.trade_name || values.name || "",
-                razao_social: values.company_name ?? "",
-                cnpj: values.document ?? "",
+                name: values.name,
+                company_name: values.company_name || null,
+                trade_name: values.trade_name || values.name,
+                document: values.document,
                 type: values.type ?? "pj",
                 status: values.status ?? "active",
-                email: values.email ?? "",
-                telefone: values.phone ?? "",
-                whatsapp: values.whatsapp ?? "",
-                cep: values.zip_code ?? "",
-                endereco: values.address ?? "",
-                numero: values.address_number ?? "",
-                complemento: values.address_complement ?? "",
-                bairro: values.district ?? "",
-                cidade: values.city ?? "",
-                estado: values.state ?? "",
-                observacoes: values.notes ?? "",
-                ativo: values.status !== "inactive",
+                email: values.email || null,
+                phone: values.phone || null,
+                whatsapp: values.whatsapp || null,
+                zip_code: values.zip_code || null,
+                address: values.address || null,
+                address_number: values.address_number || null,
+                address_complement: values.address_complement || null,
+                district: values.district || null,
+                city: values.city || null,
+                state: values.state || null,
+                notes: values.notes || null,
               })
-              setClients((current) => [normalizeClient(created as Record<string, unknown>), ...current])
+              const refreshed = await getClients()
+              setClients(
+                refreshed.length > 0
+                  ? refreshed.map((item) => normalizeClient(item as Record<string, unknown>))
+                  : [normalizeClient(created as Record<string, unknown>)]
+              )
             }}
           />
         </div>

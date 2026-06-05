@@ -113,7 +113,7 @@ export function ContratosContent() {
         items.map((item) => {
           const record = item as Record<string, unknown>
           return {
-            label: String(record.name ?? record.nome_fantasia ?? record.razao_social ?? record.id ?? ""),
+            label: String(record.name ?? record.trade_name ?? record.company_name ?? record.nome_fantasia ?? record.razao_social ?? record.id ?? ""),
             value: String(record.id ?? ""),
           }
         }).filter((item) => item.value)
