@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Search,
   Download,
@@ -50,8 +50,8 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts"
-import { assets } from "@/lib/mock-data"
-import { createAsset } from "@/lib/data/assets"
+import type { AssetView } from "@/lib/mock-data"
+import { createAsset, getAssets } from "@/lib/data/assets"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportCsv } from "@/lib/cta-actions"
@@ -63,10 +63,45 @@ const assetsByCategory = [
   { name: "Móveis", value: 125000, color: "#8B5CF6" },
 ]
 
+function normalizeAsset(item: Record<string, unknown>): AssetView {
+  const name = String(item.name ?? item.nome ?? "")
+  const code = String(item.code ?? item.codigo ?? "")
+  const acquisitionValue = Number(item.acquisition_value ?? item.acquisitionValue ?? item.valor_aquisicao ?? 0)
+  const currentValue = Number(item.current_value ?? item.currentValue ?? item.valor_atual ?? acquisitionValue)
+
+  return {
+    id: String(item.id ?? ""),
+    nome: name,
+    codigo: code,
+    descricao: String(item.description ?? item.descricao ?? ""),
+    categoria: String(item.category ?? item.categoria ?? "outro") as AssetView["categoria"],
+    status: String(item.status ?? "active"),
+    valorAquisicao: acquisitionValue,
+    dataAquisicao: String(item.acquisition_date ?? item.acquisitionDate ?? item.data_aquisicao ?? ""),
+    valorAtual: currentValue,
+    depreciacao: Number(item.depreciation_value ?? item.depreciacao ?? 0),
+    localizacao: String(item.location ?? item.localizacao ?? ""),
+    responsavel: String(item.responsible ?? item.responsavel ?? ""),
+    name,
+    code,
+    description: String(item.description ?? item.descricao ?? ""),
+    acquisitionValue,
+    currentValue,
+    acquisitionDate: String(item.acquisition_date ?? item.acquisitionDate ?? item.data_aquisicao ?? ""),
+    location: String(item.location ?? item.localizacao ?? ""),
+    responsible: String(item.responsible ?? item.responsavel ?? ""),
+  }
+}
+
 export function PatrimonioContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [assets, setAssets] = useState<AssetView[]>([])
+
+  useEffect(() => {
+    getAssets().then((items) => setAssets(items.map((item) => normalizeAsset(item as Record<string, unknown>))))
+  }, [])
 
   const filteredAssets = assets.filter((a) => {
     const matchesSearch = a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -195,7 +230,7 @@ export function PatrimonioContent() {
               },
             ]}
             onSave={async (values) => {
-              await createAsset({
+              const created = await createAsset({
                 name: values.name ?? "",
                 category: values.category ?? "",
                 code: values.code ?? "",
@@ -209,6 +244,12 @@ export function PatrimonioContent() {
                 contract_id: values.contract_id || null,
                 client_id: values.client_id || null,
               })
+              const refreshed = await getAssets()
+              setAssets(
+                refreshed.length > 0
+                  ? refreshed.map((item) => normalizeAsset(item as Record<string, unknown>))
+                  : [normalizeAsset(created as Record<string, unknown>)]
+              )
             }}
           />
         </div>

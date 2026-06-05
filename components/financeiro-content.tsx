@@ -70,10 +70,10 @@ import {
   LineChart,
   Line,
 } from "recharts"
-import { transactions, cashFlowData } from "@/lib/mock-data"
+import { cashFlowData } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { createFinancialEntry, getFinancialSelectOptions } from "@/lib/data/financial"
+import { createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
 import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import {
   addDreLaunch,
@@ -99,6 +99,31 @@ const bankConnections = [
 
 type NewLaunchForm = Omit<DreLaunch, "id" | "amount"> & { amount: string }
 
+type TransactionRow = {
+  id: string
+  type: string
+  category: string
+  description: string
+  amount: number
+  date: string
+  status: string
+}
+
+function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow {
+  const type = String(item.type ?? "")
+  const status = String(item.status ?? "")
+
+  return {
+    id: String(item.id ?? crypto.randomUUID()),
+    type: type === "Receita" || type === "income" ? "income" : "expense",
+    category: String(item.dre_category_name ?? item.category ?? item.categoria ?? ""),
+    description: String(item.description ?? item.descricao ?? ""),
+    amount: Number(item.value ?? item.amount ?? item.valor ?? 0),
+    date: String(item.competence_date ?? item.date ?? item.data ?? ""),
+    status: status === "Cancelado" || status === "cancelled" ? "cancelled" : status.includes("pagar") || status.includes("receber") || status === "pending" ? "pending" : "completed",
+  }
+}
+
 const initialLaunchForm: NewLaunchForm = {
   type: "Receita",
   status: "Recebido",
@@ -119,7 +144,7 @@ const initialLaunchForm: NewLaunchForm = {
 
 const parties: string[] = []
 
-function NewLaunchDialog() {
+function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => void }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<NewLaunchForm>(initialLaunchForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -165,7 +190,7 @@ function NewLaunchDialog() {
     if (!validate()) return
 
     const amount = Number(form.amount.replace(",", "."))
-    await createFinancialEntry({
+    const created = await createFinancialEntry({
       type: form.type,
       status: form.status,
       description: form.description,
@@ -186,6 +211,7 @@ function NewLaunchDialog() {
       ...form,
       amount,
     })
+    onCreated(normalizeFinancialEntry(created as Record<string, unknown>))
     toast.success("Lançamento salvo e DRE atualizado")
     setForm(initialLaunchForm)
     setErrors({})
@@ -267,7 +293,14 @@ export function FinanceiroContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [financialEntries, setFinancialEntries] = useState<TransactionRow[]>([])
   const dreLaunches = useDreLaunches()
+
+  useEffect(() => {
+    getFinancialEntries().then((items) =>
+      setFinancialEntries(items.map((item) => normalizeFinancialEntry(item as Record<string, unknown>)))
+    )
+  }, [])
   const mockTransactions = dreLaunches.map((launch) => ({
     id: launch.id,
     type: launch.type === "Receita" || launch.type === "Aporte" ? "income" : "expense",
@@ -277,7 +310,7 @@ export function FinanceiroContent() {
     date: launch.competenceDate,
     status: launch.status === "Cancelado" ? "cancelled" : launch.status.includes("pagar") || launch.status.includes("receber") ? "pending" : "completed",
   }))
-  const allTransactions = [...mockTransactions, ...transactions]
+  const allTransactions = [...mockTransactions, ...financialEntries]
 
   const filteredTransactions = allTransactions.filter((t) => {
     const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -331,7 +364,7 @@ export function FinanceiroContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <NewLaunchDialog />
+          <NewLaunchDialog onCreated={(entry) => setFinancialEntries((current) => [entry, ...current])} />
         </div>
       </div>
 

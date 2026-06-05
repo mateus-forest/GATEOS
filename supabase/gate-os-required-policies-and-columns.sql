@@ -1,0 +1,116 @@
+-- GATE OS - requisitos de colunas e policies para homologacao
+-- NAO executar automaticamente. Validar no Supabase antes de aplicar.
+--
+-- Objetivo:
+-- - Documentar colunas usadas pelo frontend atual.
+-- - Documentar policies minimas para testes com anon key.
+-- - Substituir estas policies por regras autenticadas quando Supabase Auth real entrar.
+
+-- 1. Colunas atualmente usadas pelo cadastro de clientes
+-- Tabela: public.clients
+-- name text not null
+-- company_name text null
+-- trade_name text null
+-- document text not null
+-- type text ou enum compatível com ('pf', 'pj')
+-- status client_status not null default 'ativo'
+-- email text null
+-- phone text null
+-- whatsapp text null
+-- zip_code text null
+-- address text null
+-- address_number text null
+-- address_complement text null
+-- district text null
+-- city text null
+-- state text null
+-- notes text null
+
+-- 2. Colunas atualmente usadas pelo cadastro de contratos
+-- Tabela: public.contracts
+-- client_id uuid not null references public.clients(id)
+-- contract_number text not null
+-- type text ou enum compatível com ('locacao', 'venda', 'manutencao', 'suporte')
+-- status text ou enum compatível com ('ativo', 'pendente', 'suspenso', 'encerrado')
+-- start_date date not null
+-- end_date date null
+-- due_day integer null
+-- monthly_value numeric null
+-- total_value numeric null
+-- installments_count integer null
+-- payment_method text null
+-- notes text null
+-- public_access_token uuid null
+-- public_access_enabled boolean not null default false
+-- public_access_created_at timestamptz null
+
+-- 3. Colunas usadas pela pagina publica de contrato
+-- public.contract_equipment.contract_id
+-- public.contract_equipment.equipment_id
+-- public.equipment.contract_id ou vinculo via contract_equipment
+-- public.installments.contract_id
+-- public.maintenance_orders.contract_id
+-- public.maintenance_orders.equipment_id
+-- public.maintenance_orders.client_id
+-- public.maintenance_orders.ticket_number
+-- public.maintenance_orders.type
+-- public.maintenance_orders.priority
+-- public.maintenance_orders.status
+-- public.maintenance_orders.problem
+-- public.maintenance_orders.entry_date
+
+-- 4. Policies temporarias para homologacao com anon
+-- ATENCAO: usar somente em ambiente de homologacao.
+-- Em producao, substituir por policies baseadas em auth.uid(), roles e escopo da empresa.
+
+-- Clientes
+-- alter table public.clients enable row level security;
+-- create policy "homolog_select_clients_anon" on public.clients for select to anon using (true);
+-- create policy "homolog_insert_clients_anon" on public.clients for insert to anon with check (true);
+-- create policy "homolog_update_clients_anon" on public.clients for update to anon using (true) with check (true);
+
+-- Contratos
+-- alter table public.contracts enable row level security;
+-- create policy "homolog_select_contracts_anon" on public.contracts for select to anon using (true);
+-- create policy "homolog_insert_contracts_anon" on public.contracts for insert to anon with check (true);
+-- create policy "homolog_update_contracts_anon" on public.contracts for update to anon using (true) with check (true);
+
+-- Leitura publica por token de contrato
+-- Esta policy permite que a pagina /cliente/contrato/[token] leia apenas links ativos.
+-- create policy "public_contract_read_by_enabled_token" on public.contracts
+--   for select to anon
+--   using (public_access_enabled = true and public_access_token is not null);
+
+-- Dependencias da pagina publica
+-- create policy "public_contract_clients_read" on public.clients for select to anon using (true);
+-- create policy "public_contract_equipment_read" on public.contract_equipment for select to anon using (true);
+-- create policy "public_equipment_read" on public.equipment for select to anon using (true);
+-- create policy "public_installments_read" on public.installments for select to anon using (true);
+-- create policy "public_maintenance_orders_read" on public.maintenance_orders for select to anon using (true);
+-- create policy "public_maintenance_orders_insert" on public.maintenance_orders for insert to anon with check (true);
+
+-- Demais tabelas operacionais com formularios no frontend
+-- alter table public.equipment enable row level security;
+-- alter table public.assets enable row level security;
+-- alter table public.maintenance_orders enable row level security;
+-- alter table public.legal_cases enable row level security;
+-- alter table public.installments enable row level security;
+-- alter table public.financial_entries enable row level security;
+-- alter table public.documents enable row level security;
+-- alter table public.partner_entries enable row level security;
+-- alter table public.dre_manual_adjustments enable row level security;
+--
+-- create policy "..._select_anon" on public.<table> for select to anon using (true);
+-- create policy "..._insert_anon" on public.<table> for insert to anon with check (true);
+-- create policy "..._update_anon" on public.<table> for update to anon using (true) with check (true);
+
+-- 5. Storage buckets usados
+-- gate-documents
+-- gate-contracts
+-- gate-legal
+--
+-- Policies de Storage devem permitir upload/download apenas conforme escopo aprovado.
+-- Para homologacao anon:
+-- - insert em storage.objects para buckets acima
+-- - select em storage.objects para buckets acima
+-- - delete/update somente se a tela realmente exigir exclusao/alteracao

@@ -14,6 +14,20 @@ function warnFallback(context: string, error?: unknown) {
   }
 }
 
+function describeSupabaseError(error: unknown) {
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>
+    return [
+      typeof record.message === "string" ? record.message : "",
+      typeof record.details === "string" ? record.details : "",
+      typeof record.hint === "string" ? record.hint : "",
+      typeof record.code === "string" ? `Codigo: ${record.code}` : "",
+    ].filter(Boolean).join(" ")
+  }
+
+  return error instanceof Error ? error.message : String(error)
+}
+
 export async function selectRows<T>(
   table: string,
   fallback: T[],
@@ -54,21 +68,31 @@ export async function insertRow<T>(
   payload: SupabaseRow,
   fallback: T
 ) {
+  void fallback
   if (!isSupabaseConfigured()) {
-    warnFallback(`${table}: insert sem Supabase configurado`)
-    return fallback
+    throw new Error(`${table}: Supabase nao esta configurado. O registro nao foi salvo.`)
   }
 
   const supabase = createSupabaseBrowserClient()
-  if (!supabase) return fallback
-
-  const { data, error } = await supabase.from(table).insert(payload).select("*").single()
-  if (error) {
-    warnFallback(`${table}: falha ao inserir`, error)
-    return fallback
+  if (!supabase) {
+    throw new Error(`${table}: nao foi possivel iniciar a conexao com o Supabase.`)
   }
 
-  return (data ?? fallback) as T
+  const cleanPayload = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [key, value === undefined || value === "" ? null : value])
+  ) satisfies SupabaseRow
+
+  const { data, error } = await supabase.from(table).insert(cleanPayload).select("*").single()
+  if (error) {
+    console.error(`[${table}] Falha ao inserir no Supabase`, error)
+    throw new Error(`${table}: falha ao inserir no Supabase. ${describeSupabaseError(error)}`)
+  }
+
+  if (!data) {
+    throw new Error(`${table}: Supabase nao retornou o registro criado.`)
+  }
+
+  return data as T
 }
 
 export async function updateRows<T>(
@@ -77,26 +101,36 @@ export async function updateRows<T>(
   match: SupabaseRow,
   fallback: T
 ) {
+  void fallback
   if (!isSupabaseConfigured()) {
-    warnFallback(`${table}: update sem Supabase configurado`)
-    return fallback
+    throw new Error(`${table}: Supabase nao esta configurado. A alteracao nao foi salva.`)
   }
 
   const supabase = createSupabaseBrowserClient()
-  if (!supabase) return fallback
+  if (!supabase) {
+    throw new Error(`${table}: nao foi possivel iniciar a conexao com o Supabase.`)
+  }
 
-  let query = supabase.from(table).update(payload)
+  const cleanPayload = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [key, value === undefined || value === "" ? null : value])
+  ) satisfies SupabaseRow
+
+  let query = supabase.from(table).update(cleanPayload)
   Object.entries(match).forEach(([key, value]) => {
     query = query.eq(key, value)
   })
 
   const { data, error } = await query.select("*")
   if (error) {
-    warnFallback(`${table}: falha ao atualizar`, error)
-    return fallback
+    console.error(`[${table}] Falha ao atualizar no Supabase`, error)
+    throw new Error(`${table}: falha ao atualizar no Supabase. ${describeSupabaseError(error)}`)
   }
 
-  return (data ?? fallback) as T
+  if (!data) {
+    throw new Error(`${table}: Supabase nao retornou o registro atualizado.`)
+  }
+
+  return data as T
 }
 
 export async function callRpc<T>(
@@ -105,17 +139,18 @@ export async function callRpc<T>(
   fallback: T
 ) {
   if (!isSupabaseConfigured()) {
-    warnFallback(`${name}: RPC sem Supabase configurado`)
-    return fallback
+    throw new Error(`${name}: Supabase nao esta configurado. A acao nao foi executada.`)
   }
 
   const supabase = createSupabaseBrowserClient()
-  if (!supabase) return fallback
+  if (!supabase) {
+    throw new Error(`${name}: nao foi possivel iniciar a conexao com o Supabase.`)
+  }
 
   const { data, error } = await supabase.rpc(name, args)
   if (error) {
-    warnFallback(`${name}: falha na RPC`, error)
-    return fallback
+    console.error(`[${name}] Falha na RPC Supabase`, error)
+    throw new Error(`${name}: falha na RPC Supabase. ${describeSupabaseError(error)}`)
   }
 
   return (data ?? fallback) as T
