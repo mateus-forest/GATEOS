@@ -56,6 +56,7 @@ import type { ClientView } from "@/lib/mock-data"
 import { createClient, getClients } from "@/lib/data/clients"
 import { formatCurrency, formatCPFCNPJ, formatPhone } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+import { exportCsv } from "@/lib/cta-actions"
 
 function normalizeClient(item: Record<string, unknown>): ClientView {
   const name = String(item.name ?? item.nome_fantasia ?? item.nomeFantasia ?? item.razao_social ?? item.razaoSocial ?? "")
@@ -148,7 +149,14 @@ export function ClientesContent() {
           <p className="text-muted-foreground">Gestão de clientes e prospects</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-clientes.csv", filteredClients.map((client) => ({
+            id: client.id,
+            nome: client.name,
+            documento: client.document,
+            email: client.email,
+            telefone: client.phone,
+            status: client.status,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

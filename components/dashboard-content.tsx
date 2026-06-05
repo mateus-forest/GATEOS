@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import {
   TrendingUp,
   TrendingDown,
@@ -46,6 +47,7 @@ import {
   Cell,
 } from "recharts"
 import { revenueData, contractsByStatus, recentActivities, upcomingPayments } from "@/lib/mock-data"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import { formatCurrency } from "@/lib/utils"
 
 const COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6"]
@@ -174,6 +176,22 @@ function ActivityItem({ activity }: { activity: typeof recentActivities[0] }) {
 }
 
 export function DashboardContent() {
+  const router = useRouter()
+
+  const handleExportReport = () => {
+    exportCsv("gate-dashboard.csv", [
+      { indicador: "Receita Mensal", valor: monthlyRevenue },
+      { indicador: "Contratos Ativos", valor: activeContracts },
+      { indicador: "Clientes", valor: totalClients },
+      { indicador: "Equipamentos", valor: totalEquipments },
+      { indicador: "Saldo total consolidado", valor: totalBankBalance },
+      { indicador: "Lucro operacional", valor: operatingProfit },
+      { indicador: "Resultado distribuivel", valor: distributableResult },
+      { indicador: "Total distribuido", valor: totalDistributed },
+      { indicador: "Lucro retido", valor: retainedProfit },
+    ])
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -183,11 +201,11 @@ export function DashboardContent() {
           <p className="text-muted-foreground">Visão geral do sistema GATE OS</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => featureInPreparation("Filtro de ultimo mes depende da consulta real por periodo no dashboard.")}>
             <Calendar className="mr-2 h-4 w-4" />
             Último mês
           </Button>
-          <Button>
+          <Button onClick={handleExportReport}>
             Exportar Relatório
           </Button>
         </div>
@@ -206,7 +224,7 @@ export function DashboardContent() {
                 Revise os contratos e inicie o processo de renovação
               </p>
             </div>
-            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100">
+            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => router.push("/contratos")}>
               Ver contratos
             </Button>
           </div>
@@ -449,7 +467,7 @@ export function DashboardContent() {
                 <CardTitle>Atividades Recentes</CardTitle>
                 <CardDescription>Últimas atualizações do sistema</CardDescription>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => router.push("/relatorios")}>
                 Ver todas
               </Button>
             </div>
@@ -471,7 +489,7 @@ export function DashboardContent() {
                 <CardTitle>Próximos Pagamentos</CardTitle>
                 <CardDescription>Vencimentos dos próximos 7 dias</CardDescription>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => router.push("/parcelas")}>
                 Ver todos
               </Button>
             </div>

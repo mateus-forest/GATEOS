@@ -33,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import { formatCurrency } from "@/lib/utils"
 
 const colors = ["#22B8CF", "#22C55E", "#F59E0B"]
@@ -118,7 +119,14 @@ export function SociosContent() {
           <p className="text-muted-foreground">Participacoes, aportes, distribuicoes e saldo liquido.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast.success("Relatorio de socios exportado")}>
+          <Button variant="outline" onClick={() => exportCsv("gate-socios.csv", entries.map((entry) => ({
+            id: entry.id,
+            socio: entry.partner,
+            tipo: entry.type,
+            mes: entry.month,
+            status: entry.status,
+            valor: entry.amount,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -248,8 +256,15 @@ export function SociosContent() {
                         <Eye className="mr-2 h-4 w-4" />
                         Ver detalhes
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toast.success("Edicao mockada aberta")}>Editar</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toast.success("Historico exportado")}>Exportar historico</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => featureInPreparation("Edicao de socio depende do formulario real de cadastro societario.")}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportCsv("gate-socio-historico.csv", entries.filter((entry) => entry.partner === partner.name).map((entry) => ({
+                        id: entry.id,
+                        socio: entry.partner,
+                        tipo: entry.type,
+                        mes: entry.month,
+                        status: entry.status,
+                        valor: entry.amount,
+                      })))}>Exportar historico</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

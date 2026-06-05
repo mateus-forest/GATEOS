@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 import {
   Search,
   Download,
@@ -54,6 +53,7 @@ import { createContract, getContracts } from "@/lib/data/contracts"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 
 function normalizeContract(item: Record<string, unknown>): ContractView {
   const number = String(item.number ?? item.numero ?? "")
@@ -175,7 +175,14 @@ export function ContratosContent() {
           <p className="text-muted-foreground">Gestão de contratos e renovações</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-contratos.csv", filteredContracts.map((contract) => ({
+            id: contract.id,
+            numero: contract.number,
+            cliente: contract.clientName,
+            tipo: contract.type,
+            status: contract.status,
+            valor_mensal: contract.monthlyValue,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -507,7 +514,7 @@ export function ContratosContent() {
                                 Ver caso jurídico
                               </DropdownMenuItem>
                             ) : (
-                              <DropdownMenuItem onClick={() => toast.success("Contrato enviado para o jurídico")}>
+                              <DropdownMenuItem onClick={() => featureInPreparation("Envio de contrato para o juridico depende da criacao real do caso juridico vinculado.")}>
                                 <Scale className="mr-2 h-4 w-4" />
                                 Enviar para jurídico
                               </DropdownMenuItem>

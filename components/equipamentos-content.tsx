@@ -49,6 +49,7 @@ import type { EquipmentView } from "@/lib/mock-data"
 import { createEquipment, getEquipment } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 
 function normalizeEquipment(item: Record<string, unknown>): EquipmentView {
   const name = String(item.name ?? item.nome ?? "")
@@ -150,11 +151,18 @@ export function EquipamentosContent() {
           <p className="text-muted-foreground">Gestão de equipamentos e inventário</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => featureInPreparation("Geração e impressão avançada de etiquetas está em preparação.")}>
             <QrCode className="mr-2 h-4 w-4" />
             Gerar Etiquetas
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-equipamentos.csv", filteredEquipments.map((equipment) => ({
+            id: equipment.id,
+            nome: equipment.name,
+            serie: equipment.serialNumber,
+            tipo: equipment.type,
+            status: equipment.status,
+            valor: equipment.value,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

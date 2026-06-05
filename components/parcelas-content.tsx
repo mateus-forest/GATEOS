@@ -52,6 +52,7 @@ import type { InstallmentView } from "@/lib/mock-data"
 import { createInstallment, getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 
 function normalizeInstallment(item: Record<string, unknown>): InstallmentView {
   const amount = Number(item.amount ?? item.valor ?? item.value ?? 0)
@@ -228,7 +229,14 @@ export function ParcelasContent() {
           <p className="text-muted-foreground">Gestão de parcelas e cobranças</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-parcelas.csv", filteredParcelas.map((parcela) => ({
+            id: parcela.id,
+            contrato: parcela.contractNumber,
+            cliente: parcela.clientName,
+            vencimento: parcela.dueDate,
+            valor: parcela.amount,
+            status: parcela.status,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -408,16 +416,16 @@ export function ParcelasContent() {
                             Ver caso jurídico
                           </DropdownMenuItem>
                         ) : (
-                          <DropdownMenuItem onClick={() => toast.success("Parcela enviada para o jurídico")}>
+                          <DropdownMenuItem onClick={() => featureInPreparation("Envio automático para o jurídico está em preparação.")}>
                             <Scale className="mr-2 h-4 w-4" />
                             Enviar para jurídico
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem onClick={() => toast.success("Comprovante anexado com sucesso")}>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Anexo de comprovante por parcela está em preparação.")}>
                           <Receipt className="mr-2 h-4 w-4" />
                           Anexar comprovante
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.success("Recibo gerado com sucesso")}>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Geração de recibo está em preparação.")}>
                           <Download className="mr-2 h-4 w-4" />
                           Gerar recibo
                         </DropdownMenuItem>

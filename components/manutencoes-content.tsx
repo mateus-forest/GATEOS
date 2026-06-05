@@ -46,6 +46,7 @@ import { maintenances } from "@/lib/mock-data"
 import { createMaintenanceOrder } from "@/lib/data/maintenance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+import { exportCsv } from "@/lib/cta-actions"
 
 export function ManutencoesContent() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -102,7 +103,15 @@ export function ManutencoesContent() {
           <p className="text-muted-foreground">Gestão de chamados e ordens de serviço</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-manutencoes.csv", filteredMaintenances.map((maintenance) => ({
+            id: maintenance.id,
+            ticket: maintenance.ticketNumber,
+            equipamento: maintenance.equipmentName,
+            cliente: maintenance.clientName,
+            tipo: maintenance.type,
+            prioridade: maintenance.priority,
+            status: maintenance.status,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

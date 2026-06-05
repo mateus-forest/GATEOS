@@ -74,6 +74,7 @@ import { transactions, cashFlowData } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { createFinancialEntry, getFinancialSelectOptions } from "@/lib/data/financial"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import {
   addDreLaunch,
   attachmentTypes,
@@ -318,7 +319,15 @@ export function FinanceiroContent() {
           <p className="text-muted-foreground">Gestão de receitas, despesas e fluxo de caixa</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-lancamentos.csv", filteredTransactions.map((transaction) => ({
+            id: transaction.id,
+            data: transaction.date,
+            descricao: transaction.description,
+            categoria: transaction.category,
+            tipo: transaction.type,
+            status: transaction.status,
+            valor: transaction.amount,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -412,15 +421,15 @@ export function FinanceiroContent() {
               <CardDescription>Integração futura para importação e conciliação.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => toast.success("Fluxo de conexão bancária simulado")}>
+              <Button variant="outline" onClick={() => featureInPreparation("Conexão bancária/Open Finance ainda depende de integração futura.")}>
                 <Landmark className="mr-2 h-4 w-4" />
                 Conectar banco
               </Button>
-              <Button variant="outline" onClick={() => toast.success("Arquivo OFX/CSV importado")}>
+              <Button variant="outline" onClick={() => featureInPreparation("Importação OFX/CSV completa ainda depende de parser e validação final.")}>
                 <Upload className="mr-2 h-4 w-4" />
                 Importar OFX/CSV
               </Button>
-              <Button variant="outline" onClick={() => toast.success("Conciliação concluída")}>
+              <Button variant="outline" onClick={() => featureInPreparation("Conciliação bancária automática ainda depende do motor de conciliação.")}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Conciliar lançamentos
               </Button>

@@ -54,6 +54,7 @@ import { assets } from "@/lib/mock-data"
 import { createAsset } from "@/lib/data/assets"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+import { exportCsv } from "@/lib/cta-actions"
 
 const assetsByCategory = [
   { name: "Imóveis", value: 2450000, color: "#22B8CF" },
@@ -115,7 +116,14 @@ export function PatrimonioContent() {
           <p className="text-muted-foreground">Gestão de ativos e bens patrimoniais</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => exportCsv("gate-patrimonio.csv", filteredAssets.map((asset) => ({
+            id: asset.id,
+            nome: asset.name,
+            codigo: asset.code,
+            categoria: asset.category,
+            valor_atual: asset.currentValue,
+            status: asset.status,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

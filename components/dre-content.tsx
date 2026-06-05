@@ -31,6 +31,7 @@ import {
   useDreLaunches,
   type DreLaunch,
 } from "@/lib/dre-store"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import { formatCurrency } from "@/lib/utils"
 
 const months = ["jan-26", "fev-26", "mar-26", "abr-26", "mai-26", "jun-26", "jul-26", "ago-26", "set-26", "out-26", "nov-26", "dez-26"]
@@ -256,12 +257,12 @@ export function DREContent() {
       setClosedMonths((current) => [...current, closingMonth])
     }
     setCloseOpen(false)
-    toast.success(`Fechamento de ${closingMonth} concluido`)
+    toast.info(`Fechamento de ${closingMonth} marcado localmente. Nenhuma rotina externa foi executada.`)
   }
 
   const handleReopenMonth = () => {
     setClosedMonths((current) => current.filter((month) => month !== closingMonth))
-    toast.success(`${closingMonth} reaberto para revisao`)
+    toast.info(`${closingMonth} reaberto localmente para revisao.`)
   }
 
   const saldoAnterior = rows.find((row) => row.label === "SALDO ANTERIOR")?.values ?? empty
@@ -314,8 +315,34 @@ export function DREContent() {
     const target = closedEditTarget
     setClosedEditTarget(null)
     openManualEdit(target)
-    toast.success(`${target.month} reaberto para ajuste`)
+    toast.info(`${target.month} reaberto localmente para ajuste.`)
   }
+
+  const exportDreRows = (filename: string) =>
+    exportCsv(
+      filename,
+      rows
+        .filter((row) => row.kind !== "spacer")
+        .map((row) => ({
+          conta: row.label,
+          ...Object.fromEntries(months.map((month, index) => [month, renderValue(row, index)])),
+          total: row.kind === "percent" || row.kind === "section" ? "" : sum(row.values ?? empty),
+        }))
+    )
+
+  const exportClosingRows = () =>
+    exportCsv("gate-dre-fechamento.csv", [
+      { indicador: "Mes", valor: closingMonth },
+      { indicador: "Status", valor: isClosed ? "Fechado" : "Em conferencia" },
+      { indicador: "Receita do mes", valor: receitaTotal[monthIndex] },
+      { indicador: "Despesas do mes", valor: despesasOperacionais[monthIndex] },
+      { indicador: "Lucro operacional", valor: lucroOperacional[monthIndex] },
+      { indicador: "Resultado operacional", valor: resultado[monthIndex] },
+      { indicador: "Saldo anterior", valor: saldoAnterior[monthIndex] },
+      { indicador: "Saldo operacao", valor: saldoOperacao[monthIndex] },
+      { indicador: "Saldo banco", valor: saldoBanco[monthIndex] },
+      { indicador: "Diferenca", valor: diferenca[monthIndex] },
+    ])
 
   const renderValue = (row: DreRow, month: number) => {
     if (row.kind === "spacer") return ""
@@ -353,15 +380,15 @@ export function DREContent() {
               <SelectItem value="2024">2024</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => toast.success("Planilha importada com sucesso")}>
+          <Button variant="outline" onClick={() => featureInPreparation("Importacao de planilha ainda depende do fluxo real de leitura e validacao dos dados.")}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Importar Excel
           </Button>
-          <Button variant="outline" onClick={() => toast.success("DRE exportada em Excel")}>
+          <Button variant="outline" onClick={() => exportDreRows("gate-dre.csv")}>
             <Download className="mr-2 h-4 w-4" />
             Exportar Excel
           </Button>
-          <Button variant="outline" onClick={() => toast.success("DRE exportada em PDF")}>
+          <Button variant="outline" onClick={() => featureInPreparation("Exportacao em PDF ainda depende da rotina real de geracao de PDF.")}>
             <Download className="mr-2 h-4 w-4" />
             Exportar PDF
           </Button>
@@ -420,10 +447,10 @@ export function DREContent() {
               <Badge className={isClosed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
                 {isClosed ? "Fechado" : "Em conferencia"}
               </Badge>
-              <Button variant="outline" onClick={() => toast.info("Divergencias mockadas exibidas: banco, saldo e aportes")}>
+              <Button variant="outline" onClick={() => featureInPreparation("Analise de divergencias ainda depende da comparacao real entre banco, saldo e aportes.")}>
                 Ver divergencias
               </Button>
-              <Button variant="outline" onClick={() => toast.success("Fechamento exportado")}>
+              <Button variant="outline" onClick={exportClosingRows}>
                 Exportar fechamento
               </Button>
               {isClosed ? (

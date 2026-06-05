@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, Download, Printer, Mail, Calendar as CalendarIcon, Clock, BarChart3, PieChart, TrendingUp, Users, Package, FileSpreadsheet, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import { cn } from "@/lib/utils"
 
 const relatoriosPredefinidos = [
@@ -117,7 +118,29 @@ export function RelatoriosContent() {
 
   const handleGerarRelatorio = (id: number) => {
     setGerando(id)
-    setTimeout(() => setGerando(null), 2000)
+    setTimeout(() => {
+      const relatorio = relatoriosPredefinidos.find((item) => item.id === id)
+      if (relatorio) {
+        exportCsv("gate-relatorio.csv", [
+          {
+            id: relatorio.id,
+            nome: relatorio.nome,
+            categoria: relatorio.categoria,
+            descricao: relatorio.descricao,
+            dataInicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : "",
+            dataFim: dataFim ? format(dataFim, "yyyy-MM-dd") : "",
+          },
+        ])
+      }
+      setGerando(null)
+    }, 600)
+  }
+
+  const handleHistoricoDownload = (relatorio: (typeof relatoriosRecentes)[number]) =>
+    exportCsv("gate-relatorio-historico.csv", [relatorio])
+
+  const handlePrint = () => {
+    window.print()
   }
 
   return (
@@ -290,13 +313,13 @@ export function RelatoriosContent() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{rel.formato}</Badge>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" onClick={() => handleHistoricoDownload(rel)}>
                           <Download className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" onClick={handlePrint}>
                           <Printer className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" onClick={() => featureInPreparation("Envio de relatorio por e-mail depende de servico de e-mail no backend.")}>
                           <Mail className="h-4 w-4" />
                         </Button>
                       </div>
@@ -315,7 +338,7 @@ export function RelatoriosContent() {
                 <CardTitle>Relatórios Agendados</CardTitle>
                 <CardDescription>Geração automática de relatórios</CardDescription>
               </div>
-              <Button>
+              <Button onClick={() => featureInPreparation("Agendamento automatico de relatorios depende de backend e rotina programada.")}>
                 <CalendarIcon className="h-4 w-4 mr-2" />
                 Novo Agendamento
               </Button>
@@ -341,7 +364,7 @@ export function RelatoriosContent() {
                         <p className="text-sm text-foreground">{ag.destino}</p>
                       </div>
                       <Badge variant="secondary" className="bg-green-500/10 text-green-600">Ativo</Badge>
-                      <Button variant="outline" size="sm">Editar</Button>
+                      <Button variant="outline" size="sm" onClick={() => featureInPreparation("Edicao de agendamento depende do fluxo real de agendamentos.")}>Editar</Button>
                     </div>
                   </div>
                 ))}

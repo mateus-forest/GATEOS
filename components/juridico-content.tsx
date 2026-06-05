@@ -52,6 +52,7 @@ import {
   juridicoStatuses,
   type JuridicoCaso,
 } from "@/lib/juridico-data"
+import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 import { createLegalCase } from "@/lib/data/legal"
 import { formatCurrency } from "@/lib/utils"
 
@@ -325,7 +326,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
           <TabsContent value="andamentos" className="space-y-3 pt-4">
             <div className="rounded-lg border p-3"><strong>Último andamento:</strong> {caso.ultimoAndamento}</div>
             <div className="rounded-lg border p-3"><strong>Resultado esperado:</strong> {caso.resultadoEsperado}</div>
-            <Button onClick={() => toast.success("Andamento atualizado em modo mockado")}>Atualizar andamento</Button>
+            <Button onClick={() => featureInPreparation("Atualizacao de andamento depende do registro real do historico juridico.")}>Atualizar andamento</Button>
           </TabsContent>
           <TabsContent value="valores" className="grid gap-3 pt-4 md:grid-cols-3">
             {[
@@ -365,8 +366,8 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
                     <TableCell>{caso.primeiroVencimento}</TableCell>
                     <TableCell>{index === 0 ? "Pago" : "Pendente"}</TableCell>
                     <TableCell className="space-x-2">
-                      <Button variant="link" size="sm" onClick={() => toast.success("Parcela marcada como paga")}>Marcar como pago</Button>
-                      <Button variant="link" size="sm" onClick={() => toast.success("Recibo gerado")}>Gerar recibo</Button>
+                      <Button variant="link" size="sm" onClick={() => featureInPreparation("Baixa de parcela de acordo depende do fluxo real de pagamentos juridicos.")}>Marcar como pago</Button>
+                      <Button variant="link" size="sm" onClick={() => featureInPreparation("Geracao de recibo juridico depende da rotina real de documentos.")}>Gerar recibo</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -383,7 +384,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
                     <TableCell>{type}</TableCell>
                     <TableCell>04/06/2026</TableCell>
                     <TableCell>{caso.responsavel}</TableCell>
-                    <TableCell><Button variant="link" size="sm" onClick={() => toast.info("Documento mockado visualizado")}>Visualizar</Button></TableCell>
+                    <TableCell><Button variant="link" size="sm" onClick={() => toast.error("Documento juridico sem arquivo real vinculado para visualizacao.")}>Visualizar</Button></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -463,7 +464,19 @@ export function JuridicoContent() {
           <p className="text-muted-foreground">Gestão de contratos em cobrança, acordos e ações judiciais.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => toast.success("Relatório jurídico exportado")}>
+          <Button variant="outline" onClick={() => exportCsv("gate-juridico.csv", filteredCases.map((caso) => ({
+            id: caso.id,
+            cliente: caso.cliente,
+            contrato: caso.contrato,
+            processo: caso.processo,
+            status: caso.status,
+            etapa: caso.etapa,
+            risco: caso.risco,
+            valorOriginal: caso.valorOriginal,
+            valorAtualizado: getValorAtualizado(caso),
+            responsavel: caso.responsavel,
+            proximoPrazo: caso.proximoPrazo,
+          })))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -586,13 +599,13 @@ export function JuridicoContent() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setSelectedCase(caso)}><Eye className="mr-2 h-4 w-4" />Ver caso</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.info("Edição mockada aberta")}>Editar</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.success("Andamento atualizado")}>Atualizar andamento</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.success("Documento anexado")}>Anexar documento</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.success("Pagamento registrado")}>Registrar pagamento</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.success("Acordo parcelado criado")}>Criar acordo</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Edicao de caso juridico depende do formulario real de edicao.")}>Editar</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Atualizacao de andamento depende do registro real do historico juridico.")}>Atualizar andamento</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Anexo de documento juridico depende de upload real no Storage.")}>Anexar documento</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Registro de pagamento juridico depende do fluxo financeiro real.")}>Registrar pagamento</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Criacao de acordo parcelado depende do cadastro real de parcelas juridicas.")}>Criar acordo</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => toast.success("Caso encerrado")}>Encerrar caso</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("Encerramento de caso depende de persistencia real do status juridico.")}>Encerrar caso</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

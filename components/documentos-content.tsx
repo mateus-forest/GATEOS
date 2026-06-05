@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen, Download, Trash2, Eye, Grid, List, Plus, Filter, MoreVertical, Clock, User } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { featureInPreparation } from "@/lib/cta-actions"
 import { createDocumentRecord } from "@/lib/data/documents"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 
@@ -119,6 +120,18 @@ export function DocumentosContent() {
     } finally {
       setUploading(false)
     }
+  }
+
+  const handleDocumentView = () => {
+    toast.error("Documento sem arquivo real vinculado para visualizacao.")
+  }
+
+  const handleDocumentDownload = () => {
+    toast.error("Documento sem arquivo real vinculado para download.")
+  }
+
+  const handleDocumentDelete = () => {
+    featureInPreparation("Exclusao de documento depende do registro real no Supabase Storage e na tabela de documentos.")
   }
 
   return (
@@ -328,15 +341,15 @@ export function DocumentosContent() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleDocumentView}>
                         <Eye className="h-4 w-4 mr-2" />
                         Visualizar
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleDocumentDownload}>
                         <Download className="h-4 w-4 mr-2" />
                         Download
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem className="text-destructive" onClick={handleDocumentDelete}>
                         <Trash2 className="h-4 w-4 mr-2" />
                         Excluir
                       </DropdownMenuItem>
@@ -398,13 +411,13 @@ export function DocumentosContent() {
                       <td className="p-4 text-sm text-muted-foreground">{doc.usuario}</td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDocumentView}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDocumentDownload}>
                             <Download className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={handleDocumentDelete}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
