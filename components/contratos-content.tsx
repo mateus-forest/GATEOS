@@ -62,12 +62,34 @@ type ContractWithPublicLink = ContractView & {
   public_access_enabled?: boolean
 }
 
+function normalizeContractStatus(status: unknown) {
+  const value = String(status ?? "ativo")
+  const map: Record<string, string> = {
+    active: "ativo",
+    closed: "encerrado",
+    cancelled: "encerrado",
+    expired: "encerrado",
+    overdue: "pendente",
+    legal: "pendente",
+    expiring: "pendente",
+    draft: "pendente",
+  }
+  return map[value] ?? value
+}
+
+function toNumber(value: string | undefined) {
+  if (!value) return null
+  const parsed = Number(value.replace(",", "."))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function normalizeContract(item: Record<string, unknown>): ContractWithPublicLink {
-  const number = String(item.number ?? item.numero ?? "")
+  const number = String(item.number ?? item.contract_number ?? item.numero ?? "")
   const clientName = String(item.clientName ?? item.client_name ?? item.client ?? item.nome_fantasia ?? "")
   const startDate = String(item.startDate ?? item.start_date ?? item.data_inicio ?? "")
   const endDate = String(item.endDate ?? item.end_date ?? item.data_fim ?? startDate)
   const monthlyValue = Number(item.monthlyValue ?? item.monthly_value ?? item.valor_mensal ?? 0)
+  const status = normalizeContractStatus(item.status)
 
   return {
     id: String(item.id ?? ""),
@@ -88,7 +110,7 @@ function normalizeContract(item: Record<string, unknown>): ContractWithPublicLin
     client: clientName,
     clientName,
     type: String(item.type ?? item.tipo ?? "locacao"),
-    status: String(item.status ?? "active"),
+    status,
     startDate,
     endDate,
     monthlyValue,
@@ -129,10 +151,10 @@ export function ContratosContent() {
     return matchesSearch && matchesStatus && matchesType
   })
 
-  const activeContracts = contracts.filter((c) => c.status === "active").length
-  const expiringContracts = contracts.filter((c) => c.status === "expiring").length
+  const activeContracts = contracts.filter((c) => c.status === "ativo").length
+  const expiringContracts = contracts.filter((c) => c.status === "pendente").length
   const totalMonthlyValue = contracts
-    .filter((c) => c.status === "active" || c.status === "expiring")
+    .filter((c) => c.status === "ativo" || c.status === "pendente")
     .reduce((sum, c) => sum + c.monthlyValue, 0)
 
   const getPublicContractUrl = (token: string) => `${window.location.origin}/cliente/contrato/${token}`
@@ -185,16 +207,14 @@ export function ContratosContent() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "active":
+      case "ativo":
         return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
-      case "expiring":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Vencendo</Badge>
-      case "expired":
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Vencido</Badge>
-      case "cancelled":
-        return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelado</Badge>
-      case "draft":
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Rascunho</Badge>
+      case "pendente":
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
+      case "encerrado":
+        return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Encerrado</Badge>
+      case "suspenso":
+        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Suspenso</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -202,13 +222,13 @@ export function ContratosContent() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "active":
+      case "ativo":
         return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-      case "expiring":
+      case "pendente":
         return <AlertCircle className="h-4 w-4 text-amber-600" />
-      case "expired":
+      case "suspenso":
         return <XCircle className="h-4 w-4 text-red-600" />
-      case "cancelled":
+      case "encerrado":
         return <XCircle className="h-4 w-4 text-gray-600" />
       default:
         return <Clock className="h-4 w-4 text-blue-600" />
@@ -261,7 +281,8 @@ export function ContratosContent() {
                     options: [
                       { label: "Locação", value: "locacao" },
                       { label: "Venda", value: "venda" },
-                      { label: "Serviço", value: "servico" },
+                      { label: "Manutenção", value: "manutencao" },
+                      { label: "Suporte", value: "suporte" },
                     ],
                   },
                   {
@@ -269,11 +290,10 @@ export function ContratosContent() {
                     label: "Status",
                     type: "select",
                     options: [
-                      { label: "Ativo", value: "active" },
-                      { label: "Encerrado", value: "closed" },
-                      { label: "Cancelado", value: "cancelled" },
-                      { label: "Inadimplente", value: "overdue" },
-                      { label: "Jurídico", value: "legal" },
+                      { label: "Ativo", value: "ativo" },
+                      { label: "Pendente", value: "pendente" },
+                      { label: "Suspenso", value: "suspenso" },
+                      { label: "Encerrado", value: "encerrado" },
                     ],
                   },
                 ],
@@ -329,24 +349,31 @@ export function ContratosContent() {
               },
             ]}
             onSave={async (values) => {
+              const publicToken = crypto.randomUUID()
               const created = await createContract({
-                client_id: values.client_id ?? "",
-                number: values.number ?? "",
+                client_id: values.client_id,
+                contract_number: values.number,
                 type: values.type ?? "locacao",
-                status: values.status ?? "active",
-                start_date: values.start_date ?? "",
-                end_date: values.end_date ?? "",
-                due_day: Number(values.due_day ?? 0),
-                monthly_value: Number(values.monthly_value ?? 0),
-                total_value: Number(values.total_value ?? 0),
-                installments_count: Number(values.installments_count ?? 0),
-                entry_value: Number(values.entry_value ?? 0),
-                payment_method: values.payment_method ?? "",
-                cost_center_name: values.cost_center_name ?? "",
-                dre_category_name: values.dre_category_name ?? "",
-                notes: values.notes ?? "",
+                status: values.status ?? "ativo",
+                start_date: values.start_date,
+                end_date: values.end_date || null,
+                due_day: toNumber(values.due_day),
+                monthly_value: toNumber(values.monthly_value),
+                total_value: toNumber(values.total_value),
+                installments_count: toNumber(values.installments_count),
+                payment_method: values.payment_method || null,
+                notes: values.notes || null,
+                public_access_token: publicToken,
+                public_access_enabled: true,
+                public_access_created_at: new Date().toISOString(),
               })
-              setContracts((current) => [normalizeContract(created as Record<string, unknown>), ...current])
+              const createdContract = normalizeContract(created as Record<string, unknown>)
+              const refreshed = await getContracts()
+              const refreshedContracts = refreshed.map((item) => normalizeContract(item as Record<string, unknown>))
+              const hasCreatedContract = refreshedContracts.some((contract) => contract.id === createdContract.id)
+              setContracts(
+                hasCreatedContract ? refreshedContracts : [createdContract, ...refreshedContracts]
+              )
             }}
           />
         </div>
@@ -461,11 +488,10 @@ export function ContratosContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="active">Ativo</SelectItem>
-                    <SelectItem value="expiring">Vencendo</SelectItem>
-                    <SelectItem value="expired">Vencido</SelectItem>
-                    <SelectItem value="cancelled">Cancelado</SelectItem>
-                    <SelectItem value="draft">Rascunho</SelectItem>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                    <SelectItem value="suspenso">Suspenso</SelectItem>
+                    <SelectItem value="encerrado">Encerrado</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -476,7 +502,8 @@ export function ContratosContent() {
                     <SelectItem value="all">Todos os tipos</SelectItem>
                     <SelectItem value="locacao">Locação</SelectItem>
                     <SelectItem value="manutencao">Manutenção</SelectItem>
-                    <SelectItem value="servico">Serviço</SelectItem>
+                    <SelectItem value="manutencao">Manutenção</SelectItem>
+                    <SelectItem value="suporte">Suporte</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
