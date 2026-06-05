@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Search,
   Download,
@@ -45,14 +45,57 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { equipments } from "@/lib/mock-data"
+import type { EquipmentView } from "@/lib/mock-data"
+import { createEquipment, getEquipment } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+
+function normalizeEquipment(item: Record<string, unknown>): EquipmentView {
+  const name = String(item.name ?? item.nome ?? "")
+  const code = String(item.code ?? item.codigo ?? "")
+  const value = Number(item.value ?? item.valor_compra ?? item.valorCompra ?? 0)
+  const status = String(item.status ?? "available")
+
+  return {
+    id: String(item.id ?? ""),
+    codigo: code,
+    nome: name,
+    descricao: String(item.description ?? item.descricao ?? ""),
+    categoria: String(item.type ?? item.categoria ?? "outro") as EquipmentView["categoria"],
+    marca: String(item.brand ?? item.marca ?? ""),
+    modelo: String(item.model ?? item.modelo ?? ""),
+    numeroSerie: String(item.serialNumber ?? item.serial_number ?? item.numeroSerie ?? ""),
+    valorCompra: value,
+    valorLocacao: Number(item.rentalValue ?? item.valor_locacao ?? item.valorLocacao ?? 0),
+    dataCompra: String(item.purchaseDate ?? item.data_compra ?? item.dataCompra ?? ""),
+    garantiaAte: item.warrantyUntil || item.garantia_ate ? String(item.warrantyUntil ?? item.garantia_ate) : undefined,
+    name,
+    code,
+    description: String(item.description ?? item.descricao ?? ""),
+    type: String(item.type ?? item.categoria ?? ""),
+    brand: String(item.brand ?? item.marca ?? ""),
+    model: String(item.model ?? item.modelo ?? ""),
+    serialNumber: String(item.serialNumber ?? item.serial_number ?? item.numeroSerie ?? ""),
+    clientName: String(item.clientName ?? item.client_name ?? item.nome_fantasia ?? ""),
+    location: String(item.location ?? item.localizacao ?? ""),
+    contractNumber: String(item.contractNumber ?? item.contract_number ?? ""),
+    value,
+    rentalValue: Number(item.rentalValue ?? item.valor_locacao ?? item.valorLocacao ?? 0),
+    purchaseDate: String(item.purchaseDate ?? item.data_compra ?? item.dataCompra ?? ""),
+    warrantyUntil: item.warrantyUntil || item.garantia_ate ? String(item.warrantyUntil ?? item.garantia_ate) : undefined,
+    status,
+  }
+}
 
 export function EquipamentosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [equipments, setEquipments] = useState<EquipmentView[]>([])
+
+  useEffect(() => {
+    getEquipment().then((items) => setEquipments(items.map((item) => normalizeEquipment(item as Record<string, unknown>))))
+  }, [])
 
   const filteredEquipments = equipments.filter((e) => {
     const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -117,10 +160,20 @@ export function EquipamentosContent() {
           </Button>
           <MockCreateDialog
             title="Novo Equipamento"
-            description="Cadastro mockado de equipamento."
+            description="Cadastro de equipamento."
             triggerLabel="Novo Equipamento"
             toastMessage="Equipamento salvo com sucesso"
             fields={["Nome", "Numero de serie", "Cliente", "Valor", "Status"]}
+            onSave={async (values) => {
+              const created = await createEquipment({
+                name: values.Nome ?? "",
+                serial_number: values["Numero de serie"] ?? "",
+                client_name: values.Cliente ?? "",
+                value: Number(values.Valor ?? 0),
+                status: values.Status ?? "available",
+              })
+              setEquipments((current) => [normalizeEquipment(created as Record<string, unknown>), ...current])
+            }}
           />
         </div>
       </div>
@@ -300,6 +353,16 @@ export function EquipamentosContent() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredEquipments.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-28 text-center">
+                    <div className="space-y-1">
+                      <p className="font-medium">Nenhum equipamento cadastrado ainda.</p>
+                      <p className="text-sm text-muted-foreground">Clique em Novo Equipamento para começar.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

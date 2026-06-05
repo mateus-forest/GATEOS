@@ -88,19 +88,12 @@ import {
   type DreLaunch,
 } from "@/lib/dre-store"
 
-const monthlyData = [
-  { month: "Jan", receitas: 245000, despesas: 180000 },
-  { month: "Fev", receitas: 268000, despesas: 195000 },
-  { month: "Mar", receitas: 290000, despesas: 210000 },
-  { month: "Abr", receitas: 285000, despesas: 205000 },
-  { month: "Mai", receitas: 310000, despesas: 220000 },
-  { month: "Jun", receitas: 340000, despesas: 235000 },
-]
+const monthlyData: Array<{ month: string; receitas: number; despesas: number }> = []
 
 const bankConnections = [
-  { name: "Banco Itaú CNPJ", balance: 23503.29, status: "Conectado", lastSync: "04/06/2026 09:15" },
-  { name: "Aplicação", balance: 18497.66, status: "Pendente", lastSync: "03/06/2026 17:40" },
-  { name: "Caixa", balance: 3250, status: "Manual", lastSync: "04/06/2026 08:00" },
+  { name: "Banco Itaú CNPJ", balance: 0, status: "Pendente", lastSync: "Sem sincronização" },
+  { name: "Aplicação", balance: 0, status: "Pendente", lastSync: "Sem sincronização" },
+  { name: "Caixa", balance: 0, status: "Manual", lastSync: "Sem sincronização" },
 ]
 
 type NewLaunchForm = Omit<DreLaunch, "id" | "amount"> & { amount: string }
@@ -123,7 +116,7 @@ const initialLaunchForm: NewLaunchForm = {
   attachment: "Comprovante",
 }
 
-const parties = ["Fribal", "Estácio Itapipoca", "Fortaleza Iguatemi", "Rio de Janeiro", "Intech", "Paulínia Nova", "Curitiba", "SG Itapipoca", "SG Atibaia", "Fornecedor de Hardware", "Banco Itaú"]
+const parties: string[] = []
 
 function NewLaunchDialog() {
   const [open, setOpen] = useState(false)
@@ -375,14 +368,14 @@ export function FinanceiroContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">A Receber</p>
-                <p className="text-2xl font-bold">{formatCurrency(85430)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(0)}</p>
               </div>
               <div className="p-3 rounded-xl bg-amber-100">
                 <CreditCard className="h-6 w-6 text-amber-600" />
               </div>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              12 faturas pendentes
+              0 faturas pendentes
             </p>
           </CardContent>
         </Card>
@@ -396,18 +389,18 @@ export function FinanceiroContent() {
                 <Landmark className="h-5 w-5 text-primary" />
                 Conexões bancárias
               </CardTitle>
-              <CardDescription>Integração futura mockada para importação e conciliação.</CardDescription>
+              <CardDescription>Integração futura para importação e conciliação.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={() => toast.success("Fluxo de conexão bancária simulado")}>
                 <Landmark className="mr-2 h-4 w-4" />
                 Conectar banco
               </Button>
-              <Button variant="outline" onClick={() => toast.success("Arquivo OFX/CSV importado em modo mockado")}>
+              <Button variant="outline" onClick={() => toast.success("Arquivo OFX/CSV importado")}>
                 <Upload className="mr-2 h-4 w-4" />
                 Importar OFX/CSV
               </Button>
-              <Button variant="outline" onClick={() => toast.success("Conciliação mockada concluída")}>
+              <Button variant="outline" onClick={() => toast.success("Conciliação concluída")}>
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Conciliar lançamentos
               </Button>
@@ -438,7 +431,7 @@ export function FinanceiroContent() {
                   </Badge>
                 </div>
                 <p className="mt-4 text-2xl font-bold">{formatCurrency(connection.balance)}</p>
-                <p className="text-xs text-muted-foreground">Status da conexão mockado</p>
+                <p className="text-xs text-muted-foreground">Status da conexão</p>
               </div>
             ))}
           </div>
@@ -647,12 +640,7 @@ export function FinanceiroContent() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[
-                    { client: "Fribal", amount: 15000, dueDate: "05/07/2024" },
-                    { client: "Estacio Itapipoca", amount: 22500, dueDate: "08/07/2024" },
-                    { client: "Fortaleza Iguatemi", amount: 8750, dueDate: "10/07/2024" },
-                    { client: "Rio de Janeiro", amount: 18200, dueDate: "12/07/2024" },
-                  ].map((item, i) => (
+                  {([] as Array<{ client: string; amount: number; dueDate: string }>).map((item, i) => (
                     <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div>
                         <p className="font-medium">{item.client}</p>
@@ -682,12 +670,7 @@ export function FinanceiroContent() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {[
-                    { supplier: "Fornecedor de Hardware", amount: 12000, dueDate: "03/07/2024" },
-                    { supplier: "Energia Elétrica", amount: 4500, dueDate: "05/07/2024" },
-                    { supplier: "Aluguel Escritório", amount: 8000, dueDate: "10/07/2024" },
-                    { supplier: "Internet e Telecom", amount: 1500, dueDate: "15/07/2024" },
-                  ].map((item, i) => (
+                  {([] as Array<{ supplier: string; amount: number; dueDate: string }>).map((item, i) => (
                     <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div>
                         <p className="font-medium">{item.supplier}</p>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Search,
   Filter,
@@ -52,15 +52,66 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { clients } from "@/lib/mock-data"
+import type { ClientView } from "@/lib/mock-data"
+import { createClient, getClients } from "@/lib/data/clients"
 import { formatCurrency, formatCPFCNPJ, formatPhone } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+
+function normalizeClient(item: Record<string, unknown>): ClientView {
+  const name = String(item.name ?? item.nome_fantasia ?? item.nomeFantasia ?? item.razao_social ?? item.razaoSocial ?? "")
+  const companyName = String(item.companyName ?? item.razao_social ?? item.razaoSocial ?? name)
+  const document = String(item.document ?? item.cnpj ?? item.cpf ?? "")
+  const phone = String(item.phone ?? item.telefone ?? "")
+  const segment = String(item.segment ?? item.segmento ?? "")
+  const status = String(item.status ?? (item.ativo === false ? "inactive" : "active"))
+
+  return {
+    id: String(item.id ?? ""),
+    razaoSocial: companyName,
+    nomeFantasia: name,
+    cnpj: document,
+    email: String(item.email ?? ""),
+    telefone: phone,
+    endereco: {
+      logradouro: String(item.logradouro ?? ""),
+      numero: String(item.numero ?? ""),
+      bairro: String(item.bairro ?? ""),
+      cidade: String(item.cidade ?? ""),
+      estado: String(item.estado ?? ""),
+      cep: String(item.cep ?? ""),
+    },
+    contato: {
+      nome: String(item.contato_nome ?? item.contact_name ?? ""),
+      cargo: String(item.contato_cargo ?? item.contact_role ?? ""),
+      email: String(item.contato_email ?? item.email ?? ""),
+      telefone: phone,
+    },
+    dataCadastro: String(item.dataCadastro ?? item.created_at ?? ""),
+    ativo: status !== "inactive",
+    segmento: segment,
+    name,
+    companyName,
+    document,
+    phone,
+    segment,
+    type: String(item.type ?? item.tipo ?? "pj"),
+    address: String(item.address ?? item.endereco ?? ""),
+    status,
+    contractsCount: Number(item.contractsCount ?? item.contracts_count ?? 0),
+    monthlyRevenue: Number(item.monthlyRevenue ?? item.monthly_revenue ?? 0),
+  }
+}
 
 export function ClientesContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedClient, setSelectedClient] = useState<typeof clients[0] | null>(null)
+  const [clients, setClients] = useState<ClientView[]>([])
+  const [selectedClient, setSelectedClient] = useState<ClientView | null>(null)
+
+  useEffect(() => {
+    getClients().then((items) => setClients(items.map((item) => normalizeClient(item as Record<string, unknown>))))
+  }, [])
 
   const filteredClients = clients.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -73,6 +124,7 @@ export function ClientesContent() {
 
   const activeClients = clients.filter((c) => c.status === "active").length
   const totalRevenue = clients.reduce((sum, c) => sum + c.monthlyRevenue, 0)
+  const averageTicket = activeClients > 0 ? totalRevenue / activeClients : 0
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -102,10 +154,22 @@ export function ClientesContent() {
           </Button>
           <MockCreateDialog
             title="Novo Cliente"
-            description="Cadastro mockado de cliente."
+            description="Cadastro de cliente."
             triggerLabel="Novo Cliente"
             toastMessage="Cliente salvo com sucesso"
             fields={["Nome fantasia", "Razao social", "CNPJ", "Telefone", "Segmento"]}
+            onSave={async (values) => {
+              const created = await createClient({
+                nome_fantasia: values["Nome fantasia"] ?? "",
+                razao_social: values["Razao social"] ?? "",
+                cnpj: values.CNPJ ?? "",
+                telefone: values.Telefone ?? "",
+                segmento: values.Segmento ?? "",
+                status: "active",
+                ativo: true,
+              })
+              setClients((current) => [normalizeClient(created as Record<string, unknown>), ...current])
+            }}
           />
         </div>
       </div>
@@ -159,7 +223,7 @@ export function ClientesContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Ticket Médio</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalRevenue / activeClients)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(averageTicket)}</p>
               </div>
               <div className="p-3 rounded-xl bg-blue-100">
                 <Building2 className="h-6 w-6 text-blue-600" />
@@ -345,6 +409,16 @@ export function ClientesContent() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredClients.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-28 text-center">
+                    <div className="space-y-1">
+                      <p className="font-medium">Nenhum cliente cadastrado ainda.</p>
+                      <p className="text-sm text-muted-foreground">Clique em Novo Cliente para começar.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

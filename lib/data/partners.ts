@@ -1,9 +1,8 @@
-import { partners } from "@/lib/mock-data"
 import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getPartners() {
-  return selectRows("partners", partners)
+  return selectRows("partners", [])
 }
 
 export async function getPartnerEntries() {

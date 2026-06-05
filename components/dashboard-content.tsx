@@ -46,31 +46,30 @@ import {
   Cell,
 } from "recharts"
 import { revenueData, contractsByStatus, recentActivities, upcomingPayments } from "@/lib/mock-data"
-import { getValorAtualizado, juridicoCases } from "@/lib/juridico-data"
 import { formatCurrency } from "@/lib/utils"
 
 const COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6"]
 
 // Computed metrics from the mock data
-const monthlyRevenue = 89500
-const activeContracts = 24
-const totalClients = 42
-const totalEquipments = 156
-const activeLegalCases = juridicoCases.filter((caso) => caso.status !== "Encerrado" && caso.status !== "Perdido").length
-const legalCollectionValue = juridicoCases.reduce((sum, caso) => sum + getValorAtualizado(caso), 0)
-const brokenAgreements = juridicoCases.filter((caso) => caso.acordoStatus === "Quebrado").length
-const agreementsDue = 2
+const monthlyRevenue = 0
+const activeContracts = 0
+const totalClients = 0
+const totalEquipments = 0
+const activeLegalCases = 0
+const legalCollectionValue = 0
+const brokenAgreements = 0
+const agreementsDue = 0
 const legalContracts = activeLegalCases
 const bankBalances = [
-  { name: "Saldo Banco Itaú CNPJ", amount: 23503.29 },
-  { name: "Saldo Aplicação", amount: 18497.66 },
-  { name: "Saldo Caixa", amount: 3250 },
+  { name: "Saldo Banco Itaú CNPJ", amount: 0 },
+  { name: "Saldo Aplicação", amount: 0 },
+  { name: "Saldo Caixa", amount: 0 },
 ]
 const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
 const profitDistribution = {
-  revenue: 89500,
-  costs: 64120,
-  mateusFixed: 3500,
+  revenue: 0,
+  costs: 0,
+  mateusFixed: 0,
 }
 const operatingProfit = profitDistribution.revenue - profitDistribution.costs
 const distributableResult = Math.max(0, operatingProfit)
@@ -201,7 +200,7 @@ export function DashboardContent() {
             <AlertCircle className="h-5 w-5 text-amber-600" />
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-800">
-                5 contratos vencem nos próximos 30 dias
+                0 contratos vencem nos próximos 30 dias
               </p>
               <p className="text-xs text-amber-600">
                 Revise os contratos e inicie o processo de renovação
@@ -283,7 +282,7 @@ export function DashboardContent() {
               <Landmark className="h-5 w-5 text-primary" />
               Saldo Bancário
             </CardTitle>
-            <CardDescription>Posição consolidada mockada</CardDescription>
+            <CardDescription>Posição consolidada</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {bankBalances.map((balance) => (
@@ -534,7 +533,7 @@ export function DashboardContent() {
               <span className="text-4xl font-bold">{formatCurrency(8450)}</span>
               <span className="text-emerald-600 text-sm mb-1">+8.2%</span>
             </div>
-            <p className="text-xs text-muted-foreground">Baseado em 247 contratos ativos</p>
+            <p className="text-xs text-muted-foreground">Baseado nos contratos ativos</p>
           </CardContent>
         </Card>
 

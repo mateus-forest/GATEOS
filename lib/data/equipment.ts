@@ -1,9 +1,8 @@
-import { equipments } from "@/lib/mock-data"
 import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getEquipment() {
-  return selectRows("equipment", equipments)
+  return selectRows("equipment", [])
 }
 
 export async function createEquipment(payload: SupabaseRow) {

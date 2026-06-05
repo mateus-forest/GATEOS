@@ -5,6 +5,7 @@ type QueryOptions = {
   orderBy?: string
   ascending?: boolean
   limit?: number
+  eq?: SupabaseRow
 }
 
 function warnFallback(context: string, error?: unknown) {
@@ -27,6 +28,11 @@ export async function selectRows<T>(
   if (!supabase) return fallback
 
   let query = supabase.from(table).select("*")
+  if (options.eq) {
+    Object.entries(options.eq).forEach(([key, value]) => {
+      query = query.eq(key, value)
+    })
+  }
   if (options.orderBy) {
     query = query.order(options.orderBy, { ascending: options.ascending ?? true })
   }
@@ -49,7 +55,7 @@ export async function insertRow<T>(
   fallback: T
 ) {
   if (!isSupabaseConfigured()) {
-    warnFallback(`${table}: insert em modo mockado`)
+    warnFallback(`${table}: insert sem Supabase configurado`)
     return fallback
   }
 
@@ -72,7 +78,7 @@ export async function updateRows<T>(
   fallback: T
 ) {
   if (!isSupabaseConfigured()) {
-    warnFallback(`${table}: update em modo mockado`)
+    warnFallback(`${table}: update sem Supabase configurado`)
     return fallback
   }
 
@@ -99,7 +105,7 @@ export async function callRpc<T>(
   fallback: T
 ) {
   if (!isSupabaseConfigured()) {
-    warnFallback(`${name}: RPC em modo mockado`)
+    warnFallback(`${name}: RPC sem Supabase configurado`)
     return fallback
   }
 

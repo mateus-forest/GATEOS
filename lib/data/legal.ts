@@ -1,9 +1,8 @@
-import { juridicoCases } from "@/lib/juridico-data"
 import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getLegalCases() {
-  return selectRows("legal_cases", juridicoCases)
+  return selectRows("legal_cases", [])
 }
 
 export async function getLegalSummary() {

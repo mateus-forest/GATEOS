@@ -22,7 +22,7 @@ type MockCreateDialogProps = {
   triggerLabel: string
   toastMessage: string
   fields?: string[]
-  onSave?: (values: Record<string, string>) => void
+  onSave?: (values: Record<string, string>) => void | Promise<void>
 }
 
 export function MockCreateDialog({
@@ -36,8 +36,8 @@ export function MockCreateDialog({
   const [open, setOpen] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
 
-  const handleSubmit = () => {
-    onSave?.(values)
+  const handleSubmit = async () => {
+    await onSave?.(values)
     toast.success(toastMessage)
     setValues({})
     setOpen(false)

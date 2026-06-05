@@ -1,14 +1,13 @@
-import { clients } from "@/lib/mock-data"
 import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getClients() {
-  return selectRows("clients", clients, { orderBy: "created_at", ascending: false })
+  return selectRows("clients", [], { orderBy: "created_at", ascending: false })
 }
 
 export async function getClientById(id: string) {
-  const rows = await selectRows("clients", clients.filter((item) => item.id === id))
-  return rows[0] ?? clients.find((item) => item.id === id) ?? null
+  const rows = await selectRows("clients", [], { eq: { id } })
+  return rows[0] ?? null
 }
 
 export async function createClient(payload: SupabaseRow) {

@@ -3,19 +3,11 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, Search, Settings, LogOut, User, ChevronDown } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { Bell, ChevronDown, LogOut, Search, Settings, User } from "lucide-react"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -24,102 +16,145 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  clients,
-  contracts,
-  currentUser,
-  documentos,
-  equipments,
-  notifications as mockNotifications,
-  parcelas,
-  transactions,
-} from "@/lib/mock-data"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { getClients } from "@/lib/data/clients"
+import { getContracts } from "@/lib/data/contracts"
+import { getDocuments } from "@/lib/data/documents"
+import { getEquipment } from "@/lib/data/equipment"
+import { getFinancialEntries } from "@/lib/data/financial"
+import { getInstallments } from "@/lib/data/installments"
 import { getNotifications, markNotificationAsRead } from "@/lib/data/notifications"
+import { currentUser, notifications as emptyNotifications } from "@/lib/mock-data"
+
+type SearchRecord = Record<string, unknown>
+type SearchItem = { label: string; description: string; href: string }
+
+function text(value: unknown) {
+  return String(value ?? "")
+}
 
 export function Header() {
   const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [notifications, setNotifications] = useState(mockNotifications)
-  const unreadCount = notifications.filter((n) => !n.read).length
+  const [notifications, setNotifications] = useState(emptyNotifications)
+  const [searchData, setSearchData] = useState({
+    clients: [] as SearchRecord[],
+    contracts: [] as SearchRecord[],
+    equipments: [] as SearchRecord[],
+    installments: [] as SearchRecord[],
+    transactions: [] as SearchRecord[],
+    documents: [] as SearchRecord[],
+  })
 
   useEffect(() => {
-    getNotifications().then((items) => {
-      setNotifications(items as typeof mockNotifications)
+    getNotifications().then((items) => setNotifications(items as typeof emptyNotifications))
+    Promise.all([
+      getClients(),
+      getContracts(),
+      getEquipment(),
+      getInstallments(),
+      getFinancialEntries(),
+      getDocuments(),
+    ]).then(([clients, contracts, equipments, installments, transactions, documents]) => {
+      setSearchData({
+        clients: clients as SearchRecord[],
+        contracts: contracts as SearchRecord[],
+        equipments: equipments as SearchRecord[],
+        installments: installments as SearchRecord[],
+        transactions: transactions as SearchRecord[],
+        documents: documents as SearchRecord[],
+      })
     })
   }, [])
 
+  const unreadCount = notifications.filter((notification) => !notification.read).length
+
   const searchResults = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
+    if (!term) return []
 
-    if (!term) {
-      return []
-    }
-
-    return [
+    const groups: Array<{ group: string; items: SearchItem[] }> = [
       {
         group: "Clientes",
-        items: clients
-          .filter((item) => item.name.toLowerCase().includes(term))
-          .slice(0, 3)
-          .map((item) => ({ label: item.name, description: item.document, href: `/clientes/${item.id}` })),
+        items: searchData.clients.map((item) => ({
+          label: text(item.name ?? item.nome_fantasia ?? item.razao_social),
+          description: text(item.document ?? item.cnpj ?? item.cpf),
+          href: `/clientes/${text(item.id)}`,
+        })),
       },
       {
         group: "Contratos",
-        items: contracts
-          .filter((item) => item.number.toLowerCase().includes(term) || item.clientName.toLowerCase().includes(term))
-          .slice(0, 3)
-          .map((item) => ({ label: item.number, description: item.clientName, href: `/contratos/${item.id}` })),
+        items: searchData.contracts.map((item) => ({
+          label: text(item.number ?? item.numero),
+          description: text(item.clientName ?? item.client_name ?? item.client),
+          href: `/contratos/${text(item.id)}`,
+        })),
       },
       {
         group: "Equipamentos",
-        items: equipments
-          .filter((item) => item.name.toLowerCase().includes(term) || item.serialNumber.toLowerCase().includes(term))
-          .slice(0, 3)
-          .map((item) => ({ label: item.name, description: item.clientName, href: "/equipamentos" })),
+        items: searchData.equipments.map((item) => ({
+          label: text(item.name ?? item.nome),
+          description: text(item.serialNumber ?? item.serial_number ?? item.numero_serie),
+          href: "/equipamentos",
+        })),
       },
       {
         group: "Parcelas",
-        items: parcelas
-          .filter((item) => item.contractNumber.toLowerCase().includes(term) || item.clientName.toLowerCase().includes(term))
-          .slice(0, 3)
-          .map((item) => ({ label: item.contractNumber, description: item.clientName, href: "/parcelas" })),
+        items: searchData.installments.map((item) => ({
+          label: text(item.contractNumber ?? item.contract_number ?? item.contract_id),
+          description: text(item.clientName ?? item.client_name),
+          href: "/parcelas",
+        })),
       },
       {
-        group: "Lançamentos",
-        items: transactions
-          .filter((item) => item.description.toLowerCase().includes(term) || item.category.toLowerCase().includes(term))
-          .slice(0, 3)
-          .map((item) => ({ label: item.description, description: item.category, href: "/lancamentos" })),
+        group: "Lancamentos",
+        items: searchData.transactions.map((item) => ({
+          label: text(item.description ?? item.descricao),
+          description: text(item.category ?? item.categoria ?? item.dre_category_name),
+          href: "/lancamentos",
+        })),
       },
       {
         group: "Documentos",
-        items: documentos
-          .filter((item) => item.nome.toLowerCase().includes(term) || item.tipo.toLowerCase().includes(term))
-          .slice(0, 3)
-          .map((item) => ({ label: item.nome, description: item.tipo, href: "/documentos" })),
+        items: searchData.documents.map((item) => ({
+          label: text(item.nome ?? item.name ?? item.file_name),
+          description: text(item.tipo ?? item.type ?? item.category),
+          href: "/documentos",
+        })),
       },
       {
         group: "DRE",
-        items: [
-          { label: "DRE Gerencial", description: "Receitas, despesas e resultados", href: "/dre" },
-          { label: "Distribuição lucros sócios", description: "Outras despesas não operacionais", href: "/dre" },
-          { label: "Saldo banco", description: "Saldos e diferença do fechamento", href: "/dre" },
-        ].filter((item) => item.label.toLowerCase().includes(term) || item.description.toLowerCase().includes(term)),
+        items: [{ label: "DRE", description: "Demonstrativo de resultado", href: "/dre" }],
       },
-    ].filter((group) => group.items.length > 0)
-  }, [searchTerm])
+    ]
+
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items
+          .filter((item) => item.label.toLowerCase().includes(term) || item.description.toLowerCase().includes(term))
+          .slice(0, 3),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [searchData, searchTerm])
 
   const handleNavigate = (href: string) => {
     setSearchTerm("")
     router.push(href)
   }
 
-  const handleNotificationClick = async (notification: typeof notifications[0]) => {
+  const handleNotificationClick = async (notification: (typeof notifications)[0]) => {
     await markNotificationAsRead(notification.id)
     setNotifications((current) =>
-      current.map((item) =>
-        item.id === notification.id ? { ...item, read: true, lida: true } : item
-      )
+      current.map((item) => (item.id === notification.id ? { ...item, read: true, lida: true } : item))
     )
     handleNavigate(notification.link ?? "/dashboard")
   }
@@ -183,34 +218,33 @@ export function Header() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
-              Notificações
+              Notificacoes
               <Badge variant="secondary">{unreadCount} novas</Badge>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {notifications.slice(0, 5).map((notification) => (
-              <DropdownMenuItem
-                key={notification.id}
-                className="flex flex-col items-start gap-1 p-3 cursor-pointer"
-                onClick={() => handleNotificationClick(notification)}
-              >
-                <div className="flex items-center gap-2">
-                  {!notification.read && <span className="h-2 w-2 rounded-full bg-primary" />}
-                  <span className="font-medium text-sm">{notification.title}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">{notification.message}</span>
-                <span className="text-xs text-muted-foreground">{notification.time}</span>
-                <span className="text-xs font-medium text-primary">
-                  {notification.link?.includes("contratos")
-                    ? "Ver contrato"
-                    : notification.link?.includes("manutencoes")
-                      ? "Ver manutenção"
-                      : "Ver parcela"}
-                </span>
+            {notifications.length > 0 ? (
+              notifications.slice(0, 5).map((notification) => (
+                <DropdownMenuItem
+                  key={notification.id}
+                  className="flex flex-col items-start gap-1 p-3 cursor-pointer"
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <div className="flex items-center gap-2">
+                    {!notification.read && <span className="h-2 w-2 rounded-full bg-primary" />}
+                    <span className="font-medium text-sm">{notification.title}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{notification.message}</span>
+                  <span className="text-xs text-muted-foreground">{notification.time}</span>
+                </DropdownMenuItem>
+              ))
+            ) : (
+              <DropdownMenuItem className="p-3 text-sm text-muted-foreground">
+                Nenhuma notificacao encontrada.
               </DropdownMenuItem>
-            ))}
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-center text-primary cursor-pointer" onClick={() => handleNavigate("/parcelas")}>
-              Ver todas as notificações
+              Ver todas as notificacoes
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -238,13 +272,13 @@ export function Header() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleNavigate("/configuracoes")}>
               <Settings className="mr-2 h-4 w-4" />
-              Configurações
+              Configuracoes
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive"
               onClick={() => {
-                toast.success("Sessão encerrada")
+                toast.success("Sessao encerrada")
                 router.push("/login")
               }}
             >
@@ -259,7 +293,7 @@ export function Header() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Perfil</DialogTitle>
-            <DialogDescription>Informações do usuário atual</DialogDescription>
+            <DialogDescription>Informacoes do usuario atual</DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-4">
             <Avatar className="h-14 w-14">

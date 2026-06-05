@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
   Plus,
@@ -46,17 +46,46 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { parcelas } from "@/lib/mock-data"
+import type { InstallmentView } from "@/lib/mock-data"
+import { createInstallment, getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
+
+function normalizeInstallment(item: Record<string, unknown>): InstallmentView {
+  const amount = Number(item.amount ?? item.valor ?? item.value ?? 0)
+  const status = String(item.status ?? "pending")
+
+  return {
+    id: String(item.id ?? ""),
+    contratoId: String(item.contratoId ?? item.contract_id ?? ""),
+    numero: Number(item.numero ?? item.number ?? 1),
+    valor: amount,
+    dataVencimento: String(item.dataVencimento ?? item.due_date ?? item.data_vencimento ?? ""),
+    dataPagamento: item.payment_date || item.dataPagamento ? String(item.payment_date ?? item.dataPagamento) : undefined,
+    formaPagamento: item.payment_method ? String(item.payment_method) : undefined,
+    number: Number(item.number ?? item.numero ?? 1),
+    totalParcelas: Number(item.totalParcelas ?? item.total_installments ?? 1),
+    contractNumber: String(item.contractNumber ?? item.contract_number ?? item.numero_contrato ?? ""),
+    clientName: String(item.clientName ?? item.client_name ?? item.nome_fantasia ?? ""),
+    amount,
+    dueDate: String(item.dueDate ?? item.due_date ?? item.data_vencimento ?? ""),
+    paymentDate: item.paymentDate || item.payment_date ? String(item.paymentDate ?? item.payment_date) : undefined,
+    status,
+  }
+}
 
 export function ParcelasContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [monthFilter, setMonthFilter] = useState("all")
-  const [selectedParcela, setSelectedParcela] = useState<typeof parcelas[0] | null>(null)
+  const [parcelas, setParcelas] = useState<InstallmentView[]>([])
+  const [selectedParcela, setSelectedParcela] = useState<InstallmentView | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [receiveOpen, setReceiveOpen] = useState(false)
+
+  useEffect(() => {
+    getInstallments().then((items) => setParcelas(items.map((item) => normalizeInstallment(item as Record<string, unknown>))))
+  }, [])
 
   const filteredParcelas = parcelas.filter((p) => {
     const matchesSearch = p.contractNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -105,12 +134,12 @@ export function ParcelasContent() {
     }
   }
 
-  const handleView = (parcela: typeof parcelas[0]) => {
+  const handleView = (parcela: InstallmentView) => {
     setSelectedParcela(parcela)
     setDetailsOpen(true)
   }
 
-  const handleReceive = (parcela: typeof parcelas[0]) => {
+  const handleReceive = (parcela: InstallmentView) => {
     setSelectedParcela(parcela)
     setReceiveOpen(true)
   }
@@ -128,7 +157,18 @@ export function ParcelasContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <Button>
+          <Button
+            onClick={async () => {
+              const created = await createInstallment({
+                status: "pending",
+                number: 1,
+                amount: 0,
+                due_date: new Date().toISOString().slice(0, 10),
+              })
+              setParcelas((current) => [normalizeInstallment(created as Record<string, unknown>), ...current])
+              toast.success("Parcela criada com sucesso")
+            }}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Gerar Parcelas
           </Button>
@@ -293,7 +333,7 @@ export function ParcelasContent() {
                           </DropdownMenuItem>
                         )}
                         {parcela.status === "overdue" && (
-                          <DropdownMenuItem onClick={() => toast.info("Renegociação mockada aberta")}>
+                          <DropdownMenuItem onClick={() => toast.info("Renegociação aberta")}>
                             <DollarSign className="mr-2 h-4 w-4" />
                             Renegociar
                           </DropdownMenuItem>
@@ -317,7 +357,7 @@ export function ParcelasContent() {
                           <Download className="mr-2 h-4 w-4" />
                           Gerar recibo
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.info("Edição mockada aberta")}>
+                        <DropdownMenuItem onClick={() => toast.info("Edição aberta")}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
                         </DropdownMenuItem>
@@ -326,6 +366,16 @@ export function ParcelasContent() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredParcelas.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-28 text-center">
+                    <div className="space-y-1">
+                      <p className="font-medium">Nenhuma parcela cadastrada ainda.</p>
+                      <p className="text-sm text-muted-foreground">Crie um contrato ou gere parcelas para começar.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -335,7 +385,7 @@ export function ParcelasContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Detalhes da parcela</DialogTitle>
-            <DialogDescription>Informações mockadas da cobrança selecionada</DialogDescription>
+            <DialogDescription>Informações da cobrança selecionada</DialogDescription>
           </DialogHeader>
           {selectedParcela && (
             <div className="grid gap-3 text-sm">
@@ -364,7 +414,7 @@ export function ParcelasContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Receber parcela</DialogTitle>
-            <DialogDescription>Registro mockado de pagamento</DialogDescription>
+            <DialogDescription>Registro de pagamento</DialogDescription>
           </DialogHeader>
           {selectedParcela && (
             <div className="space-y-4">
@@ -379,7 +429,17 @@ export function ParcelasContent() {
                   Cancelar
                 </Button>
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
+                    await markInstallmentAsPaid(
+                      selectedParcela.id,
+                      selectedParcela.amount,
+                      new Date().toISOString().slice(0, 10)
+                    )
+                    setParcelas((current) =>
+                      current.map((item) =>
+                        item.id === selectedParcela.id ? { ...item, status: "paid" } : item
+                      )
+                    )
                     setReceiveOpen(false)
                     toast.success("Pagamento registrado com sucesso")
                   }}

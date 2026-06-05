@@ -1,9 +1,8 @@
-import { assets } from "@/lib/mock-data"
 import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getAssets() {
-  return selectRows("assets", assets)
+  return selectRows("assets", [])
 }
 
 export async function getAssetsSummary() {

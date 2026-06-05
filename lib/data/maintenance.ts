@@ -1,9 +1,8 @@
-import { maintenances } from "@/lib/mock-data"
 import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getMaintenanceOrders() {
-  return selectRows("maintenance_orders", maintenances)
+  return selectRows("maintenance_orders", [])
 }
 
 export async function createMaintenanceOrder(payload: SupabaseRow) {

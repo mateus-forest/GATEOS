@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
   Search,
@@ -47,15 +47,57 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { contracts } from "@/lib/mock-data"
+import type { ContractView } from "@/lib/mock-data"
+import type { Contrato } from "@/lib/types"
+import { createContract, getContracts } from "@/lib/data/contracts"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
+
+function normalizeContract(item: Record<string, unknown>): ContractView {
+  const number = String(item.number ?? item.numero ?? "")
+  const clientName = String(item.clientName ?? item.client_name ?? item.client ?? item.nome_fantasia ?? "")
+  const startDate = String(item.startDate ?? item.start_date ?? item.data_inicio ?? "")
+  const endDate = String(item.endDate ?? item.end_date ?? item.data_fim ?? startDate)
+  const monthlyValue = Number(item.monthlyValue ?? item.monthly_value ?? item.valor_mensal ?? 0)
+
+  return {
+    id: String(item.id ?? ""),
+    numero: number,
+    clienteId: String(item.clienteId ?? item.client_id ?? ""),
+    tipo: String(item.type ?? item.tipo ?? "locacao") as Contrato["tipo"],
+    dataInicio: startDate,
+    dataFim: endDate,
+    valorMensal: monthlyValue,
+    valorTotal: Number(item.totalValue ?? item.total_value ?? item.valor_total ?? monthlyValue),
+    descricao: String(item.description ?? item.descricao ?? ""),
+    equipamentos: [],
+    parcelas: [],
+    documentos: [],
+    dataCriacao: String(item.created_at ?? ""),
+    dataAtualizacao: String(item.updated_at ?? ""),
+    number,
+    client: clientName,
+    clientName,
+    type: String(item.type ?? item.tipo ?? "locacao"),
+    status: String(item.status ?? "active"),
+    startDate,
+    endDate,
+    monthlyValue,
+    totalValue: Number(item.totalValue ?? item.total_value ?? item.valor_total ?? monthlyValue),
+    description: String(item.description ?? item.descricao ?? ""),
+  }
+}
 
 export function ContratosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [contracts, setContracts] = useState<ContractView[]>([])
+
+  useEffect(() => {
+    getContracts().then((items) => setContracts(items.map((item) => normalizeContract(item as Record<string, unknown>))))
+  }, [])
 
   const filteredContracts = contracts.filter((c) => {
     const matchesSearch = c.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -126,10 +168,21 @@ export function ContratosContent() {
           </Button>
           <MockCreateDialog
             title="Novo Contrato"
-            description="Cadastro mockado de contrato."
+            description="Cadastro de contrato."
             triggerLabel="Novo Contrato"
             toastMessage="Contrato salvo com sucesso"
             fields={["Cliente", "Numero", "Tipo", "Valor mensal", "Vencimento"]}
+            onSave={async (values) => {
+              const created = await createContract({
+                client_name: values.Cliente ?? "",
+                number: values.Numero ?? "",
+                type: values.Tipo ?? "locacao",
+                monthly_value: Number(values["Valor mensal"] ?? 0),
+                end_date: values.Vencimento ?? "",
+                status: "active",
+              })
+              setContracts((current) => [normalizeContract(created as Record<string, unknown>), ...current])
+            }}
           />
         </div>
       </div>
@@ -373,6 +426,16 @@ export function ContratosContent() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {filteredContracts.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="h-28 text-center">
+                        <div className="space-y-1">
+                          <p className="font-medium">Nenhum contrato cadastrado ainda.</p>
+                          <p className="text-sm text-muted-foreground">Clique em Novo Contrato para começar.</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

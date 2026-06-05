@@ -1,25 +1,19 @@
-import { contractsByStatus, dashboardMetrics, equipamentosPorStatusChart, notifications, parcelas, receitaMensalChart, revenueData } from "@/lib/mock-data"
-import { juridicoCases, getValorAtualizado } from "@/lib/juridico-data"
 import { selectRows } from "@/lib/data/supabase-helpers"
 
 export async function getDashboardFinancial() {
-  return selectRows("v_dashboard_financial", [dashboardMetrics])
+  return selectRows("v_dashboard_financial", [])
 }
 
 export async function getBankBalances() {
-  return selectRows("v_bank_balances", [
-    { account_name: "Banco Itaú CNPJ", balance: 23503.29 },
-    { account_name: "Aplicação", balance: 18497.66 },
-    { account_name: "Caixa", balance: 3250 },
-  ])
+  return selectRows("v_bank_balances", [])
 }
 
 export async function getContractsSummary() {
-  return selectRows("v_contracts_summary", contractsByStatus)
+  return selectRows("v_contracts_summary", [])
 }
 
 export async function getOverdueInstallmentsSummary() {
-  return selectRows("v_overdue_installments", parcelas.filter((item) => item.status === "overdue"))
+  return selectRows("v_overdue_installments", [])
 }
 
 export async function getAssetsSummary() {
@@ -27,16 +21,11 @@ export async function getAssetsSummary() {
 }
 
 export async function getEquipmentSummary() {
-  return selectRows("v_equipment_summary", equipamentosPorStatusChart)
+  return selectRows("v_equipment_summary", [])
 }
 
 export async function getLegalSummary() {
-  return selectRows("v_legal_summary", [{
-    active_cases: juridicoCases.length,
-    collection_value: juridicoCases.reduce((sum, item) => sum + getValorAtualizado(item), 0),
-    due_agreements: 2,
-    broken_agreements: 0,
-  }])
+  return selectRows("v_legal_summary", [])
 }
 
 export async function getProfitDistribution() {
@@ -44,9 +33,9 @@ export async function getProfitDistribution() {
 }
 
 export async function getDashboardNotifications() {
-  return selectRows("notifications", notifications)
+  return selectRows("notifications", [])
 }
 
 export async function getRevenueData() {
-  return selectRows("v_dashboard_financial", revenueData)
+  return selectRows("v_dashboard_financial", [])
 }

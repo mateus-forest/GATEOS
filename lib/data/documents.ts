@@ -1,11 +1,10 @@
-import { documentos } from "@/lib/mock-data"
 import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export const documentBuckets = ["gate-documents", "gate-contracts", "gate-legal"] as const
 
 export async function getDocuments() {
-  return selectRows("documents", documentos)
+  return selectRows("documents", [])
 }
 
 export async function createDocumentRecord(payload: SupabaseRow) {

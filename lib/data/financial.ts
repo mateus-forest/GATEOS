@@ -1,9 +1,8 @@
-import { transactions } from "@/lib/mock-data"
 import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getFinancialEntries() {
-  return selectRows("financial_entries", transactions, { orderBy: "competence_date", ascending: false })
+  return selectRows("financial_entries", [], { orderBy: "competence_date", ascending: false })
 }
 
 export async function createFinancialEntry(payload: SupabaseRow) {
