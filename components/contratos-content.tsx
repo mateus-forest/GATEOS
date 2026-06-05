@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import {
   Search,
   Download,
@@ -51,11 +52,17 @@ import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
 import { createContract, getContracts } from "@/lib/data/contracts"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
+import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
 
-function normalizeContract(item: Record<string, unknown>): ContractView {
+type ContractWithPublicLink = ContractView & {
+  public_access_token?: string
+  public_access_enabled?: boolean
+}
+
+function normalizeContract(item: Record<string, unknown>): ContractWithPublicLink {
   const number = String(item.number ?? item.numero ?? "")
   const clientName = String(item.clientName ?? item.client_name ?? item.client ?? item.nome_fantasia ?? "")
   const startDate = String(item.startDate ?? item.start_date ?? item.data_inicio ?? "")
@@ -87,6 +94,8 @@ function normalizeContract(item: Record<string, unknown>): ContractView {
     monthlyValue,
     totalValue: Number(item.totalValue ?? item.total_value ?? item.valor_total ?? monthlyValue),
     description: String(item.description ?? item.descricao ?? ""),
+    public_access_token: item.public_access_token ? String(item.public_access_token) : undefined,
+    public_access_enabled: Boolean(item.public_access_enabled),
   }
 }
 
@@ -94,7 +103,7 @@ export function ContratosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
-  const [contracts, setContracts] = useState<ContractView[]>([])
+  const [contracts, setContracts] = useState<ContractWithPublicLink[]>([])
   const [clientOptions, setClientOptions] = useState<Array<{ label: string; value: string }>>([])
 
   useEffect(() => {
@@ -125,6 +134,54 @@ export function ContratosContent() {
   const totalMonthlyValue = contracts
     .filter((c) => c.status === "active" || c.status === "expiring")
     .reduce((sum, c) => sum + c.monthlyValue, 0)
+
+  const getPublicContractUrl = (token: string) => `${window.location.origin}/cliente/contrato/${token}`
+
+  const handleCopyClientLink = async (contract: ContractWithPublicLink) => {
+    const token = String((contract as Record<string, unknown>).public_access_token ?? "")
+    if (!token) {
+      toast.error("Este contrato ainda nao possui link publico ativo.")
+      return
+    }
+
+    await navigator.clipboard.writeText(getPublicContractUrl(token))
+    toast.success("Link do cliente copiado.")
+  }
+
+  const handleGenerateClientLink = async (contract: ContractWithPublicLink) => {
+    if (!isSupabaseConfigured()) {
+      toast.error("Supabase nao esta configurado. O link nao foi gerado.")
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    if (!supabase) {
+      toast.error("Nao foi possivel conectar ao Supabase. O link nao foi gerado.")
+      return
+    }
+
+    const token = crypto.randomUUID()
+    const { data, error } = await supabase
+      .from("contracts")
+      .update({
+        public_access_token: token,
+        public_access_enabled: true,
+        public_access_created_at: new Date().toISOString(),
+      })
+      .eq("id", contract.id)
+      .select("*")
+      .single()
+
+    if (error || !data) {
+      toast.error("Nao foi possivel gerar o link. A migration de acesso publico provavelmente ainda nao foi aplicada.")
+      return
+    }
+
+    const updated = normalizeContract(data as Record<string, unknown>)
+    setContracts((current) => current.map((item) => (item.id === contract.id ? updated : item)))
+    await navigator.clipboard.writeText(getPublicContractUrl(token))
+    toast.success("Link do cliente gerado e copiado.")
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -507,6 +564,14 @@ export function ContratosContent() {
                             <DropdownMenuItem>
                               <Copy className="mr-2 h-4 w-4" />
                               Duplicar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleCopyClientLink(contract)}>
+                              <Copy className="mr-2 h-4 w-4" />
+                              Copiar link do cliente
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleGenerateClientLink(contract)}>
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Gerar/regenerar link
                             </DropdownMenuItem>
                             {isContratoEmJuridico(contract.number) ? (
                               <DropdownMenuItem onClick={() => { window.location.href = "/juridico" }}>
