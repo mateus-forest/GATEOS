@@ -64,7 +64,7 @@ function normalizeClient(item: Record<string, unknown>): ClientView {
   const document = String(item.document ?? item.cnpj ?? item.cpf ?? "")
   const phone = String(item.phone ?? item.telefone ?? "")
   const segment = String(item.segment ?? item.segmento ?? "")
-  const status = String(item.status ?? (item.ativo === false ? "inactive" : "active"))
+  const status = String(item.status ?? (item.ativo === false ? "inativo" : "ativo"))
 
   return {
     id: String(item.id ?? ""),
@@ -88,7 +88,7 @@ function normalizeClient(item: Record<string, unknown>): ClientView {
       telefone: phone,
     },
     dataCadastro: String(item.dataCadastro ?? item.created_at ?? ""),
-    ativo: status !== "inactive",
+    ativo: status !== "inativo",
     segmento: segment,
     name,
     companyName,
@@ -123,18 +123,18 @@ export function ClientesContent() {
     return matchesSearch && matchesType && matchesStatus
   })
 
-  const activeClients = clients.filter((c) => c.status === "active").length
+  const activeClients = clients.filter((c) => c.status === "ativo").length
   const totalRevenue = clients.reduce((sum, c) => sum + c.monthlyRevenue, 0)
   const averageTicket = activeClients > 0 ? totalRevenue / activeClients : 0
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "active":
+      case "ativo":
         return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
-      case "inactive":
+      case "inativo":
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Inativo</Badge>
-      case "prospect":
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Prospect</Badge>
+      case "inadimplente":
+        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Inadimplente</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -188,9 +188,9 @@ export function ClientesContent() {
                     type: "select",
                     required: true,
                     options: [
-                      { label: "Ativo", value: "active" },
-                      { label: "Inativo", value: "inactive" },
-                      { label: "Inadimplente", value: "overdue" },
+                      { label: "Ativo", value: "ativo" },
+                      { label: "Inativo", value: "inativo" },
+                      { label: "Inadimplente", value: "inadimplente" },
                     ],
                   },
                 ],
@@ -229,7 +229,7 @@ export function ClientesContent() {
                 trade_name: values.trade_name || values.name,
                 document: values.document,
                 type: values.type ?? "pj",
-                status: values.status ?? "active",
+                status: values.status ?? "ativo",
                 email: values.email || null,
                 phone: values.phone || null,
                 whatsapp: values.whatsapp || null,
@@ -341,9 +341,9 @@ export function ClientesContent() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="active">Ativo</SelectItem>
-                <SelectItem value="inactive">Inativo</SelectItem>
-                <SelectItem value="prospect">Prospect</SelectItem>
+                <SelectItem value="ativo">Ativo</SelectItem>
+                <SelectItem value="inativo">Inativo</SelectItem>
+                <SelectItem value="inadimplente">Inadimplente</SelectItem>
               </SelectContent>
             </Select>
           </div>
