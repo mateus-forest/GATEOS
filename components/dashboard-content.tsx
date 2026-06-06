@@ -98,36 +98,36 @@ function MetricCard({
   description: string
 }) {
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-primary/10">
-              <Icon className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">{title}</p>
-              <p className="text-2xl font-bold">{value}</p>
-            </div>
+    <Card className="overflow-hidden border-border/70 shadow-sm transition-shadow hover:shadow-md">
+      <CardContent className="flex min-h-[148px] flex-col justify-between p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/10">
+            <Icon className="h-5 w-5 text-primary" />
           </div>
-          <div className="text-right">
-            <div
-              className={`flex items-center gap-1 text-sm ${
-                changeType === "positive"
-                  ? "text-emerald-600"
-                  : changeType === "negative"
-                  ? "text-destructive"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {changeType === "positive" ? (
-                <ArrowUpRight className="h-4 w-4" />
-              ) : changeType === "negative" ? (
-                <ArrowDownRight className="h-4 w-4" />
-              ) : null}
-              {change}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="mt-2 break-words text-2xl font-bold leading-tight tracking-tight text-foreground">
+              {value}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex items-end justify-between gap-3">
+          <p className="min-w-0 text-xs leading-5 text-muted-foreground">{description}</p>
+          <div
+            className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+              changeType === "positive"
+                ? "bg-emerald-50 text-emerald-700"
+                : changeType === "negative"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {changeType === "positive" ? (
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            ) : changeType === "negative" ? (
+              <ArrowDownRight className="h-3.5 w-3.5" />
+            ) : null}
+            <span>{change}</span>
           </div>
         </div>
       </CardContent>
@@ -259,7 +259,7 @@ export function DashboardContent() {
       </Card>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           title="Receita Mensal"
           value={formatCurrency(monthlyRevenue)}

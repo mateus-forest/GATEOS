@@ -86,19 +86,19 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     <TooltipProvider>
       <aside
         className={cn(
-          "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-300",
-          collapsed ? "w-16" : "w-64"
+          "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar text-sidebar-foreground shadow-[8px_0_28px_rgba(2,6,23,0.18)] transition-all duration-300 ease-out",
+          collapsed ? "w-16" : "w-56"
         )}
       >
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border bg-sidebar px-3">
+        <div className="flex h-16 items-center justify-between border-b border-sidebar-border/70 bg-sidebar px-3">
           {!collapsed && (
             <Link href="/dashboard" className="flex items-center gap-2">
               <Image
                 src="/logo-gate.png"
                 alt="GATE"
-                width={140}
+                width={124}
                 height={40}
-                className="h-8 w-auto"
+                className="h-7 w-auto"
               />
             </Link>
           )}
@@ -114,7 +114,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             size="icon"
             onClick={onToggle}
             className={cn(
-              "h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "h-8 w-8 rounded-lg text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               collapsed && "mx-auto"
             )}
           >
@@ -126,16 +126,16 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </Button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar py-4">
-          <nav className="space-y-6 px-2 pb-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar py-3">
+          <nav className="space-y-4 px-2.5 pb-6">
             {menuItems.map((section) => (
               <div key={section.title}>
                 {!collapsed && (
-                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                  <h3 className="mb-1.5 px-2.5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
                     {section.title}
                   </h3>
                 )}
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {section.items.map((item) => {
                     const isActive = pathname === item.href
                     const Icon = item.icon
@@ -144,15 +144,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                       <Link
                         href={item.href}
                         className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                          "flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-all duration-200",
                           isActive
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                            ? "bg-sidebar-primary/95 text-sidebar-primary-foreground shadow-sm ring-1 ring-white/10"
+                            : "text-sidebar-foreground/75 hover:bg-sidebar-accent/85 hover:text-sidebar-accent-foreground hover:translate-x-0.5",
                           collapsed && "justify-center px-2"
                         )}
                       >
-                        <Icon className="h-5 w-5 shrink-0" />
-                        {!collapsed && <span>{item.label}</span>}
+                        <Icon className="h-[18px] w-[18px] shrink-0" />
+                        {!collapsed && <span className="truncate">{item.label}</span>}
                       </Link>
                     )
 
