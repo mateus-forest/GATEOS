@@ -52,7 +52,8 @@ import type { InstallmentView } from "@/lib/mock-data"
 import { createInstallment, getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildInstallmentsReport } from "@/lib/reports/report-builders"
 
 function normalizeInstallment(item: Record<string, unknown>): InstallmentView {
   const amount = Number(item.amount ?? item.valor ?? item.value ?? 0)
@@ -229,14 +230,14 @@ export function ParcelasContent() {
           <p className="text-muted-foreground">Gestão de parcelas e cobranças</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportCsv("gate-parcelas.csv", filteredParcelas.map((parcela) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildInstallmentsReport(filteredParcelas.map((parcela) => ({
             id: parcela.id,
-            contrato: parcela.contractNumber,
-            cliente: parcela.clientName,
-            vencimento: parcela.dueDate,
-            valor: parcela.amount,
+            contract_number: parcela.contractNumber,
+            client_name: parcela.clientName,
+            due_date: parcela.dueDate,
+            amount: parcela.amount,
             status: parcela.status,
-          })))}>
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

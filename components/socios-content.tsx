@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Download, Eye, HandCoins, MoreHorizontal, Plus, TrendingUp, Users } from "lucide-react"
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 import { toast } from "sonner"
@@ -33,7 +33,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildPartnersReport } from "@/lib/reports/report-builders"
+import { createPartnerEntry, getPartnerEntries } from "@/lib/data/partners"
 import { formatCurrency } from "@/lib/utils"
 
 const colors = ["#22B8CF", "#22C55E", "#F59E0B"]
@@ -64,19 +66,28 @@ const partners: Partner[] = [
   { id: "3", name: "Mateus", role: "Socio comercial", share: 25, received: 32500, distributions: 26000, contributions: 3500, returns: 3000 },
 ]
 
-const initialEntries: PartnerEntry[] = [
-  { id: "1", partner: "Carlos", type: "Distribuicao", month: "jan-26", amount: 10000, status: "Pago" },
-  { id: "2", partner: "Renan", type: "Distribuicao", month: "jan-26", amount: 10000, status: "Pago" },
-  { id: "3", partner: "Mateus", type: "Aporte", month: "fev-26", amount: 3500, status: "Pago" },
-  { id: "4", partner: "Carlos", type: "Devolucao", month: "mai-26", amount: 5555.56, status: "Pago" },
-  { id: "5", partner: "Renan", type: "Distribuicao", month: "mai-26", amount: 32000, status: "Previsto" },
-]
+function normalizePartnerEntry(item: Record<string, unknown>): PartnerEntry {
+  return {
+    id: String(item.id ?? crypto.randomUUID()),
+    partner: String(item.partner ?? item.partner_name ?? item.socio ?? ""),
+    type: String(item.type ?? item.entry_type ?? "Distribuicao") as PartnerEntry["type"],
+    month: String(item.month ?? item.reference_month ?? ""),
+    amount: Number(item.amount ?? item.value ?? 0),
+    status: String(item.status ?? "Previsto") as PartnerEntry["status"],
+  }
+}
 
 export function SociosContent() {
-  const [entries, setEntries] = useState<PartnerEntry[]>(initialEntries)
+  const [entries, setEntries] = useState<PartnerEntry[]>([])
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState<Partner | null>(null)
   const [form, setForm] = useState({ partner: "Carlos", type: "Distribuicao", month: "jun-26", amount: "" })
+
+  useEffect(() => {
+    getPartnerEntries().then((items) =>
+      setEntries(items.map((item) => normalizePartnerEntry(item as Record<string, unknown>)))
+    )
+  }, [])
 
   const totals = useMemo(() => {
     const received = partners.reduce((total, partner) => total + partner.received, 0)
@@ -88,27 +99,30 @@ export function SociosContent() {
 
   const chartData = partners.map((partner) => ({ name: partner.name, value: partner.share }))
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const amount = Number(form.amount.replace(",", "."))
     if (!amount) {
       toast.error("Informe um valor valido")
       return
     }
 
-    setEntries((current) => [
-      {
-        id: String(current.length + 1),
-        partner: form.partner,
-        type: form.type as PartnerEntry["type"],
-        month: form.month,
+    try {
+      const created = await createPartnerEntry({
+        partner_name: form.partner,
+        type: form.type,
+        reference_month: form.month,
         amount,
         status: "Previsto",
-      },
-      ...current,
-    ])
-    toast.success("Lancamento de socio salvo com sucesso")
-    setOpen(false)
-    setForm({ partner: "Carlos", type: "Distribuicao", month: "jun-26", amount: "" })
+      })
+      setEntries((current) => [normalizePartnerEntry(created as Record<string, unknown>), ...current])
+      toast.success("Lancamento de socio salvo com sucesso")
+      setOpen(false)
+      setForm({ partner: "Carlos", type: "Distribuicao", month: "jun-26", amount: "" })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel salvar o lancamento de socio."
+      console.error("[socios] Falha ao salvar lancamento", error)
+      toast.error(message)
+    }
   }
 
   return (
@@ -119,14 +133,14 @@ export function SociosContent() {
           <p className="text-muted-foreground">Participacoes, aportes, distribuicoes e saldo liquido.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportCsv("gate-socios.csv", entries.map((entry) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildPartnersReport(entries.map((entry) => ({
             id: entry.id,
-            socio: entry.partner,
-            tipo: entry.type,
-            mes: entry.month,
+            partner: entry.partner,
+            type: entry.type,
+            date: entry.month,
             status: entry.status,
-            valor: entry.amount,
-          })))}>
+            amount: entry.amount,
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -210,7 +224,7 @@ export function SociosContent() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Quadro de socios</CardTitle>
-            <CardDescription>Indicadores individuais mockados.</CardDescription>
+            <CardDescription>Indicadores individuais dos socios.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -257,14 +271,14 @@ export function SociosContent() {
                         Ver detalhes
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => featureInPreparation("Edicao de socio depende do formulario real de cadastro societario.")}>Editar</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => exportCsv("gate-socio-historico.csv", entries.filter((entry) => entry.partner === partner.name).map((entry) => ({
+                      <DropdownMenuItem onClick={() => exportPdfReport(buildPartnersReport(entries.filter((entry) => entry.partner === partner.name).map((entry) => ({
                         id: entry.id,
-                        socio: entry.partner,
-                        tipo: entry.type,
-                        mes: entry.month,
+                        partner: entry.partner,
+                        type: entry.type,
+                        date: entry.month,
                         status: entry.status,
-                        valor: entry.amount,
-                      })))}>Exportar historico</DropdownMenuItem>
+                        amount: entry.amount,
+                      }))))}>Exportar historico</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -313,7 +327,7 @@ export function SociosContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Novo lancamento de socio</DialogTitle>
-            <DialogDescription>Registro mockado salvo apenas no estado da tela.</DialogDescription>
+            <DialogDescription>Registro salvo em partner_entries.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             {[

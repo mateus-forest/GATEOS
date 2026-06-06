@@ -1,6 +1,8 @@
 "use client"
 
 import { toast } from "sonner"
+import type { UniversalReport } from "@/lib/reports/report-types"
+import { exportReportPdf } from "@/lib/reports/pdf-export"
 
 type CsvValue = string | number | boolean | null | undefined
 type CsvRow = Record<string, CsvValue>
@@ -36,6 +38,18 @@ export function exportCsv(filename: string, rows: CsvRow[]) {
   link.remove()
   URL.revokeObjectURL(url)
   toast.success("Arquivo CSV gerado e download iniciado.")
+  return true
+}
+
+export function exportPdfReport(report: UniversalReport) {
+  const opened = exportReportPdf(report)
+
+  if (!opened) {
+    toast.error("Não foi possível abrir o relatório. Verifique se o navegador bloqueou pop-ups.")
+    return false
+  }
+
+  toast.info("Relatório aberto no padrão GATE OS para salvar ou imprimir em PDF.")
   return true
 }
 

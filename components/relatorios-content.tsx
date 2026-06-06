@@ -14,7 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, Download, Printer, Mail, Calendar as CalendarIcon, Clock, BarChart3, PieChart, TrendingUp, Users, Package, FileSpreadsheet, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildGenericReport } from "@/lib/reports/report-builders"
 import { cn } from "@/lib/utils"
 
 const relatoriosPredefinidos = [
@@ -118,26 +119,27 @@ export function RelatoriosContent() {
 
   const handleGerarRelatorio = (id: number) => {
     setGerando(id)
-    setTimeout(() => {
-      const relatorio = relatoriosPredefinidos.find((item) => item.id === id)
-      if (relatorio) {
-        exportCsv("gate-relatorio.csv", [
-          {
-            id: relatorio.id,
-            nome: relatorio.nome,
-            categoria: relatorio.categoria,
-            descricao: relatorio.descricao,
-            dataInicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : "",
-            dataFim: dataFim ? format(dataFim, "yyyy-MM-dd") : "",
-          },
-        ])
-      }
-      setGerando(null)
-    }, 600)
+    const relatorio = relatoriosPredefinidos.find((item) => item.id === id)
+    if (relatorio) {
+      exportPdfReport(buildGenericReport({
+        title: relatorio.nome,
+        subtitle: relatorio.categoria,
+        description: relatorio.descricao,
+        periodStart: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+        periodEnd: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
+        rows: [],
+      }))
+    }
+    setGerando(null)
   }
 
   const handleHistoricoDownload = (relatorio: (typeof relatoriosRecentes)[number]) =>
-    exportCsv("gate-relatorio-historico.csv", [relatorio])
+    exportPdfReport(buildGenericReport({
+      title: relatorio.nome,
+      subtitle: "Histórico de relatório",
+      description: "Registro histórico de relatório gerado no GATE OS.",
+      rows: [relatorio],
+    }))
 
   const handlePrint = () => {
     window.print()

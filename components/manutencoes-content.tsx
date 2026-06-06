@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Search,
   Download,
@@ -42,16 +42,50 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { maintenances } from "@/lib/mock-data"
-import { createMaintenanceOrder } from "@/lib/data/maintenance"
+import type { MaintenanceView } from "@/lib/mock-data"
+import { createMaintenanceOrder, getMaintenanceOrders } from "@/lib/data/maintenance"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
-import { exportCsv } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
+import { buildMaintenanceReport } from "@/lib/reports/report-builders"
+
+function normalizeMaintenance(item: Record<string, unknown>): MaintenanceView {
+  return {
+    id: String(item.id ?? ""),
+    equipamentoId: String(item.equipment_id ?? ""),
+    tipo: String(item.type ?? "corretiva") as MaintenanceView["tipo"],
+    status: String(item.status ?? "open") as MaintenanceView["status"],
+    prioridade: String(item.priority ?? "medium") as MaintenanceView["prioridade"],
+    descricao: String(item.problem ?? item.description ?? ""),
+    dataAgendada: String(item.entry_date ?? item.scheduled_date ?? ""),
+    tecnico: String(item.technician ?? ""),
+    custo: Number(item.cost ?? 0),
+    equipment: String(item.equipment_id ?? ""),
+    equipmentName: String(item.equipment_name ?? item.equipment_id ?? ""),
+    clientName: String(item.client_name ?? item.client_id ?? ""),
+    ticketNumber: String(item.ticket_number ?? item.id ?? ""),
+    type: String(item.type ?? "corretiva"),
+    priority: String(item.priority ?? "medium"),
+    description: String(item.problem ?? item.description ?? ""),
+    scheduledDate: String(item.entry_date ?? item.scheduled_date ?? ""),
+    startDate: item.start_date ? String(item.start_date) : undefined,
+    completedDate: item.completed_date ? String(item.completed_date) : undefined,
+    technician: String(item.technician ?? ""),
+    cost: Number(item.cost ?? 0),
+  }
+}
 
 export function ManutencoesContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
+  const [maintenances, setMaintenances] = useState<MaintenanceView[]>([])
+
+  useEffect(() => {
+    getMaintenanceOrders().then((items) =>
+      setMaintenances(items.map((item) => normalizeMaintenance(item as Record<string, unknown>)))
+    )
+  }, [])
 
   const filteredMaintenances = maintenances.filter((m) => {
     const matchesSearch = m.equipmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -103,15 +137,15 @@ export function ManutencoesContent() {
           <p className="text-muted-foreground">Gestão de chamados e ordens de serviço</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportCsv("gate-manutencoes.csv", filteredMaintenances.map((maintenance) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildMaintenanceReport(filteredMaintenances.map((maintenance) => ({
             id: maintenance.id,
-            ticket: maintenance.ticketNumber,
-            equipamento: maintenance.equipmentName,
-            cliente: maintenance.clientName,
-            tipo: maintenance.type,
-            prioridade: maintenance.priority,
+            protocol: maintenance.ticketNumber,
+            equipment_name: maintenance.equipmentName,
+            client_name: maintenance.clientName,
+            type: maintenance.type,
+            priority: maintenance.priority,
             status: maintenance.status,
-          })))}>
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -203,7 +237,7 @@ export function ManutencoesContent() {
               },
             ]}
             onSave={async (values) => {
-              await createMaintenanceOrder({
+              const created = await createMaintenanceOrder({
                 equipment_id: values.equipment_id ?? "",
                 client_id: values.client_id || null,
                 contract_id: values.contract_id || null,
@@ -220,6 +254,12 @@ export function ManutencoesContent() {
                 cost: Number(values.cost ?? 0),
                 technician: values.technician ?? "",
               })
+              const refreshed = await getMaintenanceOrders()
+              setMaintenances(
+                refreshed.length > 0
+                  ? refreshed.map((item) => normalizeMaintenance(item as Record<string, unknown>))
+                  : [normalizeMaintenance(created as Record<string, unknown>)]
+              )
             }}
           />
         </div>

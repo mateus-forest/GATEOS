@@ -74,7 +74,8 @@ import { cashFlowData } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
 import {
   addDreLaunch,
   attachmentTypes,
@@ -148,6 +149,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<NewLaunchForm>(initialLaunchForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState("")
   const [saving, setSaving] = useState(false)
   const [selectOptions, setSelectOptions] = useState({
     dreCategories: [] as string[],
@@ -172,6 +174,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
   const setField = (field: keyof NewLaunchForm, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value ?? "" }))
     setErrors((current) => ({ ...current, [field]: "" }))
+    setSubmitError("")
   }
 
   const validate = () => {
@@ -190,32 +193,43 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
     if (!validate()) return
 
     const amount = Number(form.amount.replace(",", "."))
-    const created = await createFinancialEntry({
-      type: form.type,
-      status: form.status,
-      description: form.description,
-      value: amount,
-      competence_date: form.competenceDate,
-      due_date: form.dueDate || null,
-      payment_date: form.paymentDate || null,
-      bank_account_name: form.bankAccount,
-      dre_category_name: form.dreCategory,
-      cost_center_name: form.costCenter,
-      party_name: form.party,
-      payment_method: form.paymentMethod,
-      recurrence: form.recurrence,
-      tags: form.tags,
-      attachment_type: form.attachment,
-    })
-    addDreLaunch({
-      ...form,
-      amount,
-    })
-    onCreated(normalizeFinancialEntry(created as Record<string, unknown>))
-    toast.success("Lançamento salvo e DRE atualizado")
-    setForm(initialLaunchForm)
-    setErrors({})
-    setOpen(false)
+    setSaving(true)
+    setSubmitError("")
+    try {
+      const created = await createFinancialEntry({
+        type: form.type,
+        status: form.status,
+        description: form.description,
+        value: amount,
+        competence_date: form.competenceDate,
+        due_date: form.dueDate || null,
+        payment_date: form.paymentDate || null,
+        bank_account_name: form.bankAccount,
+        dre_category_name: form.dreCategory,
+        cost_center_name: form.costCenter,
+        party_name: form.party,
+        payment_method: form.paymentMethod,
+        recurrence: form.recurrence,
+        tags: form.tags,
+        attachment_type: form.attachment,
+      })
+      addDreLaunch({
+        ...form,
+        amount,
+      })
+      onCreated(normalizeFinancialEntry(created as Record<string, unknown>))
+      toast.success("Lançamento salvo e DRE atualizado")
+      setForm(initialLaunchForm)
+      setErrors({})
+      setOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível salvar o lançamento."
+      console.error("[financeiro] Falha ao salvar lançamento", error)
+      setSubmitError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const renderSelect = (field: keyof NewLaunchForm, label: string, options: readonly string[]) => (
@@ -278,10 +292,15 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
             <div className="md:col-span-2">
               {renderInput("tags", "Tags")}
             </div>
+            {submitError && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive md:col-span-2">
+                {submitError}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>Salvar lançamento</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar lançamento"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -352,15 +371,15 @@ export function FinanceiroContent() {
           <p className="text-muted-foreground">Gestão de receitas, despesas e fluxo de caixa</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportCsv("gate-lancamentos.csv", filteredTransactions.map((transaction) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildFinancialEntriesReport(filteredTransactions.map((transaction) => ({
             id: transaction.id,
-            data: transaction.date,
-            descricao: transaction.description,
+            date: transaction.date,
+            description: transaction.description,
             categoria: transaction.category,
-            tipo: transaction.type,
+            type: transaction.type,
             status: transaction.status,
-            valor: transaction.amount,
-          })))}>
+            amount: transaction.amount,
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

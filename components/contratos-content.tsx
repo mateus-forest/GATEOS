@@ -55,7 +55,8 @@ import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildContractsReport } from "@/lib/reports/report-builders"
 
 type ContractWithPublicLink = ContractView & {
   public_access_token?: string
@@ -252,14 +253,14 @@ export function ContratosContent() {
           <p className="text-muted-foreground">Gestão de contratos e renovações</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportCsv("gate-contratos.csv", filteredContracts.map((contract) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildContractsReport(filteredContracts.map((contract) => ({
             id: contract.id,
-            numero: contract.number,
-            cliente: contract.clientName,
+            contract_number: contract.number,
+            client_name: contract.clientName,
             tipo: contract.type,
             status: contract.status,
-            valor_mensal: contract.monthlyValue,
-          })))}>
+            monthly_value: contract.monthlyValue,
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

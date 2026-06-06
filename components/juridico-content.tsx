@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AlertTriangle, CalendarClock, Download, Eye, FileText, Gavel, MoreHorizontal, Paperclip, Plus, Scale, Search } from "lucide-react"
 
@@ -43,7 +43,6 @@ import {
 import {
   getDiasAtraso,
   getValorAtualizado,
-  juridicoCases,
   juridicoDocumentTypes,
   juridicoEtapas,
   juridicoFormasPagamento,
@@ -52,8 +51,9 @@ import {
   juridicoStatuses,
   type JuridicoCaso,
 } from "@/lib/juridico-data"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
-import { createLegalCase } from "@/lib/data/legal"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildLegalReport } from "@/lib/reports/report-builders"
+import { createLegalCase, getLegalCases } from "@/lib/data/legal"
 import { formatCurrency } from "@/lib/utils"
 
 type CaseForm = {
@@ -110,6 +110,55 @@ const emptyForm: CaseForm = {
 
 const clientesGate = ["Fribal", "Estácio Itapipoca", "Fortaleza Iguatemi", "Rio de Janeiro", "Intech", "Paulínia Nova", "Curitiba", "SG Itapipoca", "SG Atibaia"]
 
+function normalizeLegalCase(item: Record<string, unknown>): JuridicoCaso {
+  const valorOriginal = Number(item.original_value ?? item.valorOriginal ?? 0)
+  const multa = Number(item.penalty_value ?? item.multa ?? 0)
+  const juros = Number(item.interest_value ?? item.juros ?? 0)
+  const desconto = Number(item.discount_value ?? item.desconto ?? 0)
+  const custas = Number(item.legal_costs ?? item.custas ?? 0)
+  const honorarios = Number(item.attorney_fees ?? item.honorarios ?? 0)
+  const valorNegociado = Number(item.negotiated_value ?? item.valorNegociado ?? valorOriginal + multa + juros + custas + honorarios - desconto)
+
+  return {
+    id: String(item.id ?? ""),
+    cliente: String(item.client_name ?? item.cliente ?? ""),
+    contrato: String(item.contract_number ?? item.contrato ?? ""),
+    parcelas: String(item.installments ?? item.parcelas ?? ""),
+    processo: String(item.process_number ?? item.processo ?? ""),
+    responsavel: String(item.internal_responsible ?? item.responsavel ?? ""),
+    advogado: String(item.lawyer_name ?? item.advogado ?? ""),
+    status: String(item.status ?? "Em análise") as JuridicoCaso["status"],
+    etapa: String(item.stage ?? item.etapa ?? ""),
+    risco: String(item.risk ?? item.risco ?? "Médio") as JuridicoCaso["risco"],
+    valorOriginal,
+    mensalidade: Number(item.monthly_value ?? item.mensalidade ?? valorOriginal),
+    parcelasVencidas: Number(item.overdue_installments_count ?? item.parcelasVencidas ?? 0),
+    multa,
+    juros,
+    desconto,
+    custas,
+    honorarios,
+    valorNegociado,
+    valorPago: Number(item.paid_value ?? item.valorPago ?? 0),
+    dataEntrada: String(item.legal_entry_date ?? item.dataEntrada ?? ""),
+    ultimaAtualizacao: String(item.last_update_date ?? item.ultimaAtualizacao ?? ""),
+    proximoPrazo: String(item.next_deadline ?? item.proximoPrazo ?? ""),
+    prazoPagamento: String(item.payment_deadline ?? item.prazoPagamento ?? ""),
+    encerramentoPrevisto: String(item.expected_closing_date ?? item.encerramentoPrevisto ?? ""),
+    parcelado: Boolean(item.is_installment_agreement ?? item.parcelado ?? false),
+    acordoStatus: String(item.agreement_status ?? item.acordoStatus ?? ""),
+    entrada: Number(item.down_payment ?? item.entrada ?? 0),
+    quantidadeParcelas: Number(item.installments_count ?? item.quantidadeParcelas ?? 1),
+    primeiroVencimento: String(item.first_due_date ?? item.primeiroVencimento ?? ""),
+    formaPagamento: String(item.payment_method ?? item.formaPagamento ?? ""),
+    resumo: String(item.case_summary ?? item.resumo ?? ""),
+    ultimoAndamento: String(item.last_progress ?? item.ultimoAndamento ?? ""),
+    resultadoEsperado: String(item.expected_result ?? item.resultadoEsperado ?? ""),
+    resultadoAcao: String(item.lawsuit_result ?? item.resultadoAcao ?? ""),
+    observacoes: String(item.internal_notes ?? item.observacoes ?? ""),
+  }
+}
+
 function riskClass(risk: string) {
   if (risk === "Crítico") return "bg-red-100 text-red-700"
   if (risk === "Alto") return "bg-orange-100 text-orange-700"
@@ -128,10 +177,13 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CaseForm>(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState("")
+  const [saving, setSaving] = useState(false)
 
   const setField = (field: keyof CaseForm, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value ?? "" }))
     setErrors((current) => ({ ...current, [field]: "" }))
+    setSubmitError("")
   }
 
   const validate = () => {
@@ -157,7 +209,10 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
     const honorarios = Number(form.honorarios || 0)
     const valorNegociado = Number(form.valorNegociado || 0) || valorOriginal + multa + juros + custas + honorarios - desconto
 
-    await onCreate({
+    setSaving(true)
+    setSubmitError("")
+    try {
+      await onCreate({
       id: `jur-${Date.now()}`,
       cliente: form.cliente,
       contrato: form.contrato,
@@ -193,11 +248,19 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
       ultimoAndamento: "Caso criado no módulo jurídico.",
       resultadoEsperado: "Regularização do débito.",
       resultadoAcao: "Em acompanhamento.",
-      observacoes: "Cadastro mockado.",
-    })
-    toast.success("Caso jurídico criado com sucesso")
-    setForm(emptyForm)
-    setOpen(false)
+      observacoes: "Cadastro jurídico criado pelo formulário.",
+      })
+      toast.success("Caso jurídico criado com sucesso")
+      setForm(emptyForm)
+      setOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível salvar o caso jurídico."
+      console.error("[juridico] Falha ao salvar caso", error)
+      setSubmitError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const select = (field: keyof CaseForm, label: string, options: string[]) => (
@@ -240,7 +303,7 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
         <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>Novo Caso Jurídico</DialogTitle>
-            <DialogDescription>Cadastro mockado para cobrança jurídica, acordos e ações.</DialogDescription>
+            <DialogDescription>Cadastro para cobrança jurídica, acordos e ações.</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-2 md:grid-cols-3">
             {select("cliente", "Cliente", clientesGate)}
@@ -270,10 +333,15 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
               <p className="text-xl font-bold">{formatCurrency(valorAtualizado)}</p>
             </div>
             {input("resumo", "Resumo do caso")}
+            {submitError && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive md:col-span-3">
+                {submitError}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>Salvar caso</Button>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar caso"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -292,7 +360,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
       <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>{caso.cliente} - {caso.contrato}</DialogTitle>
-          <DialogDescription>Detalhe mockado do caso jurídico.</DialogDescription>
+          <DialogDescription>Detalhe do caso jurídico.</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="resumo">
           <TabsList className="flex flex-wrap">
@@ -400,7 +468,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
 }
 
 export function JuridicoContent() {
-  const [cases, setCases] = useState(juridicoCases)
+  const [cases, setCases] = useState<JuridicoCaso[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [etapaFilter, setEtapaFilter] = useState("all")
@@ -409,6 +477,12 @@ export function JuridicoContent() {
   const [riscoFilter, setRiscoFilter] = useState("all")
   const [pagamentoFilter, setPagamentoFilter] = useState("all")
   const [selectedCase, setSelectedCase] = useState<JuridicoCaso | null>(null)
+
+  useEffect(() => {
+    getLegalCases().then((items) =>
+      setCases(items.map((item) => normalizeLegalCase(item as Record<string, unknown>)))
+    )
+  }, [])
 
   const filteredCases = cases.filter((caso) => {
     const term = searchTerm.toLowerCase()
@@ -464,25 +538,25 @@ export function JuridicoContent() {
           <p className="text-muted-foreground">Gestão de contratos em cobrança, acordos e ações judiciais.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportCsv("gate-juridico.csv", filteredCases.map((caso) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildLegalReport(filteredCases.map((caso) => ({
             id: caso.id,
-            cliente: caso.cliente,
-            contrato: caso.contrato,
+            client_name: caso.cliente,
+            contract_number: caso.contrato,
             processo: caso.processo,
             status: caso.status,
-            etapa: caso.etapa,
+            type: caso.etapa,
             risco: caso.risco,
-            valorOriginal: caso.valorOriginal,
+            amount: caso.valorOriginal,
             valorAtualizado: getValorAtualizado(caso),
             responsavel: caso.responsavel,
             proximoPrazo: caso.proximoPrazo,
-          })))}>
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
           <CaseFormDialog
             onCreate={async (caso) => {
-              await createLegalCase({
+              const created = await createLegalCase({
                 client_name: caso.cliente,
                 contract_number: caso.contrato,
                 installments: caso.parcelas,
@@ -519,7 +593,7 @@ export function JuridicoContent() {
                 lawsuit_result: caso.resultadoAcao,
                 internal_notes: caso.observacoes,
               })
-              setCases((current) => [caso, ...current])
+              setCases((current) => [normalizeLegalCase(created as Record<string, unknown>), ...current])
             }}
           />
         </div>
@@ -619,7 +693,7 @@ export function JuridicoContent() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card><CardContent className="p-4"><AlertTriangle className="mb-2 h-5 w-5 text-amber-600" /><p className="font-semibold">Acordos vencendo</p><p className="text-sm text-muted-foreground">2 acordos exigem acompanhamento.</p></CardContent></Card>
         <Card><CardContent className="p-4"><CalendarClock className="mb-2 h-5 w-5 text-primary" /><p className="font-semibold">Audiências</p><p className="text-sm text-muted-foreground">1 audiência prevista este mês.</p></CardContent></Card>
-        <Card><CardContent className="p-4"><Paperclip className="mb-2 h-5 w-5 text-emerald-600" /><p className="font-semibold">Documentos jurídicos</p><p className="text-sm text-muted-foreground">Contratos, notificações, petições e acordos mockados.</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Paperclip className="mb-2 h-5 w-5 text-emerald-600" /><p className="font-semibold">Documentos jurídicos</p><p className="text-sm text-muted-foreground">Contratos, notificações, petições e acordos vinculados ao caso.</p></CardContent></Card>
       </div>
 
       <CaseDetailDialog caso={selectedCase} onClose={() => setSelectedCase(null)} />

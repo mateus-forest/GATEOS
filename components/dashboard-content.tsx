@@ -47,7 +47,8 @@ import {
   Cell,
 } from "recharts"
 import { revenueData, contractsByStatus, recentActivities, upcomingPayments } from "@/lib/mock-data"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildDashboardReport } from "@/lib/reports/report-builders"
 import { formatCurrency } from "@/lib/utils"
 
 const COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6"]
@@ -179,7 +180,7 @@ export function DashboardContent() {
   const router = useRouter()
 
   const handleExportReport = () => {
-    exportCsv("gate-dashboard.csv", [
+    exportPdfReport(buildDashboardReport([
       { indicador: "Receita Mensal", valor: monthlyRevenue },
       { indicador: "Contratos Ativos", valor: activeContracts },
       { indicador: "Clientes", valor: totalClients },
@@ -189,7 +190,7 @@ export function DashboardContent() {
       { indicador: "Resultado distribuivel", valor: distributableResult },
       { indicador: "Total distribuido", valor: totalDistributed },
       { indicador: "Lucro retido", valor: retainedProfit },
-    ])
+    ]))
   }
 
   return (

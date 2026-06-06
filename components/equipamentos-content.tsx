@@ -49,7 +49,8 @@ import type { EquipmentView } from "@/lib/mock-data"
 import { createEquipment, getEquipment } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildEquipmentReport } from "@/lib/reports/report-builders"
 
 function normalizeEquipment(item: Record<string, unknown>): EquipmentView {
   const name = String(item.name ?? item.nome ?? "")
@@ -155,14 +156,16 @@ export function EquipamentosContent() {
             <QrCode className="mr-2 h-4 w-4" />
             Gerar Etiquetas
           </Button>
-          <Button variant="outline" onClick={() => exportCsv("gate-equipamentos.csv", filteredEquipments.map((equipment) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildEquipmentReport(filteredEquipments.map((equipment) => ({
             id: equipment.id,
-            nome: equipment.name,
-            serie: equipment.serialNumber,
-            tipo: equipment.type,
+            name: equipment.name,
+            serial_number: equipment.serialNumber,
+            type: equipment.type,
             status: equipment.status,
-            valor: equipment.value,
-          })))}>
+            value: equipment.value,
+            client_name: equipment.clientName,
+            location: equipment.location,
+          }))))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>

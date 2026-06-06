@@ -31,7 +31,8 @@ import {
   useDreLaunches,
   type DreLaunch,
 } from "@/lib/dre-store"
-import { exportCsv, featureInPreparation } from "@/lib/cta-actions"
+import { exportCsv, exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildDreReport } from "@/lib/reports/report-builders"
 import { formatCurrency } from "@/lib/utils"
 
 const months = ["jan-26", "fev-26", "mar-26", "abr-26", "mai-26", "jun-26", "jul-26", "ago-26", "set-26", "out-26", "nov-26", "dez-26"]
@@ -344,6 +345,19 @@ export function DREContent() {
       { indicador: "Diferenca", valor: diferenca[monthIndex] },
     ])
 
+  const exportDrePdf = () =>
+    exportPdfReport(buildDreReport(
+      rows
+        .filter((row) => row.kind !== "spacer")
+        .map((row) => ({
+          name: row.label,
+          jan: renderValue(row, 0),
+          fev: renderValue(row, 1),
+          mar: renderValue(row, 2),
+          total: row.kind === "percent" || row.kind === "section" ? "" : formatCurrency(sum(row.values ?? empty)),
+        }))
+    ))
+
   const renderValue = (row: DreRow, month: number) => {
     if (row.kind === "spacer") return ""
     if (row.kind === "section" && !sum(row.values ?? empty)) return ""
@@ -388,7 +402,7 @@ export function DREContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar Excel
           </Button>
-          <Button variant="outline" onClick={() => featureInPreparation("Exportacao em PDF ainda depende da rotina real de geracao de PDF.")}>
+          <Button variant="outline" onClick={exportDrePdf}>
             <Download className="mr-2 h-4 w-4" />
             Exportar PDF
           </Button>
