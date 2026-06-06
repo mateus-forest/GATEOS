@@ -490,7 +490,7 @@ export function DashboardContent() {
                 <CardTitle>Próximos Pagamentos</CardTitle>
                 <CardDescription>Vencimentos dos próximos 7 dias</CardDescription>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => router.push("/parcelas")}>
+              <Button variant="ghost" size="sm" onClick={() => router.push("/financeiro")}>
                 Ver todos
               </Button>
             </div>

@@ -44,6 +44,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { MaintenanceView } from "@/lib/mock-data"
 import { createMaintenanceOrder, getMaintenanceOrders } from "@/lib/data/maintenance"
+import { getClients } from "@/lib/data/clients"
+import { getContracts } from "@/lib/data/contracts"
+import { getEquipment } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport } from "@/lib/cta-actions"
@@ -80,11 +83,28 @@ export function ManutencoesContent() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
   const [maintenances, setMaintenances] = useState<MaintenanceView[]>([])
+  const [relationshipOptions, setRelationshipOptions] = useState({
+    equipment: [] as Array<{ label: string; value: string }>,
+    clients: [] as Array<{ label: string; value: string }>,
+    contracts: [] as Array<{ label: string; value: string }>,
+  })
 
   useEffect(() => {
     getMaintenanceOrders().then((items) =>
       setMaintenances(items.map((item) => normalizeMaintenance(item as Record<string, unknown>)))
     )
+    Promise.all([getEquipment(), getClients(), getContracts()]).then(([equipment, clients, contracts]) => {
+      const option = (item: unknown, labelKeys: string[]) => {
+        const record = item as Record<string, unknown>
+        const label = labelKeys.map((key) => record[key]).find(Boolean) ?? record.id
+        return { label: String(label ?? ""), value: String(record.id ?? "") }
+      }
+      setRelationshipOptions({
+        equipment: equipment.map((item) => option(item, ["name", "nome", "serial_number"])).filter((item) => item.value),
+        clients: clients.map((item) => option(item, ["name", "nome_fantasia", "razao_social"])).filter((item) => item.value),
+        contracts: contracts.map((item) => option(item, ["contract_number", "number", "numero"])).filter((item) => item.value),
+      })
+    })
   }, [])
 
   const filteredMaintenances = maintenances.filter((m) => {
@@ -158,9 +178,9 @@ export function ManutencoesContent() {
               {
                 title: "Vínculos",
                 fields: [
-                  { name: "equipment_id", label: "Equipamento", required: true },
-                  { name: "client_id", label: "Cliente" },
-                  { name: "contract_id", label: "Contrato" },
+                  { name: "equipment_id", label: "Equipamento", type: "select", required: true, options: relationshipOptions.equipment },
+                  { name: "client_id", label: "Cliente", type: "select", options: relationshipOptions.clients },
+                  { name: "contract_id", label: "Contrato", type: "select", options: relationshipOptions.contracts },
                 ],
               },
               {

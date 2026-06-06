@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select"
 import type { EquipmentView } from "@/lib/mock-data"
 import { createEquipment, getEquipment } from "@/lib/data/equipment"
+import { createAsset } from "@/lib/data/assets"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
@@ -194,28 +195,19 @@ export function EquipamentosContent() {
                       { label: "Outro", value: "outro" },
                     ],
                   },
-                  { name: "brand", label: "Marca" },
-                  { name: "model", label: "Modelo" },
-                  { name: "configuration", label: "Configuração" },
-                  { name: "serial_number", label: "Número de série" },
+                  { name: "description", label: "Observações", type: "textarea" },
                 ],
               },
               {
                 title: "Quantidade",
                 fields: [
                   { name: "total_quantity", label: "Quantidade total", type: "number", required: true },
-                  { name: "available_quantity", label: "Quantidade disponível", type: "number" },
-                  { name: "rented_quantity", label: "Quantidade locada", type: "number" },
-                  { name: "reserved_quantity", label: "Quantidade reservada", type: "number" },
-                  { name: "maintenance_quantity", label: "Quantidade em manutenção", type: "number" },
                 ],
               },
               {
                 title: "Valores",
                 fields: [
                   { name: "purchase_value", label: "Valor de compra unitário em R$", type: "money", required: true },
-                  { name: "sale_value", label: "Valor de venda em R$", type: "money" },
-                  { name: "rental_value", label: "Valor de locação mensal em R$", type: "money" },
                 ],
               },
               {
@@ -243,20 +235,25 @@ export function EquipamentosContent() {
               const created = await createEquipment({
                 name: values.name ?? "",
                 category: values.category ?? "",
-                brand: values.brand ?? "",
-                model: values.model ?? "",
-                configuration: values.configuration ?? "",
-                serial_number: values.serial_number ?? "",
+                description: values.description ?? "",
                 total_quantity: Number(values.total_quantity ?? 0),
-                available_quantity: Number(values.available_quantity ?? 0),
-                rented_quantity: Number(values.rented_quantity ?? 0),
-                reserved_quantity: Number(values.reserved_quantity ?? 0),
-                maintenance_quantity: Number(values.maintenance_quantity ?? 0),
+                available_quantity: Number(values.total_quantity ?? 0),
+                rented_quantity: 0,
+                reserved_quantity: 0,
+                maintenance_quantity: 0,
                 purchase_value: Number(values.purchase_value ?? 0),
-                sale_value: Number(values.sale_value ?? 0),
-                rental_value: Number(values.rental_value ?? 0),
                 status: values.status ?? "available",
                 notes: values.notes ?? "",
+              })
+              const equipmentId = String((created as Record<string, unknown>).id ?? "")
+              await createAsset({
+                equipment_id: equipmentId,
+                name: values.name ?? "",
+                category: values.category ?? "equipamento",
+                status: values.status ?? "available",
+                acquisition_value: Number(values.purchase_value ?? 0),
+                current_value: Number(values.purchase_value ?? 0),
+                description: values.description ?? "",
               })
               setEquipments((current) => [normalizeEquipment(created as Record<string, unknown>), ...current])
             }}

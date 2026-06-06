@@ -53,6 +53,16 @@ const alertas = [
 
 export function AnaliseContent() {
   const [periodo, setPeriodo] = useState("6m")
+  const monthCount = periodo === "1m" ? 1 : periodo === "3m" ? 3 : periodo === "1y" ? 12 : 6
+  const filteredReceitaData = receitaMensalData.slice(-monthCount)
+  const totals = filteredReceitaData.reduce(
+    (acc, item) => ({
+      receita: acc.receita + item.receita,
+      despesa: acc.despesa + item.despesa,
+      lucro: acc.lucro + item.lucro,
+    }),
+    { receita: 0, despesa: 0, lucro: 0 }
+  )
 
   return (
     <div className="space-y-6">
@@ -160,7 +170,7 @@ export function AnaliseContent() {
             <CardContent>
               <div className="h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={receitaMensalData}>
+                  <AreaChart data={filteredReceitaData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `${v/1000}k`} />
@@ -187,7 +197,7 @@ export function AnaliseContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Receita Total</p>
-                    <p className="text-2xl font-bold text-foreground">{formatCurrency(900000)}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatCurrency(totals.receita)}</p>
                     <div className="flex items-center gap-1 text-green-500 text-sm mt-1">
                       <TrendingUp className="h-4 w-4" />
                       <span>+12.5% vs período anterior</span>
@@ -201,7 +211,7 @@ export function AnaliseContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Despesa Total</p>
-                    <p className="text-2xl font-bold text-foreground">{formatCurrency(648000)}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatCurrency(totals.despesa)}</p>
                     <div className="flex items-center gap-1 text-red-500 text-sm mt-1">
                       <TrendingUp className="h-4 w-4" />
                       <span>+8.2% vs período anterior</span>
@@ -215,7 +225,7 @@ export function AnaliseContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Lucro Líquido</p>
-                    <p className="text-2xl font-bold text-foreground">{formatCurrency(252000)}</p>
+                    <p className="text-2xl font-bold text-foreground">{formatCurrency(totals.lucro)}</p>
                     <div className="flex items-center gap-1 text-green-500 text-sm mt-1">
                       <TrendingUp className="h-4 w-4" />
                       <span>+18.3% vs período anterior</span>
@@ -328,7 +338,7 @@ export function AnaliseContent() {
                       { mes: "Abr", meta: 150000, realizado: 155000 },
                       { mes: "Mai", meta: 160000, realizado: 168000 },
                       { mes: "Jun", meta: 170000, realizado: 172000 },
-                    ]}>
+                    ].slice(-monthCount)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                       <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `${v/1000}k`} />

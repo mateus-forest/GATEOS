@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,8 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen, Download, Trash2, Eye, Grid, List, Plus, Filter, MoreVertical, Clock, User } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { featureInPreparation } from "@/lib/cta-actions"
-import { createDocumentRecord } from "@/lib/data/documents"
-import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
+import { getDocuments, uploadDocumentFile } from "@/lib/data/documents"
 
 const documentos = [
   { id: 1, nome: "Contrato Fribal 2024.pdf", tipo: "pdf", tamanho: "2.4 MB", categoria: "Contratos", cliente: "Fribal", dataUpload: "2024-01-15", usuario: "Admin" },
@@ -50,9 +49,28 @@ export function DocumentosContent() {
   const [documentType, setDocumentType] = useState("")
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState("")
+  const [documentosAtuais, setDocumentosAtuais] = useState<typeof documentos>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const documentosFiltrados = documentos.filter(doc => {
+  useEffect(() => {
+    getDocuments().then((items) => {
+      setDocumentosAtuais(items.map((item) => {
+        const record = item as Record<string, unknown>
+        return {
+          id: String(record.id ?? ""),
+          nome: String(record.name ?? record.file_name ?? record.nome ?? ""),
+          tipo: String(record.type ?? record.category ?? record.tipo ?? ""),
+          tamanho: record.size ? `${Math.round(Number(record.size) / 1024)} KB` : "-",
+          categoria: String(record.category ?? record.tipo ?? "Documento"),
+          cliente: record.client_name ? String(record.client_name) : null,
+          dataUpload: String(record.created_at ?? new Date().toISOString()),
+          usuario: String(record.created_by ?? "GATE OS"),
+        }
+      }))
+    })
+  }, [])
+
+  const documentosFiltrados = documentosAtuais.filter(doc => {
     const matchBusca = doc.nome.toLowerCase().includes(busca.toLowerCase()) ||
                        (doc.cliente && doc.cliente.toLowerCase().includes(busca.toLowerCase()))
     const matchCategoria = categoriaFiltro === "Todos" || doc.categoria === categoriaFiltro
@@ -60,12 +78,12 @@ export function DocumentosContent() {
   })
 
   const estatisticas = {
-    total: documentos.length,
+    total: documentosAtuais.length,
     tamanhoTotal: "24.9 MB",
     ultimoUpload: "22/02/2024",
     porCategoria: categorias.slice(1).map(cat => ({
       nome: cat,
-      quantidade: documentos.filter(d => d.categoria === cat).length
+      quantidade: documentosAtuais.filter(d => d.categoria === cat).length
     }))
   }
 
@@ -83,34 +101,36 @@ export function DocumentosContent() {
       setUploadError("Selecione o tipo do documento.")
       return
     }
-    if (!isSupabaseConfigured()) {
-      setUploadError("Supabase Storage não está configurado. O upload não foi concluído.")
-      return
-    }
-
-    const supabase = createSupabaseBrowserClient()
-    if (!supabase) {
-      setUploadError("Não foi possível iniciar a conexão com o Supabase Storage.")
-      return
-    }
-
     setUploading(true)
     try {
+      const createdRecords: typeof documentos = []
       for (const file of selectedFiles) {
-        const path = `${Date.now()}-${file.name}`
-        const { error } = await supabase.storage.from("gate-documents").upload(path, file, { upsert: false })
-        if (error) throw error
-
-        await createDocumentRecord({
-          name: documentName,
-          file_name: file.name,
-          type: documentType,
+        const created = await uploadDocumentFile({
           bucket: "gate-documents",
-          path,
-          size: file.size,
+          file,
+          folder: "documents",
+          record: {
+            name: documentName,
+            file_name: file.name,
+            type: documentType,
+            category: documentType,
+            size: file.size,
+          },
+        })
+        const record = created as Record<string, unknown>
+        createdRecords.push({
+          id: String(record.id ?? crypto.randomUUID()),
+          nome: documentName,
+          tipo: documentType,
+          tamanho: `${Math.round(file.size / 1024)} KB`,
+          categoria: documentType,
+          cliente: null,
+          dataUpload: new Date().toISOString(),
+          usuario: "GATE OS",
         })
       }
       toast.success("Documento enviado com sucesso")
+      setDocumentosAtuais((current) => [...createdRecords, ...current])
       setSelectedFiles([])
       setDocumentName("")
       setDocumentType("")

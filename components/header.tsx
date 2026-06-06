@@ -107,11 +107,11 @@ export function Header() {
         })),
       },
       {
-        group: "Parcelas",
+        group: "Financeiro",
         items: searchData.installments.map((item) => ({
           label: text(item.contractNumber ?? item.contract_number ?? item.contract_id),
           description: text(item.clientName ?? item.client_name),
-          href: "/parcelas",
+          href: "/financeiro",
         })),
       },
       {
@@ -243,7 +243,7 @@ export function Header() {
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-center text-primary cursor-pointer" onClick={() => handleNavigate("/parcelas")}>
+            <DropdownMenuItem className="text-center text-primary cursor-pointer" onClick={() => handleNavigate("/financeiro")}>
               Ver todas as notificacoes
             </DropdownMenuItem>
           </DropdownMenuContent>

@@ -44,7 +44,7 @@ type MockCreateDialogProps = {
   toastMessage: string
   fields?: string[]
   sections?: FieldSection[]
-  onSave?: (values: Record<string, string>) => void | Promise<void>
+  onSave?: (values: Record<string, string>, files: Record<string, File | null>) => void | Promise<void>
 }
 
 export function MockCreateDialog({
@@ -58,6 +58,7 @@ export function MockCreateDialog({
 }: MockCreateDialogProps) {
   const [open, setOpen] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
+  const [files, setFiles] = useState<Record<string, File | null>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitError, setSubmitError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -96,9 +97,10 @@ export function MockCreateDialog({
     setLoading(true)
     setSubmitError("")
     try {
-      await onSave?.(values)
+      await onSave?.(values, files)
       toast.success(toastMessage)
       setValues({})
+      setFiles({})
       setErrors({})
       setOpen(false)
     } catch (error) {
@@ -153,7 +155,11 @@ export function MockCreateDialog({
         <Input
           id={id}
           type="file"
-          onChange={(event) => setField(field.name, event.target.files?.[0]?.name ?? "")}
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null
+            setFiles((current) => ({ ...current, [field.name]: file }))
+            setField(field.name, file?.name ?? "")
+          }}
         />
       )
     }

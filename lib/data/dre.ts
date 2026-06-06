@@ -1,4 +1,4 @@
-import { callRpc, insertRow, selectRows } from "@/lib/data/supabase-helpers"
+import { callRpc, deleteRows, insertRow, selectRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getDreMonthly(year?: string) {
@@ -12,6 +12,10 @@ export async function getDreMonthlyClosings() {
 
 export async function createDreManualAdjustment(payload: SupabaseRow) {
   return insertRow("dre_manual_adjustments", payload, { ...payload, id: crypto.randomUUID() })
+}
+
+export async function deleteDreManualAdjustment(id: string) {
+  return deleteRows("dre_manual_adjustments", { id }, [])
 }
 
 export async function closeDreMonth(payload: SupabaseRow) {

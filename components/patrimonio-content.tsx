@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Search,
   Download,
@@ -51,9 +52,8 @@ import {
   Tooltip,
 } from "recharts"
 import type { AssetView } from "@/lib/mock-data"
-import { createAsset, getAssets } from "@/lib/data/assets"
+import { getAssets } from "@/lib/data/assets"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport } from "@/lib/cta-actions"
 import { buildAssetsReport } from "@/lib/reports/report-builders"
 
@@ -95,6 +95,7 @@ function normalizeAsset(item: Record<string, unknown>): AssetView {
 }
 
 export function PatrimonioContent() {
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
@@ -164,96 +165,9 @@ export function PatrimonioContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <MockCreateDialog
-            title="Novo Ativo"
-            description="Preencha os dados do ativo para salvar no Supabase."
-            triggerLabel="Novo Ativo"
-            toastMessage="Ativo salvo com sucesso"
-            sections={[
-              {
-                title: "Dados do ativo",
-                fields: [
-                  { name: "name", label: "Nome", required: true },
-                  {
-                    name: "category",
-                    label: "Categoria",
-                    type: "select",
-                    required: true,
-                    options: [
-                      { label: "Imóvel", value: "imovel" },
-                      { label: "Veículo", value: "veiculo" },
-                      { label: "Equipamento", value: "equipamento" },
-                      { label: "Mobiliário", value: "mobiliario" },
-                      { label: "Software", value: "software" },
-                      { label: "Outro", value: "outro" },
-                    ],
-                  },
-                  { name: "code", label: "Código patrimonial" },
-                  { name: "location", label: "Localização" },
-                  {
-                    name: "status",
-                    label: "Status",
-                    type: "select",
-                    required: true,
-                    options: [
-                      { label: "Ativo", value: "active" },
-                      { label: "Manutenção", value: "maintenance" },
-                      { label: "Baixado", value: "disposed" },
-                      { label: "Vendido", value: "sold" },
-                    ],
-                  },
-                ],
-              },
-              {
-                title: "Valores",
-                fields: [
-                  { name: "acquisition_value", label: "Valor de aquisição em R$", type: "money", required: true },
-                  { name: "current_value", label: "Valor atual em R$", type: "money" },
-                  { name: "depreciation_value", label: "Depreciação acumulada em R$", type: "money" },
-                  { name: "acquisition_date", label: "Data de aquisição", type: "date" },
-                ],
-              },
-              {
-                title: "Vínculo",
-                fields: [
-                  { name: "equipment_id", label: "Equipamento relacionado" },
-                  { name: "contract_id", label: "Contrato relacionado" },
-                  { name: "client_id", label: "Cliente relacionado" },
-                ],
-              },
-              {
-                title: "Documentos",
-                fields: [
-                  { name: "invoice_file", label: "Nota fiscal", type: "file" },
-                  { name: "term_file", label: "Termo", type: "file" },
-                  { name: "receipt_file", label: "Comprovante", type: "file" },
-                  { name: "other_file", label: "Outros", type: "file" },
-                ],
-              },
-            ]}
-            onSave={async (values) => {
-              const created = await createAsset({
-                name: values.name ?? "",
-                category: values.category ?? "",
-                code: values.code ?? "",
-                location: values.location ?? "",
-                status: values.status ?? "active",
-                acquisition_value: Number(values.acquisition_value ?? 0),
-                current_value: Number(values.current_value || values.acquisition_value || 0),
-                depreciation_value: Number(values.depreciation_value ?? 0),
-                acquisition_date: values.acquisition_date ?? null,
-                equipment_id: values.equipment_id || null,
-                contract_id: values.contract_id || null,
-                client_id: values.client_id || null,
-              })
-              const refreshed = await getAssets()
-              setAssets(
-                refreshed.length > 0
-                  ? refreshed.map((item) => normalizeAsset(item as Record<string, unknown>))
-                  : [normalizeAsset(created as Record<string, unknown>)]
-              )
-            }}
-          />
+          <Button onClick={() => router.push("/equipamentos")}>
+            Novo Equipamento
+          </Button>
         </div>
       </div>
 

@@ -51,6 +51,7 @@ import type { ContractView } from "@/lib/mock-data"
 import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
 import { createContract, getContracts } from "@/lib/data/contracts"
+import { uploadDocumentFile } from "@/lib/data/documents"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -159,6 +160,19 @@ export function ContratosContent() {
     .reduce((sum, c) => sum + c.monthlyValue, 0)
 
   const getPublicContractUrl = (token: string) => `${window.location.origin}/cliente/contrato/${token}`
+
+  const generateContractNumber = (clientId: string, startDate: string) => {
+    const clientLabel = clientOptions.find((client) => client.value === clientId)?.label ?? "CLIENTE"
+    const safeClient = clientLabel
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toUpperCase()
+      .slice(0, 28) || "CLIENTE"
+    const safeDate = (startDate || new Date().toISOString().slice(0, 10)).replaceAll("-", "")
+    return `GATE-${safeClient}-${safeDate}`
+  }
 
   const handleCopyClientLink = async (contract: ContractWithPublicLink) => {
     const token = String((contract as Record<string, unknown>).public_access_token ?? "")
@@ -302,42 +316,15 @@ export function ContratosContent() {
               {
                 title: "Dados do contrato",
                 fields: [
-                  { name: "number", label: "Número do contrato", required: true },
                   { name: "start_date", label: "Data inicial", type: "date", required: true },
                   { name: "end_date", label: "Data final", type: "date" },
-                  { name: "due_day", label: "Dia de vencimento", type: "number" },
-                  { name: "notes", label: "Observações", type: "textarea" },
+                  { name: "due_date", label: "Data de vencimento", type: "date" },
                 ],
               },
               {
                 title: "Financeiro",
                 fields: [
                   { name: "monthly_value", label: "Valor mensal em R$", type: "money" },
-                  { name: "total_value", label: "Valor total em R$", type: "money" },
-                  { name: "installments_count", label: "Quantidade de parcelas", type: "number", required: true },
-                  { name: "entry_value", label: "Entrada em R$", type: "money" },
-                  {
-                    name: "payment_method",
-                    label: "Forma de pagamento",
-                    type: "select",
-                    options: [
-                      { label: "PIX", value: "PIX" },
-                      { label: "TED", value: "TED" },
-                      { label: "Boleto", value: "Boleto" },
-                      { label: "Cartão", value: "Cartao" },
-                      { label: "Dinheiro", value: "Dinheiro" },
-                    ],
-                  },
-                  { name: "cost_center_name", label: "Centro de custo/lucro" },
-                  { name: "dre_category_name", label: "Categoria DRE" },
-                ],
-              },
-              {
-                title: "Equipamentos vinculados",
-                fields: [
-                  { name: "equipment_id", label: "Equipamento selecionável" },
-                  { name: "equipment_quantity", label: "Quantidade", type: "number" },
-                  { name: "linked_asset_value", label: "Valor patrimonial vinculado", type: "money" },
                 ],
               },
               {
@@ -349,25 +336,40 @@ export function ContratosContent() {
                 ],
               },
             ]}
-            onSave={async (values) => {
+            onSave={async (values, files) => {
               const publicToken = crypto.randomUUID()
+              const contractNumber = generateContractNumber(values.client_id, values.start_date)
+              const dueDate = values.due_date ? new Date(`${values.due_date}T00:00:00`) : null
               const created = await createContract({
                 client_id: values.client_id,
-                contract_number: values.number,
+                contract_number: contractNumber,
                 type: values.type ?? "locacao",
                 status: values.status ?? "ativo",
                 start_date: values.start_date,
                 end_date: values.end_date || null,
-                due_day: toNumber(values.due_day),
+                due_day: dueDate ? dueDate.getDate() : null,
                 monthly_value: toNumber(values.monthly_value),
-                total_value: toNumber(values.total_value),
-                installments_count: toNumber(values.installments_count),
-                payment_method: values.payment_method || null,
+                total_value: toNumber(values.monthly_value),
+                installments_count: null,
+                payment_method: null,
                 notes: values.notes || null,
                 public_access_token: publicToken,
                 public_access_enabled: true,
                 public_access_created_at: new Date().toISOString(),
               })
+              const contractId = String((created as Record<string, unknown>).id ?? "")
+              for (const file of Object.values(files).filter(Boolean)) {
+                await uploadDocumentFile({
+                  bucket: "gate-contracts",
+                  file: file as File,
+                  folder: `contracts/${contractId}`,
+                  record: {
+                    contract_id: contractId,
+                    contract_number: contractNumber,
+                    category: "Contrato",
+                  },
+                })
+              }
               const createdContract = normalizeContract(created as Record<string, unknown>)
               const refreshed = await getContracts()
               const refreshedContracts = refreshed.map((item) => normalizeContract(item as Record<string, unknown>))

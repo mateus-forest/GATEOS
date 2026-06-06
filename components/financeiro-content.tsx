@@ -74,6 +74,8 @@ import { cashFlowData } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
+import { getClients } from "@/lib/data/clients"
+import { uploadDocumentFile } from "@/lib/data/documents"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
 import {
@@ -143,22 +145,22 @@ const initialLaunchForm: NewLaunchForm = {
   attachment: "Comprovante",
 }
 
-const parties: string[] = []
-
 function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => void }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<NewLaunchForm>(initialLaunchForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitError, setSubmitError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [selectOptions, setSelectOptions] = useState({
     dreCategories: [] as string[],
     costCenters: [] as string[],
     bankAccounts: [] as string[],
+    parties: [] as string[],
   })
 
   useEffect(() => {
-    getFinancialSelectOptions().then((options) => {
+    Promise.all([getFinancialSelectOptions(), getClients()]).then(([options, clients]) => {
       const label = (item: unknown) => {
         const record = item as Record<string, unknown>
         return String(record.name ?? record.nome ?? record.label ?? record.description ?? "")
@@ -167,6 +169,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
         dreCategories: options.dreCategories.map(label).filter(Boolean),
         costCenters: options.costCenters.map(label).filter(Boolean),
         bankAccounts: options.bankAccounts.map(label).filter(Boolean),
+        parties: [...clients.map(label).filter(Boolean), "Fornecedor manual"],
       })
     })
   }, [])
@@ -213,6 +216,17 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
         tags: form.tags,
         attachment_type: form.attachment,
       })
+      if (attachmentFile) {
+        await uploadDocumentFile({
+          bucket: "gate-documents",
+          file: attachmentFile,
+          folder: `financial/${String((created as Record<string, unknown>).id ?? "entry")}`,
+          record: {
+            financial_entry_id: String((created as Record<string, unknown>).id ?? ""),
+            category: form.attachment || "Comprovante",
+          },
+        })
+      }
       addDreLaunch({
         ...form,
         amount,
@@ -220,6 +234,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
       onCreated(normalizeFinancialEntry(created as Record<string, unknown>))
       toast.success("Lançamento salvo e DRE atualizado")
       setForm(initialLaunchForm)
+      setAttachmentFile(null)
       setErrors({})
       setOpen(false)
     } catch (error) {
@@ -285,10 +300,14 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
             {renderSelect("bankAccount", "Conta bancária", bankAccounts)}
             {renderSelect("dreCategory", "Categoria DRE", dreCategories)}
             {renderSelect("costCenter", "Centro de custo/lucro", costCenters)}
-            {renderSelect("party", "Cliente ou fornecedor", parties)}
+            {renderSelect("party", "Cliente ou fornecedor", selectOptions.parties)}
             {renderSelect("paymentMethod", "Forma de pagamento", paymentMethods)}
             {renderSelect("recurrence", "Recorrência", recurrenceOptions)}
-            {renderSelect("attachment", "Anexos", attachmentTypes)}
+            {renderSelect("attachment", "Tipo de anexo", attachmentTypes)}
+            <div className="grid gap-2">
+              <Label htmlFor="new-launch-file">Arquivo anexado</Label>
+              <Input id="new-launch-file" type="file" onChange={(event) => setAttachmentFile(event.target.files?.[0] ?? null)} />
+            </div>
             <div className="md:col-span-2">
               {renderInput("tags", "Tags")}
             </div>

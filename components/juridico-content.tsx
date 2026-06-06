@@ -54,6 +54,8 @@ import {
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildLegalReport } from "@/lib/reports/report-builders"
 import { createLegalCase, getLegalCases } from "@/lib/data/legal"
+import { getClients } from "@/lib/data/clients"
+import { getContracts } from "@/lib/data/contracts"
 import { formatCurrency } from "@/lib/utils"
 
 type CaseForm = {
@@ -173,7 +175,15 @@ function statusClass(status: string) {
   return "bg-amber-100 text-amber-700"
 }
 
-function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void | Promise<void> }) {
+function CaseFormDialog({
+  onCreate,
+  clientOptions,
+  contractOptions,
+}: {
+  onCreate: (caso: JuridicoCaso) => void | Promise<void>
+  clientOptions: string[]
+  contractOptions: string[]
+}) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CaseForm>(emptyForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -306,9 +316,8 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
             <DialogDescription>Cadastro para cobrança jurídica, acordos e ações.</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-2 md:grid-cols-3">
-            {select("cliente", "Cliente", clientesGate)}
-            {input("contrato", "Contrato vinculado")}
-            {input("parcelas", "Parcela(s) vinculada(s)")}
+            {select("cliente", "Cliente", clientOptions.length ? clientOptions : clientesGate)}
+            {select("contrato", "Contrato vinculado", contractOptions)}
             {input("processo", "Nº processo")}
             {select("responsavel", "Responsável interno", juridicoResponsaveis)}
             {input("advogado", "Advogado/escritório responsável")}
@@ -318,16 +327,8 @@ function CaseFormDialog({ onCreate }: { onCreate: (caso: JuridicoCaso) => void |
             {input("valorOriginal", "Valor original em aberto", "number")}
             {input("multa", "Multa", "number")}
             {input("juros", "Juros", "number")}
-            {input("desconto", "Desconto concedido", "number")}
-            {input("custas", "Custas judiciais", "number")}
-            {input("honorarios", "Honorários", "number")}
-            {input("valorNegociado", "Valor negociado", "number")}
             {input("dataEntrada", "Data de entrada no jurídico", "date")}
             {input("primeiroVencimento", "Primeiro vencimento/próximo prazo", "date")}
-            {select("parcelado", "Vai ser parcelado?", ["Sim", "Não"])}
-            {input("quantidadeParcelas", "Quantidade de parcelas", "number")}
-            {input("entrada", "Valor de entrada", "number")}
-            {select("formaPagamento", "Forma de pagamento", juridicoFormasPagamento)}
             <div className="rounded-lg border p-3">
               <p className="text-sm text-muted-foreground">Valor atualizado automático</p>
               <p className="text-xl font-bold">{formatCurrency(valorAtualizado)}</p>
@@ -477,11 +478,25 @@ export function JuridicoContent() {
   const [riscoFilter, setRiscoFilter] = useState("all")
   const [pagamentoFilter, setPagamentoFilter] = useState("all")
   const [selectedCase, setSelectedCase] = useState<JuridicoCaso | null>(null)
+  const [clientOptions, setClientOptions] = useState<string[]>([])
+  const [contractOptions, setContractOptions] = useState<string[]>([])
 
   useEffect(() => {
     getLegalCases().then((items) =>
       setCases(items.map((item) => normalizeLegalCase(item as Record<string, unknown>)))
     )
+    getClients().then((items) => {
+      setClientOptions(items.map((item) => {
+        const record = item as Record<string, unknown>
+        return String(record.name ?? record.nome_fantasia ?? record.razao_social ?? record.company_name ?? "")
+      }).filter(Boolean))
+    })
+    getContracts().then((items) => {
+      setContractOptions(items.map((item) => {
+        const record = item as Record<string, unknown>
+        return String(record.contract_number ?? record.number ?? record.numero ?? record.id ?? "")
+      }).filter(Boolean))
+    })
   }, [])
 
   const filteredCases = cases.filter((caso) => {
@@ -555,6 +570,8 @@ export function JuridicoContent() {
             Exportar
           </Button>
           <CaseFormDialog
+            clientOptions={clientOptions}
+            contractOptions={contractOptions}
             onCreate={async (caso) => {
               const created = await createLegalCase({
                 client_name: caso.cliente,

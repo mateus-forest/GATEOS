@@ -133,6 +133,35 @@ export async function updateRows<T>(
   return data as T
 }
 
+export async function deleteRows<T>(
+  table: string,
+  match: SupabaseRow,
+  fallback: T
+) {
+  void fallback
+  if (!isSupabaseConfigured()) {
+    throw new Error(`${table}: Supabase nao esta configurado. A exclusao nao foi executada.`)
+  }
+
+  const supabase = createSupabaseBrowserClient()
+  if (!supabase) {
+    throw new Error(`${table}: nao foi possivel iniciar a conexao com o Supabase.`)
+  }
+
+  let query = supabase.from(table).delete()
+  Object.entries(match).forEach(([key, value]) => {
+    query = query.eq(key, value)
+  })
+
+  const { data, error } = await query.select("*")
+  if (error) {
+    console.error(`[${table}] Falha ao excluir no Supabase`, error)
+    throw new Error(`${table}: falha ao excluir no Supabase. ${describeSupabaseError(error)}`)
+  }
+
+  return (data ?? fallback) as T
+}
+
 export async function callRpc<T>(
   name: string,
   args: SupabaseRow,

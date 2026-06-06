@@ -16,7 +16,6 @@ import {
   LogOut,
   Package,
   PieChart,
-  Receipt,
   Settings,
   TrendingUp,
   UserCircle,
@@ -50,7 +49,6 @@ const menuItems = [
       { icon: Users, label: "Clientes", href: "/clientes" },
       { icon: FileText, label: "Contratos", href: "/contratos" },
       { icon: Scale, label: "Jurídico", href: "/juridico" },
-      { icon: Receipt, label: "Parcelas", href: "/parcelas" },
     ],
   },
   {

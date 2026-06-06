@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CalendarCheck2, Download, FileSpreadsheet, History, Lock, RotateCcw } from "lucide-react"
+import { CalendarCheck2, Download, FileSpreadsheet, History, Lock, RotateCcw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -31,8 +31,9 @@ import {
   useDreLaunches,
   type DreLaunch,
 } from "@/lib/dre-store"
-import { exportCsv, exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
-import { buildDreReport } from "@/lib/reports/report-builders"
+import { exportCsv, exportExcelTable, exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builders"
+import { createDreManualAdjustment, deleteDreManualAdjustment } from "@/lib/data/dre"
 import { formatCurrency } from "@/lib/utils"
 
 const months = ["jan-26", "fev-26", "mar-26", "abr-26", "mai-26", "jun-26", "jul-26", "ago-26", "set-26", "out-26", "nov-26", "dez-26"]
@@ -284,7 +285,7 @@ export function DREContent() {
     setResponsible("Carlos Silva")
   }
 
-  const handleApplyAdjustment = () => {
+  const handleApplyAdjustment = async () => {
     if (!editTarget) return
     const parsedValue = Number(newValue.replace(",", "."))
     if (Number.isNaN(parsedValue)) {
@@ -292,9 +293,21 @@ export function DREContent() {
       return
     }
 
-    setAdjustments((current) => [
-      {
-        id: crypto.randomUUID(),
+    try {
+      const created = await createDreManualAdjustment({
+        category: editTarget.row.label,
+        month: editTarget.month,
+        month_index: editTarget.monthIndex,
+        previous_value: editTarget.currentValue,
+        new_value: parsedValue,
+        reason,
+        responsible,
+        adjustment_date: new Date().toISOString().slice(0, 10),
+      }) as Record<string, unknown>
+
+      setAdjustments((current) => [
+        {
+          id: String(created.id ?? crypto.randomUUID()),
         date: new Date().toLocaleDateString("pt-BR"),
         category: editTarget.row.label,
         month: editTarget.month,
@@ -303,11 +316,14 @@ export function DREContent() {
         newValue: parsedValue,
         reason,
         responsible,
-      },
-      ...current,
-    ])
-    setEditTarget(null)
-    toast.success("Ajuste manual aplicado ao DRE")
+        },
+        ...current,
+      ])
+      setEditTarget(null)
+      toast.success("Ajuste manual aplicado ao DRE")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel salvar o ajuste manual.")
+    }
   }
 
   const handleReopenForEdit = () => {
@@ -320,30 +336,53 @@ export function DREContent() {
   }
 
   const exportDreRows = (filename: string) =>
-    exportCsv(
-      filename,
-      rows
+    exportExcelTable({
+      filename: filename.replace(/\.csv$/i, ".xls"),
+      title: "DRE Gerencial",
+      metadata: [
+        ["Ano", year],
+        ["Mês em análise", closingMonth],
+        ["Data de emissão", new Date().toLocaleDateString("pt-BR")],
+      ],
+      columns: ["Conta", ...months, "Total"],
+      rows: rows
         .filter((row) => row.kind !== "spacer")
-        .map((row) => ({
-          conta: row.label,
-          ...Object.fromEntries(months.map((month, index) => [month, renderValue(row, index)])),
-          total: row.kind === "percent" || row.kind === "section" ? "" : sum(row.values ?? empty),
-        }))
-    )
+        .map((row) => [
+          row.label,
+          ...months.map((_, index) => renderValue(row, index)),
+          row.kind === "percent" || row.kind === "section" ? "" : formatCurrency(sum(row.values ?? empty)),
+        ]),
+    })
 
   const exportClosingRows = () =>
-    exportCsv("gate-dre-fechamento.csv", [
-      { indicador: "Mes", valor: closingMonth },
-      { indicador: "Status", valor: isClosed ? "Fechado" : "Em conferencia" },
-      { indicador: "Receita do mes", valor: receitaTotal[monthIndex] },
-      { indicador: "Despesas do mes", valor: despesasOperacionais[monthIndex] },
-      { indicador: "Lucro operacional", valor: lucroOperacional[monthIndex] },
-      { indicador: "Resultado operacional", valor: resultado[monthIndex] },
-      { indicador: "Saldo anterior", valor: saldoAnterior[monthIndex] },
-      { indicador: "Saldo operacao", valor: saldoOperacao[monthIndex] },
-      { indicador: "Saldo banco", valor: saldoBanco[monthIndex] },
-      { indicador: "Diferenca", valor: diferenca[monthIndex] },
-    ])
+    exportPdfReport(buildGenericReport({
+      title: `Fechamento DRE ${closingMonth}`,
+      subtitle: "DRE Gerencial",
+      description: "Resumo do fechamento mensal do DRE.",
+      rows: [
+        { indicador: "Mês", valor: closingMonth },
+        { indicador: "Status", valor: isClosed ? "Fechado" : "Em conferência" },
+        { indicador: "Receita do mês", valor: formatCurrency(receitaTotal[monthIndex]) },
+        { indicador: "Despesas do mês", valor: formatCurrency(despesasOperacionais[monthIndex]) },
+        { indicador: "Lucro operacional", valor: formatCurrency(lucroOperacional[monthIndex]) },
+        { indicador: "Resultado operacional", valor: formatCurrency(resultado[monthIndex]) },
+        { indicador: "Saldo anterior", valor: formatCurrency(saldoAnterior[monthIndex]) },
+        { indicador: "Saldo operação", valor: formatCurrency(saldoOperacao[monthIndex]) },
+        { indicador: "Saldo banco", valor: formatCurrency(saldoBanco[monthIndex]) },
+        { indicador: "Diferença", valor: formatCurrency(diferenca[monthIndex]) },
+      ],
+    }))
+
+  const handleDeleteAdjustment = async (adjustment: ManualAdjustment) => {
+    if (!window.confirm(`Excluir ajuste de ${adjustment.category} em ${adjustment.month}?`)) return
+    try {
+      await deleteDreManualAdjustment(adjustment.id)
+      setAdjustments((current) => current.filter((item) => item.id !== adjustment.id))
+      toast.success("Ajuste manual excluido.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel excluir o ajuste.")
+    }
+  }
 
   const exportDrePdf = () =>
     exportPdfReport(buildDreReport(
@@ -688,12 +727,13 @@ export function DREContent() {
                   <th className="px-3 py-2 text-right">Novo</th>
                   <th className="px-3 py-2 text-left">Motivo</th>
                   <th className="px-3 py-2 text-left">Responsavel</th>
+                  <th className="px-3 py-2 text-right">Acao</th>
                 </tr>
               </thead>
               <tbody>
                 {adjustments.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
                       Nenhum ajuste manual registrado.
                     </td>
                   </tr>
@@ -707,6 +747,11 @@ export function DREContent() {
                       <td className="px-3 py-2 text-right">{formatCurrency(adjustment.newValue)}</td>
                       <td className="px-3 py-2">{adjustment.reason || "-"}</td>
                       <td className="px-3 py-2">{adjustment.responsible}</td>
+                      <td className="px-3 py-2 text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteAdjustment(adjustment)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </td>
                     </tr>
                   ))
                 )}
