@@ -19,7 +19,7 @@ export default async function ClienteDetalhePage({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">{client.name}</h1>
-            <p className="text-muted-foreground">Detalhes mockados do cliente</p>
+            <p className="text-muted-foreground">Detalhes do cliente</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline">Editar</Button>

@@ -21,7 +21,7 @@ export default async function ContratoDetalhePage({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">{contract.number}</h1>
-            <p className="text-muted-foreground">Detalhes mockados do contrato</p>
+            <p className="text-muted-foreground">Detalhes do contrato</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline">Renegociar</Button>
