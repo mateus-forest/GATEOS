@@ -169,7 +169,7 @@ export function AnaliseContent() {
             </CardHeader>
             <CardContent>
               <div className="h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <AreaChart data={filteredReceitaData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
@@ -246,7 +246,7 @@ export function AnaliseContent() {
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <RePieChart>
                       <Pie
                         data={categoriaReceitaData}
@@ -310,7 +310,7 @@ export function AnaliseContent() {
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <RadarChart data={performanceData}>
                       <PolarGrid stroke="hsl(var(--border))" />
                       <PolarAngleAxis dataKey="subject" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
@@ -330,7 +330,7 @@ export function AnaliseContent() {
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <BarChart data={[
                       { mes: "Jan", meta: 130000, realizado: 125000 },
                       { mes: "Fev", meta: 135000, realizado: 138000 },

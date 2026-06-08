@@ -70,7 +70,6 @@ import {
   LineChart,
   Line,
 } from "recharts"
-import { cashFlowData } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
@@ -79,20 +78,13 @@ import { uploadDocumentFile } from "@/lib/data/documents"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
 import {
-  addDreLaunch,
   attachmentTypes,
-  bankAccounts,
-  costCenters,
-  dreCategories,
   launchStatuses,
   launchTypes,
   paymentMethods,
   recurrenceOptions,
-  useDreLaunches,
   type DreLaunch,
 } from "@/lib/dre-store"
-
-const monthlyData: Array<{ month: string; receitas: number; despesas: number }> = []
 
 const bankConnections = [
   { name: "Banco Itaú CNPJ", balance: 0, status: "Pendente", lastSync: "Sem sincronização" },
@@ -227,10 +219,6 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
           },
         })
       }
-      addDreLaunch({
-        ...form,
-        amount,
-      })
       onCreated(normalizeFinancialEntry(created as Record<string, unknown>))
       toast.success("Lançamento salvo e DRE atualizado")
       setForm(initialLaunchForm)
@@ -297,9 +285,9 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
             {renderInput("competenceDate", "Data de competência", "date")}
             {renderInput("dueDate", "Data de vencimento", "date")}
             {renderInput("paymentDate", "Data de pagamento", "date")}
-            {renderSelect("bankAccount", "Conta bancária", bankAccounts)}
-            {renderSelect("dreCategory", "Categoria DRE", dreCategories)}
-            {renderSelect("costCenter", "Centro de custo/lucro", costCenters)}
+            {renderSelect("bankAccount", "Conta bancária", selectOptions.bankAccounts)}
+            {renderSelect("dreCategory", "Categoria DRE", selectOptions.dreCategories)}
+            {renderSelect("costCenter", "Centro de custo/lucro", selectOptions.costCenters)}
             {renderSelect("party", "Cliente ou fornecedor", selectOptions.parties)}
             {renderSelect("paymentMethod", "Forma de pagamento", paymentMethods)}
             {renderSelect("recurrence", "Recorrência", recurrenceOptions)}
@@ -332,23 +320,32 @@ export function FinanceiroContent() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [financialEntries, setFinancialEntries] = useState<TransactionRow[]>([])
-  const dreLaunches = useDreLaunches()
 
   useEffect(() => {
     getFinancialEntries().then((items) =>
       setFinancialEntries(items.map((item) => normalizeFinancialEntry(item as Record<string, unknown>)))
     )
   }, [])
-  const mockTransactions = dreLaunches.map((launch) => ({
-    id: launch.id,
-    type: launch.type === "Receita" || launch.type === "Aporte" ? "income" : "expense",
-    category: launch.dreCategory,
-    description: launch.description,
-    amount: launch.amount,
-    date: launch.competenceDate,
-    status: launch.status === "Cancelado" ? "cancelled" : launch.status.includes("pagar") || launch.status.includes("receber") ? "pending" : "completed",
-  }))
-  const allTransactions = [...mockTransactions, ...financialEntries]
+  const allTransactions = financialEntries
+  const chartRows = allTransactions.reduce((acc, transaction) => {
+    const month = transaction.date ? transaction.date.slice(0, 7) : "Sem data"
+    const current = acc.get(month) ?? { month, receitas: 0, despesas: 0, balance: 0 }
+    if (transaction.type === "income") {
+      current.receitas += transaction.amount
+      current.balance += transaction.amount
+    } else {
+      current.despesas += transaction.amount
+      current.balance -= transaction.amount
+    }
+    acc.set(month, current)
+    return acc
+  }, new Map<string, { month: string; receitas: number; despesas: number; balance: number }>())
+  const monthlyData = Array.from(chartRows.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-12)
+  const cashFlowData = monthlyData.reduce((items, item) => {
+    const previous = items.at(-1)?.balance ?? 0
+    items.push({ date: item.month, balance: previous + item.balance })
+    return items
+  }, [] as Array<{ date: string; balance: number }>)
 
   const filteredTransactions = allTransactions.filter((t) => {
     const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -365,6 +362,9 @@ export function FinanceiroContent() {
   const totalDespesas = allTransactions
     .filter((t) => t.type === "expense" && t.status === "completed")
     .reduce((sum, t) => sum + t.amount, 0)
+  const pendingReceivables = allTransactions.filter((t) => t.type === "income" && t.status === "pending")
+  const pendingPayables = allTransactions.filter((t) => t.type === "expense" && t.status === "pending")
+  const pendingReceivableAmount = pendingReceivables.reduce((sum, t) => sum + t.amount, 0)
 
   const saldo = totalReceitas - totalDespesas
 
@@ -421,7 +421,7 @@ export function FinanceiroContent() {
             </div>
             <div className="flex items-center gap-1 mt-2 text-sm text-emerald-600">
               <TrendingUp className="h-4 w-4" />
-              +12.5% vs. mês anterior
+              Base financial_entries
             </div>
           </CardContent>
         </Card>
@@ -439,7 +439,7 @@ export function FinanceiroContent() {
             </div>
             <div className="flex items-center gap-1 mt-2 text-sm text-red-600">
               <TrendingUp className="h-4 w-4" />
-              +8.2% vs. mês anterior
+              Base financial_entries
             </div>
           </CardContent>
         </Card>
@@ -458,7 +458,7 @@ export function FinanceiroContent() {
               </div>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Margem: {((saldo / totalReceitas) * 100).toFixed(1)}%
+              Margem: {totalReceitas > 0 ? ((saldo / totalReceitas) * 100).toFixed(1) : "0.0"}%
             </p>
           </CardContent>
         </Card>
@@ -468,14 +468,14 @@ export function FinanceiroContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">A Receber</p>
-                <p className="text-2xl font-bold">{formatCurrency(0)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(pendingReceivableAmount)}</p>
               </div>
               <div className="p-3 rounded-xl bg-amber-100">
                 <CreditCard className="h-6 w-6 text-amber-600" />
               </div>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              0 faturas pendentes
+              {pendingReceivables.length} faturas pendentes
             </p>
           </CardContent>
         </Card>
@@ -669,7 +669,7 @@ export function FinanceiroContent() {
               </CardHeader>
               <CardContent>
                 <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <BarChart data={monthlyData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="month" tick={{ fill: "hsl(var(--muted-foreground))" }} />
@@ -697,7 +697,7 @@ export function FinanceiroContent() {
               </CardHeader>
               <CardContent>
                 <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <LineChart data={cashFlowData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))" }} />
@@ -735,16 +735,16 @@ export function FinanceiroContent() {
                     <CardTitle className="text-emerald-600">Contas a Receber</CardTitle>
                     <CardDescription>Próximos vencimentos</CardDescription>
                   </div>
-                  <Badge className="bg-emerald-100 text-emerald-700">12 pendentes</Badge>
+                  <Badge className="bg-emerald-100 text-emerald-700">{pendingReceivables.length} pendentes</Badge>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {([] as Array<{ client: string; amount: number; dueDate: string }>).map((item, i) => (
+                  {pendingReceivables.map((item, i) => (
                     <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div>
-                        <p className="font-medium">{item.client}</p>
-                        <p className="text-sm text-muted-foreground">Vence em {item.dueDate}</p>
+                        <p className="font-medium">{item.description}</p>
+                        <p className="text-sm text-muted-foreground">Vence em {formatDate(item.date)}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-emerald-600">{formatCurrency(item.amount)}</p>
@@ -765,16 +765,16 @@ export function FinanceiroContent() {
                     <CardTitle className="text-red-600">Contas a Pagar</CardTitle>
                     <CardDescription>Próximos vencimentos</CardDescription>
                   </div>
-                  <Badge className="bg-red-100 text-red-700">8 pendentes</Badge>
+                  <Badge className="bg-red-100 text-red-700">{pendingPayables.length} pendentes</Badge>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {([] as Array<{ supplier: string; amount: number; dueDate: string }>).map((item, i) => (
+                  {pendingPayables.map((item, i) => (
                     <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div>
-                        <p className="font-medium">{item.supplier}</p>
-                        <p className="text-sm text-muted-foreground">Vence em {item.dueDate}</p>
+                        <p className="font-medium">{item.description}</p>
+                        <p className="text-sm text-muted-foreground">Vence em {formatDate(item.date)}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-red-600">{formatCurrency(item.amount)}</p>

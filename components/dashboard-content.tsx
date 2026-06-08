@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   TrendingUp,
@@ -46,10 +47,27 @@ import {
   Pie,
   Cell,
 } from "recharts"
-import { revenueData, contractsByStatus, recentActivities, upcomingPayments } from "@/lib/mock-data"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildDashboardReport } from "@/lib/reports/report-builders"
 import { formatCurrency } from "@/lib/utils"
+import {
+  getAssetsSummary,
+  getBankBalances,
+  getContractsSummary,
+  getDashboardFinancial,
+  getDashboardNotifications,
+  getEquipmentSummary,
+  getLegalSummary,
+  getOverdueInstallmentsSummary,
+  getProfitDistribution,
+} from "@/lib/data/dashboard"
+import { getClients } from "@/lib/data/clients"
+import { getContracts } from "@/lib/data/contracts"
+import { getDreMonthly } from "@/lib/data/dre"
+import { getEquipment } from "@/lib/data/equipment"
+import { getFinancialEntries } from "@/lib/data/financial"
+import { getInstallments } from "@/lib/data/installments"
+import { getMaintenanceOrders } from "@/lib/data/maintenance"
 
 const COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6"]
 
@@ -81,6 +99,46 @@ const carlosReceivable = distributableResult * 0.65
 const renanReceivable = distributableResult * 0.35
 const totalDistributed = carlosReceivable + renanReceivable + profitDistribution.mateusFixed + mateusShare
 const retainedProfit = distributableResult - totalDistributed
+
+type Row = Record<string, unknown>
+type RevenuePoint = { month: string; revenue: number; target: number }
+type StatusPoint = { name: string; value: number }
+type Activity = { id: string; type: string; title: string; description: string; time: string; status: string }
+type Payment = { id: string; client: string; dueDate: string; amount: number; status: string }
+
+function asRows(value: unknown): Row[] {
+  return Array.isArray(value) ? (value as Row[]) : []
+}
+
+function num(row: Row | undefined, keys: string[], fallback = 0) {
+  if (!row) return fallback
+  for (const key of keys) {
+    const value = row[key]
+    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value)
+  }
+  return fallback
+}
+
+function text(row: Row | undefined, keys: string[], fallback = "") {
+  if (!row) return fallback
+  for (const key of keys) {
+    const value = row[key]
+    if (value !== null && value !== undefined && String(value).trim() !== "") return String(value)
+  }
+  return fallback
+}
+
+function isCurrentMonth(value: unknown) {
+  if (!value) return false
+  const date = new Date(String(value))
+  const now = new Date()
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+}
+
+function sumRows(rows: Row[], amountKeys: string[], predicate: (row: Row) => boolean) {
+  return rows.filter(predicate).reduce((sum, row) => sum + num(row, amountKeys), 0)
+}
 
 function MetricCard({
   title,
@@ -135,7 +193,7 @@ function MetricCard({
   )
 }
 
-function ActivityItem({ activity }: { activity: typeof recentActivities[0] }) {
+function ActivityItem({ activity }: { activity: Activity }) {
   const getIcon = () => {
     switch (activity.type) {
       case "contract":
@@ -178,18 +236,298 @@ function ActivityItem({ activity }: { activity: typeof recentActivities[0] }) {
 
 export function DashboardContent() {
   const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [dashboardError, setDashboardError] = useState("")
+  const [data, setData] = useState({
+    financialSummary: [] as Row[],
+    bankBalanceRows: [] as Row[],
+    contractSummaryRows: [] as Row[],
+    overdueRows: [] as Row[],
+    assetSummaryRows: [] as Row[],
+    equipmentSummaryRows: [] as Row[],
+    legalSummaryRows: [] as Row[],
+    profitRows: [] as Row[],
+    notifications: [] as Row[],
+    clients: [] as Row[],
+    contracts: [] as Row[],
+    dreRows: [] as Row[],
+    equipment: [] as Row[],
+    financialEntries: [] as Row[],
+    installments: [] as Row[],
+    maintenanceOrders: [] as Row[],
+  })
+
+  useEffect(() => {
+    let active = true
+
+    async function loadDashboardData() {
+      setLoading(true)
+      setDashboardError("")
+      try {
+        const [
+          financialSummary,
+          bankBalanceRows,
+          contractSummaryRows,
+          overdueRows,
+          assetSummaryRows,
+          equipmentSummaryRows,
+          legalSummaryRows,
+          profitRows,
+          notifications,
+          clients,
+          contracts,
+          dreRows,
+          equipment,
+          financialEntries,
+          installments,
+          maintenanceOrders,
+        ] = await Promise.all([
+          getDashboardFinancial(),
+          getBankBalances(),
+          getContractsSummary(),
+          getOverdueInstallmentsSummary(),
+          getAssetsSummary(),
+          getEquipmentSummary(),
+          getLegalSummary(),
+          getProfitDistribution(),
+          getDashboardNotifications(),
+          getClients(),
+          getContracts(),
+          getDreMonthly(),
+          getEquipment(),
+          getFinancialEntries(),
+          getInstallments(),
+          getMaintenanceOrders(),
+        ])
+
+        if (!active) return
+        setData({
+          financialSummary: asRows(financialSummary),
+          bankBalanceRows: asRows(bankBalanceRows),
+          contractSummaryRows: asRows(contractSummaryRows),
+          overdueRows: asRows(overdueRows),
+          assetSummaryRows: asRows(assetSummaryRows),
+          equipmentSummaryRows: asRows(equipmentSummaryRows),
+          legalSummaryRows: asRows(legalSummaryRows),
+          profitRows: asRows(profitRows),
+          notifications: asRows(notifications),
+          clients: asRows(clients),
+          contracts: asRows(contracts),
+          dreRows: asRows(dreRows),
+          equipment: asRows(equipment),
+          financialEntries: asRows(financialEntries),
+          installments: asRows(installments),
+          maintenanceOrders: asRows(maintenanceOrders),
+        })
+      } catch (error) {
+        if (!active) return
+        setDashboardError(error instanceof Error ? error.message : "Nao foi possivel carregar o dashboard.")
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadDashboardData()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const dashboard = useMemo(() => {
+    const financial = data.financialSummary[0]
+    const legal = data.legalSummaryRows[0]
+    const equipmentSummary = data.equipmentSummaryRows[0]
+    const assetSummary = data.assetSummaryRows[0]
+    const profit = data.profitRows[0]
+    const currentMonthRevenueFromEntries = sumRows(
+      data.financialEntries,
+      ["amount", "valor", "value"],
+      (row) =>
+        isCurrentMonth(row.competence_date ?? row.due_date ?? row.date ?? row.created_at) &&
+        ["receita", "income", "entrada"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase())
+    )
+    const currentMonthExpensesFromEntries = sumRows(
+      data.financialEntries,
+      ["amount", "valor", "value"],
+      (row) =>
+        isCurrentMonth(row.competence_date ?? row.due_date ?? row.date ?? row.created_at) &&
+        ["despesa", "expense", "saida"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase())
+    )
+    const activeContractsFromTable = data.contracts.filter((row) =>
+      ["ativo", "active"].includes(text(row, ["status"]).toLowerCase())
+    )
+    const overdueAmount = data.overdueRows.length
+      ? sumRows(data.overdueRows, ["amount", "valor", "value", "total_amount"], () => true)
+      : sumRows(
+          data.installments,
+          ["amount", "valor", "value"],
+          (row) => {
+            const dueDate = new Date(String(row.due_date ?? row.vencimento ?? ""))
+            return Boolean(row.due_date ?? row.vencimento) && dueDate < new Date() && !row.paid_at && !row.payment_date
+          }
+        )
+    const receivableAmount = sumRows(
+      data.installments,
+      ["amount", "valor", "value"],
+      (row) => !row.paid_at && !row.payment_date
+    )
+    const bankBalances = data.bankBalanceRows.map((row, index) => ({
+      name: text(row, ["name", "account_name", "bank_name", "description"], `Conta ${index + 1}`),
+      amount: num(row, ["balance", "amount", "saldo", "current_balance"]),
+    }))
+    const revenueData: RevenuePoint[] = data.dreRows.slice(-12).map((row) => ({
+      month: text(row, ["month", "reference_month", "competence_month", "mes"], "-"),
+      revenue: num(row, ["revenue", "gross_revenue", "receita", "receita_total"]),
+      target: num(row, ["target", "meta", "revenue_target"], num(row, ["revenue", "gross_revenue", "receita", "receita_total"])),
+    }))
+    const statusCounts = new Map<string, number>()
+    data.contracts.forEach((row) => {
+      const status = text(row, ["status"], "Sem status")
+      statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1)
+    })
+    const contractsByStatus: StatusPoint[] = Array.from(statusCounts.entries()).map(([name, value]) => ({ name, value }))
+    const recentActivities: Activity[] = data.notifications.slice(0, 6).map((row, index) => ({
+      id: text(row, ["id"], String(index)),
+      type: text(row, ["type", "tipo"], "notification"),
+      title: text(row, ["title", "titulo"], "Notificacao"),
+      description: text(row, ["message", "description", "mensagem"], ""),
+      time: text(row, ["time", "created_at", "createdAt"], ""),
+      status: text(row, ["status", "severity"], "info"),
+    }))
+    const today = new Date()
+    const sevenDays = new Date()
+    sevenDays.setDate(today.getDate() + 7)
+    const upcomingPayments: Payment[] = data.installments
+      .filter((row) => {
+        const due = new Date(String(row.due_date ?? row.vencimento ?? ""))
+        return Boolean(row.due_date ?? row.vencimento) && due >= today && due <= sevenDays && !row.paid_at && !row.payment_date
+      })
+      .slice(0, 5)
+      .map((row, index) => ({
+        id: text(row, ["id"], String(index)),
+        client: text(row, ["client_name", "cliente", "client"], "Cliente nao informado"),
+        dueDate: text(row, ["due_date", "vencimento"], "-"),
+        amount: num(row, ["amount", "valor", "value"]),
+        status: text(row, ["status"], "pending"),
+      }))
+    const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
+    const monthlyRevenue = num(financial, ["monthly_revenue", "revenue_month", "revenue", "receita_mensal"], currentMonthRevenueFromEntries)
+    const monthlyExpenses = num(financial, ["monthly_expenses", "expenses_month", "expenses", "despesas_mensais"], currentMonthExpensesFromEntries)
+    const profitDistribution = {
+      revenue: num(profit, ["revenue", "receita"], monthlyRevenue),
+      costs: num(profit, ["costs", "expenses", "custos", "despesas"], monthlyExpenses),
+      mateusFixed: num(profit, ["mateus_fixed", "mateus_fixo"]),
+    }
+    const operatingProfit = num(financial, ["monthly_profit", "profit_month", "profit", "lucro_mensal"], profitDistribution.revenue - profitDistribution.costs)
+    const distributableResult = Math.max(0, num(profit, ["distributable_result", "resultado_distribuivel"], operatingProfit))
+    const mateusShare = num(profit, ["mateus_share", "mateus_participation"], distributableResult * 0.08)
+    const carlosReceivable = num(profit, ["carlos_receivable", "carlos_a_receber"], distributableResult * 0.65)
+    const renanReceivable = num(profit, ["renan_receivable", "renan_a_receber"], distributableResult * 0.35)
+    const totalDistributed = num(
+      profit,
+      ["total_distributed", "total_distribuido"],
+      carlosReceivable + renanReceivable + profitDistribution.mateusFixed + mateusShare
+    )
+
+    return {
+      monthlyRevenue,
+      monthlyExpenses,
+      monthlyProfit: operatingProfit,
+      activeContracts: num(data.contractSummaryRows[0], ["active_contracts", "ativos"], activeContractsFromTable.length),
+      totalClients: data.clients.length,
+      totalEquipments: num(equipmentSummary, ["total_equipment", "total", "equipments"], data.equipment.length),
+      equipmentInMaintenance: num(
+        equipmentSummary,
+        ["in_maintenance", "maintenance_equipment", "maintenance", "em_manutencao"],
+        data.maintenanceOrders.filter((row) => !["closed", "concluido", "finalizado"].includes(text(row, ["status"]).toLowerCase())).length
+      ),
+      activeLegalCases: num(legal, ["active_cases", "casos_ativos"], 0),
+      legalCollectionValue: num(legal, ["collection_value", "total_in_collection", "valor_cobranca"], 0),
+      brokenAgreements: num(legal, ["broken_agreements", "acordos_quebrados"], 0),
+      agreementsDue: num(legal, ["agreements_due", "acordos_vencendo"], 0),
+      legalContracts: num(legal, ["legal_contracts", "contratos_juridico"], num(legal, ["active_cases", "casos_ativos"], 0)),
+      totalBankBalance,
+      bankBalances,
+      profitDistribution,
+      operatingProfit,
+      distributableResult,
+      mateusShare,
+      carlosReceivable,
+      renanReceivable,
+      totalDistributed,
+      retainedProfit: distributableResult - totalDistributed,
+      revenueData,
+      contractsByStatus,
+      recentActivities,
+      upcomingPayments,
+      renewalRate: data.contracts.length ? Math.round((activeContractsFromTable.length / data.contracts.length) * 100) : 0,
+      averageTicket: activeContractsFromTable.length
+        ? activeContractsFromTable.reduce((sum, row) => sum + num(row, ["monthly_value", "valor_mensal", "value"]), 0) / activeContractsFromTable.length
+        : 0,
+      delinquencyRate: receivableAmount > 0 ? Math.min(100, (overdueAmount / receivableAmount) * 100) : 0,
+      receivableAmount,
+      payableAmount: sumRows(
+        data.financialEntries,
+        ["amount", "valor", "value"],
+        (row) => ["despesa", "expense", "saida"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase()) && !row.paid_at && !row.payment_date
+      ),
+      assetsValue: num(assetSummary, ["total_value", "total_assets_value", "patrimonio", "asset_value"], 0),
+      expiringContracts: data.contracts.filter((row) => {
+        const endDate = new Date(String(row.end_date ?? row.data_fim ?? ""))
+        const limit = new Date()
+        limit.setDate(limit.getDate() + 30)
+        return Boolean(row.end_date ?? row.data_fim) && endDate >= new Date() && endDate <= limit
+      }).length,
+    }
+  }, [data])
+
+  const {
+    monthlyRevenue,
+    monthlyExpenses,
+    monthlyProfit,
+    activeContracts,
+    totalClients,
+    totalEquipments,
+    equipmentInMaintenance,
+    activeLegalCases,
+    legalCollectionValue,
+    brokenAgreements,
+    agreementsDue,
+    legalContracts,
+    totalBankBalance,
+    bankBalances,
+    profitDistribution,
+    operatingProfit,
+    distributableResult,
+    mateusShare,
+    carlosReceivable,
+    renanReceivable,
+    totalDistributed,
+    retainedProfit,
+    revenueData,
+    contractsByStatus,
+    recentActivities,
+    upcomingPayments,
+    renewalRate,
+    averageTicket,
+    delinquencyRate,
+    receivableAmount,
+    payableAmount,
+    assetsValue,
+    expiringContracts,
+  } = dashboard
 
   const handleExportReport = () => {
     exportPdfReport(buildDashboardReport([
-      { indicador: "Receita Mensal", valor: monthlyRevenue },
-      { indicador: "Contratos Ativos", valor: activeContracts },
-      { indicador: "Clientes", valor: totalClients },
-      { indicador: "Equipamentos", valor: totalEquipments },
-      { indicador: "Saldo total consolidado", valor: totalBankBalance },
-      { indicador: "Lucro operacional", valor: operatingProfit },
-      { indicador: "Resultado distribuivel", valor: distributableResult },
-      { indicador: "Total distribuido", valor: totalDistributed },
-      { indicador: "Lucro retido", valor: retainedProfit },
+      { indicador: "Receita Mensal", valor: dashboard.monthlyRevenue },
+      { indicador: "Contratos Ativos", valor: dashboard.activeContracts },
+      { indicador: "Clientes", valor: dashboard.totalClients },
+      { indicador: "Equipamentos", valor: dashboard.totalEquipments },
+      { indicador: "Saldo total consolidado", valor: dashboard.totalBankBalance },
+      { indicador: "Lucro operacional", valor: dashboard.operatingProfit },
+      { indicador: "Resultado distribuivel", valor: dashboard.distributableResult },
+      { indicador: "Total distribuido", valor: dashboard.totalDistributed },
+      { indicador: "Lucro retido", valor: dashboard.retainedProfit },
     ]))
   }
 
@@ -212,6 +550,12 @@ export function DashboardContent() {
         </div>
       </div>
 
+      {dashboardError && (
+        <Card className="border-destructive/30 bg-destructive/10">
+          <CardContent className="p-4 text-sm text-destructive">{dashboardError}</CardContent>
+        </Card>
+      )}
+
       {/* Alerts */}
       <Card className="border-amber-200 bg-amber-50/50">
         <CardContent className="p-4">
@@ -219,7 +563,7 @@ export function DashboardContent() {
             <AlertCircle className="h-5 w-5 text-amber-600" />
             <div className="flex-1">
               <p className="text-sm font-medium text-amber-800">
-                0 contratos vencem nos próximos 30 dias
+                {loading ? "Carregando contratos..." : `${expiringContracts} contratos vencem nos proximos 30 dias`}
               </p>
               <p className="text-xs text-amber-600">
                 Revise os contratos e inicie o processo de renovação
@@ -263,36 +607,61 @@ export function DashboardContent() {
         <MetricCard
           title="Receita Mensal"
           value={formatCurrency(monthlyRevenue)}
-          change="+12.5%"
-          changeType="positive"
+          change={formatCurrency(monthlyProfit)}
+          changeType={monthlyProfit >= 0 ? "positive" : "negative"}
           icon={DollarSign}
-          description="vs. mês anterior"
+          description="lucro mensal"
         />
         <MetricCard
           title="Contratos Ativos"
           value={activeContracts.toString()}
-          change="+8"
-          changeType="positive"
+          change={loading ? "..." : "real"}
+          changeType="neutral"
           icon={FileText}
-          description="novos este mês"
+          description="base Supabase"
         />
         <MetricCard
           title="Clientes"
           value={totalClients.toString()}
-          change="+3"
-          changeType="positive"
+          change={loading ? "..." : "real"}
+          changeType="neutral"
           icon={Users}
-          description="novos este mês"
+          description="base Supabase"
         />
         <MetricCard
           title="Equipamentos"
           value={totalEquipments.toString()}
-          change="-2%"
-          changeType="negative"
+          change={equipmentInMaintenance.toString()}
+          changeType={equipmentInMaintenance > 0 ? "negative" : "neutral"}
           icon={Package}
           description="em manutenção"
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Financeiro operacional</CardTitle>
+          <CardDescription>Indicadores derivados de views e tabelas financeiras</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            {[
+              ["Despesas mensais", formatCurrency(monthlyExpenses)],
+              ["Contas a receber", formatCurrency(receivableAmount)],
+              ["Contas a pagar", formatCurrency(payableAmount)],
+              ["MRR", formatCurrency(monthlyRevenue)],
+              ["ARR", formatCurrency(monthlyRevenue * 12)],
+              ["Inadimplencia", `${delinquencyRate.toFixed(1)}%`],
+              ["Patrimonio", formatCurrency(assetsValue)],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-1 font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
@@ -304,12 +673,18 @@ export function DashboardContent() {
             <CardDescription>Posição consolidada</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {bankBalances.map((balance) => (
-              <div key={balance.name} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-                <span className="text-sm text-muted-foreground">{balance.name}</span>
-                <span className="font-semibold">{formatCurrency(balance.amount)}</span>
-              </div>
-            ))}
+            {bankBalances.length > 0 ? (
+              bankBalances.map((balance) => (
+                <div key={balance.name} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                  <span className="text-sm text-muted-foreground">{balance.name}</span>
+                  <span className="font-semibold">{formatCurrency(balance.amount)}</span>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                Nenhum saldo bancario retornado por v_bank_balances.
+              </p>
+            )}
             <div className="flex items-center justify-between rounded-lg border p-3">
               <span className="font-medium">Saldo total consolidado</span>
               <span className="text-lg font-bold text-emerald-600">{formatCurrency(totalBankBalance)}</span>
@@ -372,8 +747,9 @@ export function DashboardContent() {
           </CardHeader>
           <CardContent>
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueData}>
+              {revenueData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <AreaChart data={revenueData}>
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#22B8CF" stopOpacity={0.3} />
@@ -404,8 +780,13 @@ export function DashboardContent() {
                     fill="url(#colorRevenue)"
                   />
                   <Line type="monotone" dataKey="target" stroke="#22C55E" strokeWidth={2} strokeDasharray="5 5" />
-                </AreaChart>
-              </ResponsiveContainer>
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground">
+                  Nenhuma linha retornada por v_dre_monthly.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -418,8 +799,9 @@ export function DashboardContent() {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+              {contractsByStatus.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <PieChart>
                   <Pie
                     data={contractsByStatus}
                     cx="50%"
@@ -440,8 +822,13 @@ export function DashboardContent() {
                       borderRadius: "8px",
                     }}
                   />
-                </PieChart>
-              </ResponsiveContainer>
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-lg bg-muted/40 text-sm text-muted-foreground">
+                  Nenhum contrato retornado para distribuir por status.
+                </div>
+              )}
             </div>
             <div className="space-y-2 mt-4">
               {contractsByStatus.map((item, index) => (
@@ -475,9 +862,13 @@ export function DashboardContent() {
           </CardHeader>
           <CardContent>
             <div className="divide-y">
-              {recentActivities.map((activity) => (
-                <ActivityItem key={activity.id} activity={activity} />
-              ))}
+              {recentActivities.length > 0 ? (
+                recentActivities.map((activity) => (
+                  <ActivityItem key={activity.id} activity={activity} />
+                ))
+              ) : (
+                <p className="py-4 text-sm text-muted-foreground">Nenhuma notificacao retornada pelo Supabase.</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -497,8 +888,9 @@ export function DashboardContent() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {upcomingPayments.map((payment) => (
-                <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              {upcomingPayments.length > 0 ? (
+                upcomingPayments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-primary/10 text-primary text-xs">
@@ -519,8 +911,13 @@ export function DashboardContent() {
                       {payment.status === "pending" ? "Pendente" : "Atrasado"}
                     </Badge>
                   </div>
-                </div>
-              ))}
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                  Nenhuma parcela vencendo nos proximos 7 dias.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -532,13 +929,13 @@ export function DashboardContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold">Taxa de Renovação</h3>
-              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">Excelente</Badge>
+              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">Base real</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-4xl font-bold">92%</span>
-              <span className="text-emerald-600 text-sm mb-1">+5% vs. ano passado</span>
+              <span className="text-4xl font-bold">{renewalRate}%</span>
+              <span className="text-emerald-600 text-sm mb-1">{activeContracts} ativos</span>
             </div>
-            <Progress value={92} className="h-2" />
+            <Progress value={renewalRate} className="h-2" />
           </CardContent>
         </Card>
 
@@ -549,8 +946,8 @@ export function DashboardContent() {
               <Badge variant="secondary">Mensal</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-4xl font-bold">{formatCurrency(8450)}</span>
-              <span className="text-emerald-600 text-sm mb-1">+8.2%</span>
+              <span className="text-4xl font-bold">{formatCurrency(averageTicket)}</span>
+              <span className="text-emerald-600 text-sm mb-1">{activeContracts} contratos</span>
             </div>
             <p className="text-xs text-muted-foreground">Baseado nos contratos ativos</p>
           </CardContent>
@@ -563,10 +960,10 @@ export function DashboardContent() {
               <Badge variant="secondary" className="bg-amber-100 text-amber-700">Atenção</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-4xl font-bold">3.2%</span>
-              <span className="text-destructive text-sm mb-1">+0.8% vs. mês anterior</span>
+              <span className="text-4xl font-bold">{delinquencyRate.toFixed(1)}%</span>
+              <span className="text-destructive text-sm mb-1">{formatCurrency(receivableAmount)}</span>
             </div>
-            <Progress value={3.2} max={10} className="h-2" />
+            <Progress value={delinquencyRate} max={100} className="h-2" />
           </CardContent>
         </Card>
       </div>

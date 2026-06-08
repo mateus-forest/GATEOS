@@ -1,0 +1,106 @@
+-- GATE OS - sugestoes da auditoria estrutural
+-- Data: 2026-06-08
+--
+-- NAO executar automaticamente.
+-- Revisar no Supabase SQL Editor e adaptar nomes de roles/claims antes de aplicar.
+-- Este arquivo evita senha fixa e nao cria usuario de Auth diretamente.
+
+-- 1. Usuario administrativo inicial
+-- Criar o usuario admin pelo painel Supabase Auth ou pela Admin API usando SERVICE_ROLE no backend/CLI.
+-- Depois vincular o usuario na tabela public.users, se a tabela for usada como perfil interno.
+--
+-- Exemplo apos criar o usuario em auth.users:
+-- insert into public.users (id, email, name, role, created_at)
+-- select id, email, coalesce(raw_user_meta_data->>'name', 'Administrador GATE'), 'admin', now()
+-- from auth.users
+-- where email = 'admin@gate.example'
+-- on conflict (id) do update set role = 'admin';
+
+-- 2. Buckets esperados
+-- A auditoria via anon key nao retornou os buckets gate-documents, gate-contracts e gate-legal.
+-- Criar somente se nao existirem.
+--
+-- insert into storage.buckets (id, name, public)
+-- values
+--   ('gate-documents', 'gate-documents', false),
+--   ('gate-contracts', 'gate-contracts', false),
+--   ('gate-legal', 'gate-legal', false)
+-- on conflict (id) do nothing;
+
+-- 3. RLS autenticado para tabelas operacionais
+-- Aplicar uma matriz minima por tabela depois de confirmar que todos os usuarios internos
+-- devem enxergar o mesmo escopo. Para multiempresa/roles, substituir using (auth.uid() is not null)
+-- por regra baseada em claims/perfil.
+--
+-- do $$
+-- declare
+--   table_name text;
+-- begin
+--   foreach table_name in array array[
+--     'users',
+--     'clients',
+--     'contracts',
+--     'contract_equipment',
+--     'installments',
+--     'financial_entries',
+--     'dre_categories',
+--     'cost_centers',
+--     'bank_accounts',
+--     'equipment',
+--     'assets',
+--     'maintenance_orders',
+--     'legal_cases',
+--     'legal_updates',
+--     'legal_agreement_installments',
+--     'documents',
+--     'partners',
+--     'partner_entries',
+--     'dre_monthly_closings',
+--     'dre_manual_adjustments',
+--     'notifications'
+--   ] loop
+--     execute format('alter table public.%I enable row level security', table_name);
+--     execute format('drop policy if exists gate_authenticated_select on public.%I', table_name);
+--     execute format('drop policy if exists gate_authenticated_insert on public.%I', table_name);
+--     execute format('drop policy if exists gate_authenticated_update on public.%I', table_name);
+--     execute format('drop policy if exists gate_authenticated_delete on public.%I', table_name);
+--     execute format('create policy gate_authenticated_select on public.%I for select to authenticated using (auth.uid() is not null)', table_name);
+--     execute format('create policy gate_authenticated_insert on public.%I for insert to authenticated with check (auth.uid() is not null)', table_name);
+--     execute format('create policy gate_authenticated_update on public.%I for update to authenticated using (auth.uid() is not null) with check (auth.uid() is not null)', table_name);
+--   end loop;
+-- end $$;
+
+-- 4. Deletes
+-- Habilitar delete apenas nas tabelas onde a tela realmente oferece exclusao.
+--
+-- create policy gate_authenticated_delete on public.dre_manual_adjustments
+--   for delete to authenticated using (auth.uid() is not null);
+--
+-- create policy gate_authenticated_delete on public.financial_entries
+--   for delete to authenticated using (auth.uid() is not null);
+
+-- 5. Storage policies
+-- Permitir upload/download apenas para usuarios autenticados internos.
+--
+-- create policy gate_storage_read on storage.objects
+--   for select to authenticated
+--   using (bucket_id in ('gate-documents', 'gate-contracts', 'gate-legal'));
+--
+-- create policy gate_storage_upload on storage.objects
+--   for insert to authenticated
+--   with check (bucket_id in ('gate-documents', 'gate-contracts', 'gate-legal'));
+--
+-- create policy gate_storage_update on storage.objects
+--   for update to authenticated
+--   using (bucket_id in ('gate-documents', 'gate-contracts', 'gate-legal'))
+--   with check (bucket_id in ('gate-documents', 'gate-contracts', 'gate-legal'));
+
+-- 6. Acesso publico por token de contrato
+-- Manter anon apenas para a rota publica /cliente/contrato/[token], nunca para o sistema interno.
+--
+-- create policy public_contract_read_by_enabled_token on public.contracts
+--   for select to anon
+--   using (public_access_enabled = true and public_access_token is not null);
+--
+-- Avaliar policies anon estritamente necessarias para leitura dos vinculos exibidos na pagina publica
+-- e insert de chamados publicos em maintenance_orders.

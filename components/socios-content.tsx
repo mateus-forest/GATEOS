@@ -196,7 +196,7 @@ export function SociosContent() {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <PieChart>
                   <Pie data={chartData} dataKey="value" innerRadius={52} outerRadius={82} paddingAngle={4}>
                     {chartData.map((entry, index) => (

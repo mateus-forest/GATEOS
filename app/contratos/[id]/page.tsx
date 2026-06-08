@@ -2,9 +2,29 @@ import { InternalLayout } from "@/components/internal-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { contracts } from "@/lib/mock-data"
-import { getJuridicoByContrato, getValorAtualizado } from "@/lib/juridico-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { createSupabaseServerClient } from "@/lib/supabase/server"
+
+type Row = Record<string, unknown>
+
+function text(row: Row | null, keys: string[], fallback = "-") {
+  if (!row) return fallback
+  for (const key of keys) {
+    const value = row[key]
+    if (value !== null && value !== undefined && String(value).trim() !== "") return String(value)
+  }
+  return fallback
+}
+
+function num(row: Row | null, keys: string[]) {
+  if (!row) return 0
+  for (const key of keys) {
+    const value = row[key]
+    if (typeof value === "number") return value
+    if (typeof value === "string" && Number.isFinite(Number(value))) return Number(value)
+  }
+  return 0
+}
 
 export default async function ContratoDetalhePage({
   params,
@@ -12,15 +32,20 @@ export default async function ContratoDetalhePage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const contract = contracts.find((item) => item.id === id) ?? contracts[0]
-  const juridico = getJuridicoByContrato(contract.number)
+  const supabase = await createSupabaseServerClient()
+  const { data: contract } = supabase
+    ? await supabase.from("v_contracts_summary").select("*").eq("id", id).maybeSingle()
+    : { data: null }
+  const { data: juridico } = supabase
+    ? await supabase.from("legal_cases").select("*").eq("contract_id", id).maybeSingle()
+    : { data: null }
 
   return (
     <InternalLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">{contract.number}</h1>
+            <h1 className="text-3xl font-bold">{text(contract, ["contract_number", "number"], "Contrato nao encontrado")}</h1>
             <p className="text-muted-foreground">Detalhes do contrato</p>
           </div>
           <div className="flex gap-2">
@@ -30,25 +55,25 @@ export default async function ContratoDetalhePage({
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>{contract.clientName}</CardTitle>
-            <CardDescription>{contract.description}</CardDescription>
+            <CardTitle>{text(contract, ["client_name", "clientName"])}</CardTitle>
+            <CardDescription>{text(contract, ["description", "notes"], "Contrato carregado do Supabase")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-4">
             <div>
               <p className="text-sm text-muted-foreground">Valor mensal</p>
-              <p className="font-medium">{formatCurrency(contract.monthlyValue)}</p>
+              <p className="font-medium">{formatCurrency(num(contract, ["monthly_value", "monthlyValue"]))}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Início</p>
-              <p className="font-medium">{formatDate(contract.startDate)}</p>
+              <p className="font-medium">{formatDate(text(contract, ["start_date", "startDate"], ""))}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Fim</p>
-              <p className="font-medium">{formatDate(contract.endDate)}</p>
+              <p className="font-medium">{formatDate(text(contract, ["end_date", "endDate"], ""))}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Status</p>
-              <Badge>{contract.status}</Badge>
+              <Badge>{text(contract, ["status"])}</Badge>
             </div>
           </CardContent>
         </Card>
@@ -62,23 +87,23 @@ export default async function ContratoDetalhePage({
               <>
                 <div>
                   <p className="text-sm text-muted-foreground">Status do caso</p>
-                  <Badge className="bg-red-100 text-red-700">{juridico.status}</Badge>
+                  <Badge className="bg-red-100 text-red-700">{text(juridico, ["status"])}</Badge>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Etapa</p>
-                  <p className="font-medium">{juridico.etapa}</p>
+                  <p className="font-medium">{text(juridico, ["stage", "etapa"])}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Valor atualizado</p>
-                  <p className="font-medium">{formatCurrency(getValorAtualizado(juridico))}</p>
+                  <p className="font-medium">{formatCurrency(num(juridico, ["updated_amount", "amount", "valor_atualizado"]))}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Próximo prazo</p>
-                  <p className="font-medium">{juridico.proximoPrazo}</p>
+                  <p className="font-medium">{text(juridico, ["next_deadline", "proximo_prazo"])}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Última atualização</p>
-                  <p className="font-medium">{juridico.ultimaAtualizacao}</p>
+                  <p className="font-medium">{text(juridico, ["updated_at", "ultima_atualizacao"])}</p>
                 </div>
               </>
             ) : (

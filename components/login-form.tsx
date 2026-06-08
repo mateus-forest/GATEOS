@@ -7,23 +7,42 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export function LoginForm() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    
-    // Simular login
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    
+    setErrorMessage("")
+
+    const supabase = createSupabaseBrowserClient()
+    if (!supabase) {
+      setErrorMessage("Supabase nao esta configurado. Configure as variaveis de ambiente antes de entrar.")
+      setIsLoading(false)
+      return
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+
+    if (error) {
+      setErrorMessage(error.message || "Credenciais invalidas.")
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(false)
-    router.push("/dashboard")
+    router.replace("/dashboard")
+    router.refresh()
   }
 
   return (
@@ -80,6 +99,12 @@ export function LoginForm() {
           Esqueci minha senha
         </Button>
       </div>
+
+      {errorMessage && (
+        <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {errorMessage}
+        </p>
+      )}
 
       <Button type="submit" className="w-full h-11" disabled={isLoading}>
         {isLoading ? (

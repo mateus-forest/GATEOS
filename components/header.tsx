@@ -31,10 +31,26 @@ import { getEquipment } from "@/lib/data/equipment"
 import { getFinancialEntries } from "@/lib/data/financial"
 import { getInstallments } from "@/lib/data/installments"
 import { getNotifications, markNotificationAsRead } from "@/lib/data/notifications"
-import { currentUser, notifications as emptyNotifications } from "@/lib/mock-data"
+import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 
 type SearchRecord = Record<string, unknown>
 type SearchItem = { label: string; description: string; href: string }
+type NotificationItem = Record<string, unknown> & {
+  id: string
+  read?: boolean
+  lida?: boolean
+  title?: string
+  message?: string
+  time?: string
+  link?: string
+}
+type SessionProfile = {
+  name: string
+  email: string
+  role: string
+  avatar?: string
+  cargo?: string
+}
 
 function text(value: unknown) {
   return String(value ?? "")
@@ -44,7 +60,12 @@ export function Header() {
   const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [notifications, setNotifications] = useState(emptyNotifications)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [profile, setProfile] = useState<SessionProfile>({
+    name: "Usuario GATE",
+    email: "",
+    role: "Usuario autenticado",
+  })
   const [searchData, setSearchData] = useState({
     clients: [] as SearchRecord[],
     contracts: [] as SearchRecord[],
@@ -55,7 +76,27 @@ export function Header() {
   })
 
   useEffect(() => {
-    getNotifications().then((items) => setNotifications(items as typeof emptyNotifications))
+    const supabase = createSupabaseBrowserClient()
+    supabase?.auth.getUser().then(({ data }) => {
+      const user = data.user
+      if (!user) return
+
+      const metadata = user.user_metadata ?? {}
+      const name =
+        String(metadata.full_name ?? metadata.name ?? "").trim() ||
+        user.email?.split("@")[0] ||
+        "Usuario GATE"
+
+      setProfile({
+        name,
+        email: user.email ?? "",
+        role: String(metadata.role ?? metadata.cargo ?? "Usuario autenticado"),
+        avatar: typeof metadata.avatar_url === "string" ? metadata.avatar_url : undefined,
+        cargo: String(metadata.cargo ?? metadata.role ?? "Usuario autenticado"),
+      })
+    })
+
+    getNotifications().then((items) => setNotifications(items as NotificationItem[]))
     Promise.all([
       getClients(),
       getContracts(),
@@ -151,7 +192,7 @@ export function Header() {
     router.push(href)
   }
 
-  const handleNotificationClick = async (notification: (typeof notifications)[0]) => {
+  const handleNotificationClick = async (notification: NotificationItem) => {
     await markNotificationAsRead(notification.id)
     setNotifications((current) =>
       current.map((item) => (item.id === notification.id ? { ...item, read: true, lida: true } : item))
@@ -159,10 +200,25 @@ export function Header() {
     handleNavigate(notification.link ?? "/dashboard")
   }
 
-  const initials = currentUser.name
+  const initials = profile.name
     .split(" ")
     .map((name) => name[0])
     .join("")
+    .slice(0, 2)
+    .toUpperCase()
+
+  const handleSignOut = async () => {
+    const supabase = createSupabaseBrowserClient()
+    const { error } = supabase ? await supabase.auth.signOut() : { error: null }
+    if (error) {
+      toast.error(error.message || "Nao foi possivel encerrar a sessao.")
+      return
+    }
+
+    toast.success("Sessao encerrada")
+    router.replace("/login")
+    router.refresh()
+  }
 
   return (
     <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">
@@ -253,12 +309,12 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={currentUser.avatar} />
+                <AvatarImage src={profile.avatar} />
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
               <div className="flex flex-col items-start">
-                <span className="text-sm font-medium">{currentUser.name}</span>
-                <span className="text-xs text-muted-foreground">{currentUser.role}</span>
+                <span className="text-sm font-medium">{profile.name}</span>
+                <span className="text-xs text-muted-foreground">{profile.role}</span>
               </div>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
@@ -277,10 +333,7 @@ export function Header() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => {
-                toast.success("Sessao encerrada")
-                router.push("/login")
-              }}
+              onClick={handleSignOut}
             >
               <LogOut className="mr-2 h-4 w-4" />
               Sair
@@ -297,13 +350,13 @@ export function Header() {
           </DialogHeader>
           <div className="flex items-center gap-4">
             <Avatar className="h-14 w-14">
-              <AvatarImage src={currentUser.avatar} />
+              <AvatarImage src={profile.avatar} />
               <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-semibold">{currentUser.name}</p>
-              <p className="text-sm text-muted-foreground">{currentUser.email}</p>
-              <p className="text-sm text-muted-foreground">{currentUser.cargo}</p>
+              <p className="font-semibold">{profile.name}</p>
+              <p className="text-sm text-muted-foreground">{profile.email}</p>
+              <p className="text-sm text-muted-foreground">{profile.cargo}</p>
             </div>
           </div>
         </DialogContent>
