@@ -178,15 +178,14 @@ export function ManutencoesContent() {
               {
                 title: "Vínculos",
                 fields: [
-                  { name: "equipment_id", label: "Equipamento", type: "select", required: true, options: relationshipOptions.equipment },
-                  { name: "client_id", label: "Cliente", type: "select", options: relationshipOptions.clients },
+                  { name: "client_id", label: "Cliente", type: "select", required: true, options: relationshipOptions.clients },
                   { name: "contract_id", label: "Contrato", type: "select", options: relationshipOptions.contracts },
+                  { name: "equipment_id", label: "Equipamento", type: "select", required: true, options: relationshipOptions.equipment },
                 ],
               },
               {
                 title: "Chamado",
                 fields: [
-                  { name: "ticket_number", label: "Número do ticket" },
                   {
                     name: "type",
                     label: "Tipo",
@@ -226,33 +225,13 @@ export function ManutencoesContent() {
               {
                 title: "Descrição",
                 fields: [
-                  { name: "problem", label: "Problema relatado", type: "textarea", required: true },
-                  { name: "diagnosis", label: "Diagnóstico", type: "textarea" },
-                  { name: "solution", label: "Solução", type: "textarea" },
+                  { name: "problem", label: "Descrição", type: "textarea", required: true },
                 ],
               },
               {
-                title: "Datas",
+                title: "Data prevista",
                 fields: [
-                  { name: "entry_date", label: "Data de entrada", type: "date" },
-                  { name: "expected_exit_date", label: "Data prevista de saída", type: "date" },
-                  { name: "completed_date", label: "Data de conclusão", type: "date" },
-                ],
-              },
-              {
-                title: "Custos",
-                fields: [
-                  { name: "cost", label: "Custo da manutenção em R$", type: "money" },
-                  { name: "technician", label: "Responsável / Técnico" },
-                ],
-              },
-              {
-                title: "Anexos",
-                fields: [
-                  { name: "photos", label: "Fotos", type: "file" },
-                  { name: "invoice", label: "Nota fiscal", type: "file" },
-                  { name: "receipt", label: "Comprovantes", type: "file" },
-                  { name: "technical_report", label: "Relatório técnico", type: "file" },
+                  { name: "expected_exit_date", label: "Data prevista", type: "date" },
                 ],
               },
             ]}
@@ -266,13 +245,9 @@ export function ManutencoesContent() {
                 priority: values.priority ?? "medium",
                 status: values.status ?? "open",
                 problem: values.problem ?? "",
-                diagnosis: values.diagnosis ?? "",
-                solution: values.solution ?? "",
-                entry_date: values.entry_date || null,
+                description: values.problem ?? "",
+                entry_date: new Date().toISOString().slice(0, 10),
                 expected_exit_date: values.expected_exit_date || null,
-                completed_date: values.completed_date || null,
-                cost: Number(values.cost ?? 0),
-                technician: values.technician ?? "",
               })
               const refreshed = await getMaintenanceOrders()
               setMaintenances(

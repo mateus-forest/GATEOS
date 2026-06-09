@@ -14,17 +14,21 @@ import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { featureInPreparation } from "@/lib/cta-actions"
 import { getDocuments, uploadDocumentFile } from "@/lib/data/documents"
+import { getClients } from "@/lib/data/clients"
+import { getContracts } from "@/lib/data/contracts"
 
-const documentos = [
-  { id: 1, nome: "Contrato Fribal 2024.pdf", tipo: "pdf", tamanho: "2.4 MB", categoria: "Contratos", cliente: "Fribal", dataUpload: "2024-01-15", usuario: "Admin" },
-  { id: 2, nome: "NF 001234 Janeiro.pdf", tipo: "pdf", tamanho: "156 KB", categoria: "Notas Fiscais", cliente: "Estacio Itapipoca", dataUpload: "2024-01-20", usuario: "Financeiro" },
-  { id: 3, nome: "Relatório Equipamentos Q1.xlsx", tipo: "xlsx", tamanho: "1.8 MB", categoria: "Relatórios", cliente: null, dataUpload: "2024-02-01", usuario: "Admin" },
-  { id: 4, nome: "Proposta Comercial Fortaleza.docx", tipo: "docx", tamanho: "890 KB", categoria: "Propostas", cliente: "Fortaleza Iguatemi", dataUpload: "2024-02-10", usuario: "Comercial" },
-  { id: 5, nome: "Termo de Entrega EQ-042.pdf", tipo: "pdf", tamanho: "320 KB", categoria: "Termos", cliente: "Rio de Janeiro", dataUpload: "2024-02-15", usuario: "Operações" },
-  { id: 6, nome: "Fotos Equipamento Server HP.zip", tipo: "zip", tamanho: "15.2 MB", categoria: "Imagens", cliente: null, dataUpload: "2024-02-18", usuario: "Técnico" },
-  { id: 7, nome: "Laudo Técnico Manutenção.pdf", tipo: "pdf", tamanho: "1.1 MB", categoria: "Laudos", cliente: "Serviços Delta", dataUpload: "2024-02-20", usuario: "Técnico" },
-  { id: 8, nome: "Planilha Controle Patrimônio.xlsx", tipo: "xlsx", tamanho: "3.2 MB", categoria: "Controles", cliente: null, dataUpload: "2024-02-22", usuario: "Admin" },
-]
+type DocumentoView = {
+  id: string
+  nome: string
+  tipo: string
+  tamanho: string
+  categoria: string
+  cliente: string | null
+  dataUpload: string
+  usuario: string
+}
+
+type SelectOption = { label: string; value: string }
 
 const categorias = ["Todos", "Contratos", "Notas Fiscais", "Relatórios", "Propostas", "Termos", "Imagens", "Laudos", "Controles"]
 
@@ -45,11 +49,15 @@ export function DocumentosContent() {
   const [visualizacao, setVisualizacao] = useState<"grid" | "list">("grid")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [documentName, setDocumentName] = useState("")
   const [documentType, setDocumentType] = useState("")
+  const [clientId, setClientId] = useState("")
+  const [contractId, setContractId] = useState("")
+  const [notes, setNotes] = useState("")
+  const [clientOptions, setClientOptions] = useState<SelectOption[]>([])
+  const [contractOptions, setContractOptions] = useState<SelectOption[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState("")
-  const [documentosAtuais, setDocumentosAtuais] = useState<typeof documentos>([])
+  const [documentosAtuais, setDocumentosAtuais] = useState<DocumentoView[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -68,6 +76,24 @@ export function DocumentosContent() {
         }
       }))
     })
+    getClients().then((items) => {
+      setClientOptions(items.map((item) => {
+        const record = item as Record<string, unknown>
+        return {
+          value: String(record.id ?? ""),
+          label: String(record.name ?? record.trade_name ?? record.company_name ?? record.id ?? ""),
+        }
+      }).filter((item) => item.value))
+    })
+    getContracts().then((items) => {
+      setContractOptions(items.map((item) => {
+        const record = item as Record<string, unknown>
+        return {
+          value: String(record.id ?? ""),
+          label: String(record.contract_number ?? record.number ?? record.id ?? ""),
+        }
+      }).filter((item) => item.value))
+    })
   }, [])
 
   const documentosFiltrados = documentosAtuais.filter(doc => {
@@ -79,8 +105,8 @@ export function DocumentosContent() {
 
   const estatisticas = {
     total: documentosAtuais.length,
-    tamanhoTotal: "24.9 MB",
-    ultimoUpload: "22/02/2024",
+    tamanhoTotal: `${documentosAtuais.reduce((sum, doc) => sum + (Number.parseInt(doc.tamanho) || 0), 0)} KB`,
+    ultimoUpload: documentosAtuais[0]?.dataUpload ? new Date(documentosAtuais[0].dataUpload).toLocaleDateString("pt-BR") : "-",
     porCategoria: categorias.slice(1).map(cat => ({
       nome: cat,
       quantidade: documentosAtuais.filter(d => d.categoria === cat).length
@@ -93,34 +119,33 @@ export function DocumentosContent() {
       setUploadError("Selecione pelo menos um arquivo.")
       return
     }
-    if (!documentName.trim()) {
-      setUploadError("Informe o nome do documento.")
-      return
-    }
     if (!documentType) {
       setUploadError("Selecione o tipo do documento.")
       return
     }
     setUploading(true)
     try {
-      const createdRecords: typeof documentos = []
+      const createdRecords: DocumentoView[] = []
       for (const file of selectedFiles) {
         const created = await uploadDocumentFile({
           bucket: "gate-documents",
           file,
           folder: "documents",
           record: {
-            name: documentName,
+            name: file.name,
             file_name: file.name,
             type: documentType,
             category: documentType,
             size: file.size,
+            client_id: clientId || null,
+            contract_id: contractId || null,
+            notes: notes || null,
           },
         })
         const record = created as Record<string, unknown>
         createdRecords.push({
           id: String(record.id ?? crypto.randomUUID()),
-          nome: documentName,
+          nome: file.name,
           tipo: documentType,
           tamanho: `${Math.round(file.size / 1024)} KB`,
           categoria: documentType,
@@ -132,8 +157,10 @@ export function DocumentosContent() {
       toast.success("Documento enviado com sucesso")
       setDocumentosAtuais((current) => [...createdRecords, ...current])
       setSelectedFiles([])
-      setDocumentName("")
       setDocumentType("")
+      setClientId("")
+      setContractId("")
+      setNotes("")
       setDialogOpen(false)
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Não foi possível enviar o documento.")
@@ -200,10 +227,6 @@ export function DocumentosContent() {
               </div>
               <div className="grid gap-4">
                 <div className="space-y-2">
-                  <Label>Nome do documento</Label>
-                  <Input value={documentName} onChange={(event) => setDocumentName(event.target.value)} />
-                </div>
-                <div className="space-y-2">
                   <Label>Tipo</Label>
                   <Select value={documentType} onValueChange={setDocumentType}>
                     <SelectTrigger>
@@ -218,20 +241,33 @@ export function DocumentosContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Cliente (opcional)</Label>
-                  <Select>
+                  <Select value={clientId} onValueChange={setClientId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Vincular a um cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="tech">Fribal</SelectItem>
-                      <SelectItem value="abc">Estacio Itapipoca</SelectItem>
-                      <SelectItem value="beta">Comércio Beta ME</SelectItem>
+                      {clientOptions.map((client) => (
+                        <SelectItem key={client.value} value={client.value}>{client.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Contrato (opcional)</Label>
+                  <Select value={contractId} onValueChange={setContractId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Vincular a um contrato" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contractOptions.map((contract) => (
+                        <SelectItem key={contract.value} value={contract.value}>{contract.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Observações</Label>
-                  <Input placeholder="Observações sobre o documento" />
+                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observações sobre o documento" />
                 </div>
                 {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               </div>
@@ -292,8 +328,8 @@ export function DocumentosContent() {
                 <User className="h-5 w-5 text-purple-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">5</p>
-                <p className="text-xs text-muted-foreground">Usuários ativos</p>
+                <p className="text-2xl font-bold text-foreground">{estatisticas.porCategoria.filter((item) => item.quantidade > 0).length}</p>
+                <p className="text-xs text-muted-foreground">Categorias usadas</p>
               </div>
             </div>
           </CardContent>

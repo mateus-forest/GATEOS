@@ -79,11 +79,8 @@ import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
 import {
   attachmentTypes,
-  launchStatuses,
   launchTypes,
   paymentMethods,
-  recurrenceOptions,
-  type DreLaunch,
 } from "@/lib/dre-store"
 
 const bankConnections = [
@@ -92,7 +89,20 @@ const bankConnections = [
   { name: "Caixa", balance: 0, status: "Manual", lastSync: "Sem sincronização" },
 ]
 
-type NewLaunchForm = Omit<DreLaunch, "id" | "amount"> & { amount: string }
+type SelectOption = { label: string; value: string }
+
+type NewLaunchForm = {
+  type: string
+  description: string
+  amount: string
+  dueDate: string
+  paymentDate: string
+  dreCategoryId: string
+  bankAccountId: string
+  clientId: string
+  paymentMethod: string
+  attachment: string
+}
 
 type TransactionRow = {
   id: string
@@ -121,19 +131,14 @@ function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow 
 
 const initialLaunchForm: NewLaunchForm = {
   type: "Receita",
-  status: "Recebido",
   description: "",
   amount: "",
-  competenceDate: "",
   dueDate: "",
   paymentDate: "",
-  bankAccount: "Banco Itaú CNPJ",
-  dreCategory: "",
-  costCenter: "",
-  party: "",
+  bankAccountId: "",
+  dreCategoryId: "",
+  clientId: "",
   paymentMethod: "PIX",
-  recurrence: "Não se repete",
-  tags: "",
   attachment: "Comprovante",
 }
 
@@ -145,23 +150,24 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
   const [saving, setSaving] = useState(false)
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [selectOptions, setSelectOptions] = useState({
-    dreCategories: [] as string[],
-    costCenters: [] as string[],
-    bankAccounts: [] as string[],
-    parties: [] as string[],
+    dreCategories: [] as SelectOption[],
+    bankAccounts: [] as SelectOption[],
+    clients: [] as SelectOption[],
   })
 
   useEffect(() => {
     Promise.all([getFinancialSelectOptions(), getClients()]).then(([options, clients]) => {
-      const label = (item: unknown) => {
+      const option = (item: unknown): SelectOption => {
         const record = item as Record<string, unknown>
-        return String(record.name ?? record.nome ?? record.label ?? record.description ?? "")
+        return {
+          label: String(record.name ?? record.nome ?? record.label ?? record.description ?? record.id ?? ""),
+          value: String(record.id ?? ""),
+        }
       }
       setSelectOptions({
-        dreCategories: options.dreCategories.map(label).filter(Boolean),
-        costCenters: options.costCenters.map(label).filter(Boolean),
-        bankAccounts: options.bankAccounts.map(label).filter(Boolean),
-        parties: [...clients.map(label).filter(Boolean), "Fornecedor manual"],
+        dreCategories: options.dreCategories.map(option).filter((item) => item.value),
+        bankAccounts: options.bankAccounts.map(option).filter((item) => item.value),
+        clients: clients.map(option).filter((item) => item.value),
       })
     })
   }, [])
@@ -177,9 +183,9 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
     if (!form.type) nextErrors.type = "Informe o tipo."
     if (!form.description.trim()) nextErrors.description = "Informe a descrição."
     if (!Number(form.amount.replace(",", "."))) nextErrors.amount = "Informe um valor válido."
-    if (!form.competenceDate) nextErrors.competenceDate = "Informe a competência."
-    if (!form.dreCategory) nextErrors.dreCategory = "Selecione a categoria DRE."
-    if (!form.costCenter) nextErrors.costCenter = "Selecione o centro de custo/lucro."
+    if (!form.dueDate) nextErrors.dueDate = "Informe a data de vencimento."
+    if (!form.dreCategoryId) nextErrors.dreCategoryId = "Selecione a categoria DRE."
+    if (!form.bankAccountId) nextErrors.bankAccountId = "Selecione a conta bancária."
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -193,19 +199,16 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
     try {
       const created = await createFinancialEntry({
         type: form.type,
-        status: form.status,
+        status: form.paymentDate ? "Recebido" : "A receber",
         description: form.description,
         value: amount,
-        competence_date: form.competenceDate,
+        competence_date: form.dueDate,
         due_date: form.dueDate || null,
         payment_date: form.paymentDate || null,
-        bank_account_name: form.bankAccount,
-        dre_category_name: form.dreCategory,
-        cost_center_name: form.costCenter,
-        party_name: form.party,
+        bank_account_id: form.bankAccountId,
+        dre_category_id: form.dreCategoryId,
+        client_id: form.clientId || null,
         payment_method: form.paymentMethod,
-        recurrence: form.recurrence,
-        tags: form.tags,
         attachment_type: form.attachment,
       })
       if (attachmentFile) {
@@ -235,7 +238,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
     }
   }
 
-  const renderSelect = (field: keyof NewLaunchForm, label: string, options: readonly string[]) => (
+  const renderSelect = (field: keyof NewLaunchForm, label: string, options: readonly (string | SelectOption)[]) => (
     <div className="grid gap-2">
       <Label>{label}</Label>
       <Select value={String(form[field])} onValueChange={(value) => setField(field, value)}>
@@ -243,9 +246,10 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
           <SelectValue placeholder={label} />
         </SelectTrigger>
         <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option} value={option}>{option}</SelectItem>
-          ))}
+          {options.map((option) => {
+            const item = typeof option === "string" ? { label: option, value: option } : option
+            return <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+          })}
         </SelectContent>
       </Select>
       {errors[field] && <p className="text-xs text-destructive">{errors[field]}</p>}
@@ -279,25 +283,18 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
             {renderSelect("type", "Tipo de lançamento", launchTypes)}
-            {renderSelect("status", "Status", launchStatuses)}
             {renderInput("description", "Descrição")}
             {renderInput("amount", "Valor", "number")}
-            {renderInput("competenceDate", "Data de competência", "date")}
             {renderInput("dueDate", "Data de vencimento", "date")}
             {renderInput("paymentDate", "Data de pagamento", "date")}
-            {renderSelect("bankAccount", "Conta bancária", selectOptions.bankAccounts)}
-            {renderSelect("dreCategory", "Categoria DRE", selectOptions.dreCategories)}
-            {renderSelect("costCenter", "Centro de custo/lucro", selectOptions.costCenters)}
-            {renderSelect("party", "Cliente ou fornecedor", selectOptions.parties)}
+            {renderSelect("dreCategoryId", "Categoria DRE", selectOptions.dreCategories)}
+            {renderSelect("bankAccountId", "Conta bancária", selectOptions.bankAccounts)}
+            {renderSelect("clientId", "Cliente ou fornecedor", selectOptions.clients)}
             {renderSelect("paymentMethod", "Forma de pagamento", paymentMethods)}
-            {renderSelect("recurrence", "Recorrência", recurrenceOptions)}
             {renderSelect("attachment", "Tipo de anexo", attachmentTypes)}
             <div className="grid gap-2">
               <Label htmlFor="new-launch-file">Arquivo anexado</Label>
               <Input id="new-launch-file" type="file" onChange={(event) => setAttachmentFile(event.target.files?.[0] ?? null)} />
-            </div>
-            <div className="md:col-span-2">
-              {renderInput("tags", "Tags")}
             </div>
             {submitError && (
               <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive md:col-span-2">

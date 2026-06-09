@@ -205,12 +205,6 @@ export function EquipamentosContent() {
                 ],
               },
               {
-                title: "Valores",
-                fields: [
-                  { name: "purchase_value", label: "Valor de compra unitário em R$", type: "money", required: true },
-                ],
-              },
-              {
                 title: "Status",
                 fields: [
                   {
@@ -237,11 +231,6 @@ export function EquipamentosContent() {
                 category: values.category ?? "",
                 description: values.description ?? "",
                 total_quantity: Number(values.total_quantity ?? 0),
-                available_quantity: Number(values.total_quantity ?? 0),
-                rented_quantity: 0,
-                reserved_quantity: 0,
-                maintenance_quantity: 0,
-                purchase_value: Number(values.purchase_value ?? 0),
                 status: values.status ?? "available",
                 notes: values.notes ?? "",
               })
@@ -251,8 +240,6 @@ export function EquipamentosContent() {
                 name: values.name ?? "",
                 category: values.category ?? "equipamento",
                 status: values.status ?? "available",
-                acquisition_value: Number(values.purchase_value ?? 0),
-                current_value: Number(values.purchase_value ?? 0),
                 description: values.description ?? "",
               })
               setEquipments((current) => [normalizeEquipment(created as Record<string, unknown>), ...current])

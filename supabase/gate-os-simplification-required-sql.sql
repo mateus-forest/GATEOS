@@ -1,0 +1,32 @@
+-- GATE OS - SQL requerido pela simplificacao operacional
+-- Data: 2026-06-09
+--
+-- NAO executar automaticamente.
+-- Use somente se a validacao manual confirmar ausencia das colunas abaixo.
+
+-- 1. financial_entries
+-- O frontend simplificado salva IDs reais e nao envia nomes como bank_account_name.
+-- Execute apenas as colunas ausentes no seu schema.
+--
+-- alter table public.financial_entries
+--   add column if not exists bank_account_id uuid references public.bank_accounts(id),
+--   add column if not exists dre_category_id uuid references public.dre_categories(id),
+--   add column if not exists client_id uuid references public.clients(id),
+--   add column if not exists payment_method text,
+--   add column if not exists attachment_type text;
+
+-- 2. documents
+-- Necessario para vinculo simples de upload a cliente/contrato e observacao.
+--
+-- alter table public.documents
+--   add column if not exists client_id uuid references public.clients(id),
+--   add column if not exists contract_id uuid references public.contracts(id),
+--   add column if not exists notes text;
+
+-- 3. partner_entries
+-- Necessario para lancamentos simples com data, descricao e status.
+--
+-- alter table public.partner_entries
+--   add column if not exists date date,
+--   add column if not exists description text,
+--   add column if not exists status text;

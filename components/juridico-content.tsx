@@ -199,25 +199,14 @@ function CaseFormDialog({
   const validate = () => {
     const nextErrors: Record<string, string> = {}
     if (!form.cliente) nextErrors.cliente = "Informe o cliente."
-    if (!form.contrato) nextErrors.contrato = "Informe o contrato vinculado."
-    if (!Number(form.valorOriginal)) nextErrors.valorOriginal = "Informe o valor original."
     if (!form.status) nextErrors.status = "Informe o status."
     if (!form.etapa) nextErrors.etapa = "Informe a etapa."
-    if (!form.responsavel) nextErrors.responsavel = "Informe o responsável."
-    if (!form.dataEntrada) nextErrors.dataEntrada = "Informe a data de entrada."
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
 
   const handleSave = async () => {
     if (!validate()) return
-    const valorOriginal = Number(form.valorOriginal)
-    const multa = Number(form.multa || 0)
-    const juros = Number(form.juros || 0)
-    const desconto = Number(form.desconto || 0)
-    const custas = Number(form.custas || 0)
-    const honorarios = Number(form.honorarios || 0)
-    const valorNegociado = Number(form.valorNegociado || 0) || valorOriginal + multa + juros + custas + honorarios - desconto
 
     setSaving(true)
     setSubmitError("")
@@ -226,39 +215,39 @@ function CaseFormDialog({
       id: `jur-${Date.now()}`,
       cliente: form.cliente,
       contrato: form.contrato,
-      parcelas: form.parcelas,
-      processo: form.processo,
-      responsavel: form.responsavel,
-      advogado: form.advogado || "Dra. Amanda Rocha",
+      parcelas: "",
+      processo: "",
+      responsavel: "",
+      advogado: "",
       status: form.status as JuridicoCaso["status"],
       etapa: form.etapa,
       risco: form.risco as JuridicoCaso["risco"],
-      valorOriginal,
-      mensalidade: valorOriginal,
-      parcelasVencidas: Number(form.parcelas || 1),
-      multa,
-      juros,
-      desconto,
-      custas,
-      honorarios,
-      valorNegociado,
+      valorOriginal: 0,
+      mensalidade: 0,
+      parcelasVencidas: 0,
+      multa: 0,
+      juros: 0,
+      desconto: 0,
+      custas: 0,
+      honorarios: 0,
+      valorNegociado: 0,
       valorPago: 0,
-      dataEntrada: form.dataEntrada,
+      dataEntrada: new Date().toISOString().slice(0, 10),
       ultimaAtualizacao: new Date().toISOString().slice(0, 10),
-      proximoPrazo: form.primeiroVencimento || form.dataEntrada,
-      prazoPagamento: form.primeiroVencimento || form.dataEntrada,
-      encerramentoPrevisto: form.primeiroVencimento || form.dataEntrada,
-      parcelado: form.parcelado === "Sim",
-      acordoStatus: "Em negociação",
-      entrada: Number(form.entrada || 0),
-      quantidadeParcelas: Number(form.quantidadeParcelas || 1),
-      primeiroVencimento: form.primeiroVencimento || form.dataEntrada,
-      formaPagamento: form.formaPagamento,
+      proximoPrazo: form.primeiroVencimento,
+      prazoPagamento: "",
+      encerramentoPrevisto: "",
+      parcelado: false,
+      acordoStatus: "",
+      entrada: 0,
+      quantidadeParcelas: 0,
+      primeiroVencimento: form.primeiroVencimento,
+      formaPagamento: "",
       resumo: form.resumo,
       ultimoAndamento: "Caso criado no módulo jurídico.",
-      resultadoEsperado: "Regularização do débito.",
-      resultadoAcao: "Em acompanhamento.",
-      observacoes: "Cadastro jurídico criado pelo formulário.",
+      resultadoEsperado: "",
+      resultadoAcao: "",
+      observacoes: form.resumo,
       })
       toast.success("Caso jurídico criado com sucesso")
       setForm(emptyForm)
@@ -294,15 +283,6 @@ function CaseFormDialog({
     </div>
   )
 
-  const valorAtualizado = getValorAtualizado({
-    valorOriginal: Number(form.valorOriginal || 0),
-    multa: Number(form.multa || 0),
-    juros: Number(form.juros || 0),
-    custas: Number(form.custas || 0),
-    honorarios: Number(form.honorarios || 0),
-    desconto: Number(form.desconto || 0),
-  })
-
   return (
     <>
       <Button onClick={() => setOpen(true)}>
@@ -318,21 +298,10 @@ function CaseFormDialog({
           <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-2 md:grid-cols-3">
             {select("cliente", "Cliente", clientOptions.length ? clientOptions : clientesGate)}
             {select("contrato", "Contrato vinculado", contractOptions)}
-            {input("processo", "Nº processo")}
-            {select("responsavel", "Responsável interno", juridicoResponsaveis)}
-            {input("advogado", "Advogado/escritório responsável")}
             {select("status", "Status", juridicoStatuses)}
             {select("etapa", "Etapa", juridicoEtapas)}
             {select("risco", "Risco", juridicoRiscos)}
-            {input("valorOriginal", "Valor original em aberto", "number")}
-            {input("multa", "Multa", "number")}
-            {input("juros", "Juros", "number")}
-            {input("dataEntrada", "Data de entrada no jurídico", "date")}
-            {input("primeiroVencimento", "Primeiro vencimento/próximo prazo", "date")}
-            <div className="rounded-lg border p-3">
-              <p className="text-sm text-muted-foreground">Valor atualizado automático</p>
-              <p className="text-xl font-bold">{formatCurrency(valorAtualizado)}</p>
-            </div>
+            {input("primeiroVencimento", "Prazo", "date")}
             {input("resumo", "Resumo do caso")}
             {submitError && (
               <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive md:col-span-3">
@@ -575,39 +544,12 @@ export function JuridicoContent() {
             onCreate={async (caso) => {
               const created = await createLegalCase({
                 client_name: caso.cliente,
-                contract_number: caso.contrato,
-                installments: caso.parcelas,
-                process_number: caso.processo,
-                internal_responsible: caso.responsavel,
-                lawyer_name: caso.advogado,
+                contract_number: caso.contrato || null,
                 status: caso.status,
                 stage: caso.etapa,
                 risk: caso.risco,
-                original_value: caso.valorOriginal,
-                monthly_value: caso.mensalidade,
-                overdue_installments_count: caso.parcelasVencidas,
-                penalty_value: caso.multa,
-                interest_value: caso.juros,
-                discount_value: caso.desconto,
-                legal_costs: caso.custas,
-                attorney_fees: caso.honorarios,
-                negotiated_value: caso.valorNegociado,
-                paid_value: caso.valorPago,
-                legal_entry_date: caso.dataEntrada,
-                last_update_date: caso.ultimaAtualizacao,
                 next_deadline: caso.proximoPrazo,
-                payment_deadline: caso.prazoPagamento,
-                expected_closing_date: caso.encerramentoPrevisto,
-                is_installment_agreement: caso.parcelado,
-                agreement_status: caso.acordoStatus,
-                down_payment: caso.entrada,
-                installments_count: caso.quantidadeParcelas,
-                first_due_date: caso.primeiroVencimento,
-                payment_method: caso.formaPagamento,
                 case_summary: caso.resumo,
-                last_progress: caso.ultimoAndamento,
-                expected_result: caso.resultadoEsperado,
-                lawsuit_result: caso.resultadoAcao,
                 internal_notes: caso.observacoes,
               })
               setCases((current) => [normalizeLegalCase(created as Record<string, unknown>), ...current])

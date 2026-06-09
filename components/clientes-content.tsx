@@ -170,10 +170,8 @@ export function ClientesContent() {
               {
                 title: "Dados principais",
                 fields: [
-                  { name: "name", label: "Nome do cliente", required: true },
-                  { name: "company_name", label: "Razão social" },
-                  { name: "trade_name", label: "Nome fantasia" },
-                  { name: "document", label: "CPF/CNPJ", required: true },
+                  { name: "name", label: "Nome / Razão social", required: true },
+                  { name: "document", label: "CPF/CNPJ" },
                   {
                     name: "type",
                     label: "Tipo de cliente",
@@ -205,15 +203,9 @@ export function ClientesContent() {
                 ],
               },
               {
-                title: "Endereço",
+                title: "Localização",
                 fields: [
-                  { name: "zip_code", label: "CEP" },
-                  { name: "address", label: "Endereço" },
-                  { name: "address_number", label: "Número" },
-                  { name: "address_complement", label: "Complemento" },
-                  { name: "district", label: "Bairro" },
                   { name: "city", label: "Cidade" },
-                  { name: "state", label: "Estado" },
                 ],
               },
               {
@@ -226,21 +218,15 @@ export function ClientesContent() {
             onSave={async (values) => {
               const created = await createClient({
                 name: values.name,
-                company_name: values.company_name || null,
-                trade_name: values.trade_name || values.name,
-                document: values.document,
+                company_name: null,
+                trade_name: null,
+                document: values.document || null,
                 type: values.type ?? "pj",
                 status: values.status ?? "ativo",
                 email: values.email || null,
                 phone: values.phone || null,
                 whatsapp: values.whatsapp || null,
-                zip_code: values.zip_code || null,
-                address: values.address || null,
-                address_number: values.address_number || null,
-                address_complement: values.address_complement || null,
-                district: values.district || null,
                 city: values.city || null,
-                state: values.state || null,
                 notes: values.notes || null,
               })
               const refreshed = await getClients()

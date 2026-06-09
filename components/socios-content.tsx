@@ -55,7 +55,8 @@ type PartnerEntry = {
   id: string
   partner: string
   type: "Distribuicao" | "Aporte" | "Devolucao" | "Pro-labore"
-  month: string
+  date: string
+  description: string
   amount: number
   status: "Pago" | "Previsto"
 }
@@ -71,7 +72,8 @@ function normalizePartnerEntry(item: Record<string, unknown>): PartnerEntry {
     id: String(item.id ?? crypto.randomUUID()),
     partner: String(item.partner ?? item.partner_name ?? item.socio ?? ""),
     type: String(item.type ?? item.entry_type ?? "Distribuicao") as PartnerEntry["type"],
-    month: String(item.month ?? item.reference_month ?? ""),
+    date: String(item.date ?? item.reference_month ?? ""),
+    description: String(item.description ?? ""),
     amount: Number(item.amount ?? item.value ?? 0),
     status: String(item.status ?? "Previsto") as PartnerEntry["status"],
   }
@@ -81,7 +83,7 @@ export function SociosContent() {
   const [entries, setEntries] = useState<PartnerEntry[]>([])
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState<Partner | null>(null)
-  const [form, setForm] = useState({ partner: "Carlos", type: "Distribuicao", month: "jun-26", amount: "" })
+  const [form, setForm] = useState({ partner: "Carlos", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
 
   useEffect(() => {
     getPartnerEntries().then((items) =>
@@ -110,14 +112,16 @@ export function SociosContent() {
       const created = await createPartnerEntry({
         partner_name: form.partner,
         type: form.type,
-        reference_month: form.month,
+        date: form.date,
+        reference_month: form.date,
         amount,
-        status: "Previsto",
+        description: form.description,
+        status: form.status,
       })
       setEntries((current) => [normalizePartnerEntry(created as Record<string, unknown>), ...current])
       toast.success("Lancamento de socio salvo com sucesso")
       setOpen(false)
-      setForm({ partner: "Carlos", type: "Distribuicao", month: "jun-26", amount: "" })
+      setForm({ partner: "Carlos", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel salvar o lancamento de socio."
       console.error("[socios] Falha ao salvar lancamento", error)
@@ -137,7 +141,7 @@ export function SociosContent() {
             id: entry.id,
             partner: entry.partner,
             type: entry.type,
-            date: entry.month,
+            date: entry.date,
             status: entry.status,
             amount: entry.amount,
           }))))}>
@@ -275,7 +279,7 @@ export function SociosContent() {
                         id: entry.id,
                         partner: entry.partner,
                         type: entry.type,
-                        date: entry.month,
+                        date: entry.date,
                         status: entry.status,
                         amount: entry.amount,
                       }))))}>Exportar historico</DropdownMenuItem>
@@ -299,7 +303,8 @@ export function SociosContent() {
               <TableRow>
                 <TableHead>Socio</TableHead>
                 <TableHead>Tipo</TableHead>
-                <TableHead>Mes</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Descricao</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
               </TableRow>
@@ -309,7 +314,8 @@ export function SociosContent() {
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">{entry.partner}</TableCell>
                   <TableCell>{entry.type}</TableCell>
-                  <TableCell>{entry.month}</TableCell>
+                  <TableCell>{entry.date}</TableCell>
+                  <TableCell>{entry.description || "-"}</TableCell>
                   <TableCell>
                     <Badge className={entry.status === "Pago" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
                       {entry.status}
@@ -333,7 +339,9 @@ export function SociosContent() {
             {[
               ["partner", "Socio"],
               ["type", "Tipo"],
-              ["month", "Mes"],
+              ["date", "Data"],
+              ["description", "Descricao"],
+              ["status", "Status"],
               ["amount", "Valor"],
             ].map(([key, label]) => (
               <div key={key} className="grid gap-2">
