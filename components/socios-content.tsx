@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -33,9 +34,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildPartnersReport } from "@/lib/reports/report-builders"
-import { createPartnerEntry, getPartnerEntries } from "@/lib/data/partners"
+import { createPartnerEntry, getPartnerEntries, getPartners, updatePartner } from "@/lib/data/partners"
+import { partnerLabel } from "@/lib/data/display-labels"
 import { formatCurrency } from "@/lib/utils"
 
 const colors = ["#22B8CF", "#22C55E", "#F59E0B"]
@@ -61,11 +63,23 @@ type PartnerEntry = {
   status: "Pago" | "Previsto"
 }
 
-const partners: Partner[] = [
-  { id: "1", name: "Carlos", role: "Socio administrador", share: 40, received: 54000, distributions: 42000, contributions: 0, returns: 12000 },
-  { id: "2", name: "Renan", role: "Socio operacional", share: 35, received: 46200, distributions: 36200, contributions: 0, returns: 10000 },
-  { id: "3", name: "Mateus", role: "Socio comercial", share: 25, received: 32500, distributions: 26000, contributions: 3500, returns: 3000 },
-]
+function normalizePartner(item: Record<string, unknown>, entries: PartnerEntry[] = []): Partner {
+  const name = partnerLabel(item)
+  const partnerEntries = entries.filter((entry) => entry.partner === name || entry.partner === String(item.id ?? ""))
+  const distributions = partnerEntries.filter((entry) => entry.type === "Distribuicao").reduce((sum, entry) => sum + entry.amount, 0)
+  const contributions = partnerEntries.filter((entry) => entry.type === "Aporte").reduce((sum, entry) => sum + entry.amount, 0)
+  const returns = partnerEntries.filter((entry) => entry.type === "Devolucao").reduce((sum, entry) => sum + entry.amount, 0)
+  return {
+    id: String(item.id ?? ""),
+    name,
+    role: String(item.role ?? item.cargo ?? ""),
+    share: Number(item.share ?? item.percentage ?? item.participation ?? 0),
+    received: distributions + returns,
+    distributions,
+    contributions,
+    returns,
+  }
+}
 
 function normalizePartnerEntry(item: Record<string, unknown>): PartnerEntry {
   return {
@@ -81,14 +95,20 @@ function normalizePartnerEntry(item: Record<string, unknown>): PartnerEntry {
 
 export function SociosContent() {
   const [entries, setEntries] = useState<PartnerEntry[]>([])
+  const [partners, setPartners] = useState<Partner[]>([])
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState<Partner | null>(null)
-  const [form, setForm] = useState({ partner: "Carlos", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
+  const [editForm, setEditForm] = useState({ name: "", role: "", share: "", status: "active", notes: "" })
+  const [savingPartner, setSavingPartner] = useState(false)
+  const [form, setForm] = useState({ partner: "", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
 
   useEffect(() => {
-    getPartnerEntries().then((items) =>
-      setEntries(items.map((item) => normalizePartnerEntry(item as Record<string, unknown>)))
-    )
+    Promise.all([getPartnerEntries(), getPartners()]).then(([entryItems, partnerItems]) => {
+      const normalizedEntries = entryItems.map((item) => normalizePartnerEntry(item as Record<string, unknown>))
+      setEntries(normalizedEntries)
+      setPartners(partnerItems.map((item) => normalizePartner(item as Record<string, unknown>, normalizedEntries)))
+    })
   }, [])
 
   const totals = useMemo(() => {
@@ -97,9 +117,42 @@ export function SociosContent() {
     const contributions = partners.reduce((total, partner) => total + partner.contributions, 0)
     const returns = partners.reduce((total, partner) => total + partner.returns, 0)
     return { received, distributions, contributions, returns, net: received + returns - contributions }
-  }, [])
+  }, [partners])
 
   const chartData = partners.map((partner) => ({ name: partner.name, value: partner.share }))
+
+  const openEditPartner = (partner: Partner) => {
+    setEditingPartner(partner)
+    setEditForm({
+      name: partner.name,
+      role: partner.role,
+      share: String(partner.share || ""),
+      status: "active",
+      notes: "",
+    })
+  }
+
+  const handleUpdatePartner = async () => {
+    if (!editingPartner) return
+    setSavingPartner(true)
+    try {
+      const updated = await updatePartner(editingPartner.id, {
+        name: editForm.name,
+        role: editForm.role,
+        share: Number(editForm.share || 0),
+        status: editForm.status,
+        notes: editForm.notes || null,
+      })
+      const normalized = normalizePartner(updated as Record<string, unknown>, entries)
+      setPartners((current) => current.map((partner) => (partner.id === normalized.id ? normalized : partner)))
+      setEditingPartner(null)
+      toast.success("Socio atualizado com sucesso")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel atualizar o socio.")
+    } finally {
+      setSavingPartner(false)
+    }
+  }
 
   const handleSave = async () => {
     const amount = Number(form.amount.replace(",", "."))
@@ -110,7 +163,8 @@ export function SociosContent() {
 
     try {
       const created = await createPartnerEntry({
-        partner_name: form.partner,
+        partner_id: form.partner || null,
+        partner_name: partners.find((partner) => partner.id === form.partner)?.name ?? form.partner,
         type: form.type,
         date: form.date,
         reference_month: form.date,
@@ -121,7 +175,7 @@ export function SociosContent() {
       setEntries((current) => [normalizePartnerEntry(created as Record<string, unknown>), ...current])
       toast.success("Lancamento de socio salvo com sucesso")
       setOpen(false)
-      setForm({ partner: "Carlos", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
+      setForm({ partner: "", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel salvar o lancamento de socio."
       console.error("[socios] Falha ao salvar lancamento", error)
@@ -274,7 +328,7 @@ export function SociosContent() {
                         <Eye className="mr-2 h-4 w-4" />
                         Ver detalhes
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => featureInPreparation("Edicao de socio depende do formulario real de cadastro societario.")}>Editar</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openEditPartner(partner)}>Editar</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => exportPdfReport(buildPartnersReport(entries.filter((entry) => entry.partner === partner.name).map((entry) => ({
                         id: entry.id,
                         partner: entry.partner,
@@ -346,11 +400,24 @@ export function SociosContent() {
             ].map(([key, label]) => (
               <div key={key} className="grid gap-2">
                 <Label htmlFor={key}>{label}</Label>
-                <Input
-                  id={key}
-                  value={form[key as keyof typeof form]}
-                  onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
-                />
+                {key === "partner" ? (
+                  <Select value={form.partner} onValueChange={(value) => setForm((current) => ({ ...current, partner: value ?? "" }))}>
+                    <SelectTrigger id={key}>
+                      <SelectValue placeholder="Selecione o socio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {partners.length ? partners.map((partner) => (
+                        <SelectItem key={partner.id} value={partner.id}>{partner.name}</SelectItem>
+                      )) : <SelectItem value="empty" disabled>Registro sem nome</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id={key}
+                    value={form[key as keyof typeof form]}
+                    onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -387,6 +454,37 @@ export function SociosContent() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingPartner} onOpenChange={(nextOpen) => !nextOpen && setEditingPartner(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar socio</DialogTitle>
+            <DialogDescription>Atualizacao real na tabela partners.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            {[
+              ["name", "Nome"],
+              ["role", "Funcao"],
+              ["share", "Participacao (%)"],
+              ["status", "Status"],
+              ["notes", "Observacoes"],
+            ].map(([key, label]) => (
+              <div key={key} className="grid gap-2">
+                <Label htmlFor={`partner-${key}`}>{label}</Label>
+                <Input
+                  id={`partner-${key}`}
+                  value={editForm[key as keyof typeof editForm]}
+                  onChange={(event) => setEditForm((current) => ({ ...current, [key]: event.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPartner(null)} disabled={savingPartner}>Cancelar</Button>
+            <Button onClick={handleUpdatePartner} disabled={savingPartner}>{savingPartner ? "Salvando..." : "Salvar"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

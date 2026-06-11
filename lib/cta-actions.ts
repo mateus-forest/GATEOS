@@ -42,14 +42,14 @@ export function exportCsv(filename: string, rows: CsvRow[]) {
 }
 
 export function exportPdfReport(report: UniversalReport) {
-  const opened = exportReportPdf(report)
+  const downloaded = exportReportPdf(report)
 
-  if (!opened) {
-    toast.error("Não foi possível abrir o relatório. Verifique se o navegador bloqueou pop-ups.")
+  if (!downloaded) {
+    toast.error("Nao foi possivel gerar o PDF deste relatorio.")
     return false
   }
 
-  toast.info("Relatório aberto no padrão GATE OS para salvar ou imprimir em PDF.")
+  toast.success("PDF gerado e download iniciado.")
   return true
 }
 

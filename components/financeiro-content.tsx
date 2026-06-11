@@ -91,6 +91,7 @@ import {
   normalizeFinancialStatus,
   type FinancialStatus,
 } from "@/lib/data/financial-status"
+import { bankAccountLabel, clientLabel, dreCategoryLabel } from "@/lib/data/display-labels"
 import type { SupabaseRow } from "@/lib/supabase/types"
 import {
   attachmentTypes,
@@ -176,14 +177,22 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
       const option = (item: unknown): SelectOption => {
         const record = item as Record<string, unknown>
         return {
-          label: String(record.name ?? record.nome ?? record.label ?? record.description ?? record.id ?? ""),
+          label: dreCategoryLabel(record),
           value: String(record.id ?? ""),
         }
       }
+      const bankOption = (item: unknown): SelectOption => {
+        const record = item as Record<string, unknown>
+        return { label: bankAccountLabel(record), value: String(record.id ?? "") }
+      }
+      const clientOption = (item: unknown): SelectOption => {
+        const record = item as Record<string, unknown>
+        return { label: clientLabel(record), value: String(record.id ?? "") }
+      }
       setSelectOptions({
         dreCategories: options.dreCategories.map(option).filter((item) => item.value),
-        bankAccounts: options.bankAccounts.map(option).filter((item) => item.value),
-        clients: clients.map(option).filter((item) => item.value),
+        bankAccounts: options.bankAccounts.map(bankOption).filter((item) => item.value),
+        clients: clients.map(clientOption).filter((item) => item.value),
       })
     })
   }, [])

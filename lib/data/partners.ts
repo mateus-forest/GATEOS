@@ -1,4 +1,4 @@
-import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getPartners() {
@@ -15,4 +15,8 @@ export async function getProfitDistribution() {
 
 export async function createPartnerEntry(payload: SupabaseRow) {
   return insertRow("partner_entries", payload, { ...payload, id: crypto.randomUUID() })
+}
+
+export async function updatePartner(id: string, payload: SupabaseRow) {
+  return updateRows("partners", payload, { id }, [{ ...payload, id }])
 }

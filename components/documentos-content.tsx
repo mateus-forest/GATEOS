@@ -16,6 +16,7 @@ import { featureInPreparation } from "@/lib/cta-actions"
 import { getDocuments, uploadDocumentFile } from "@/lib/data/documents"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
+import { clientLabel, contractLabel } from "@/lib/data/display-labels"
 
 type DocumentoView = {
   id: string
@@ -81,7 +82,7 @@ export function DocumentosContent() {
         const record = item as Record<string, unknown>
         return {
           value: String(record.id ?? ""),
-          label: String(record.name ?? record.trade_name ?? record.company_name ?? record.id ?? ""),
+          label: clientLabel(record),
         }
       }).filter((item) => item.value))
     })
@@ -90,7 +91,7 @@ export function DocumentosContent() {
         const record = item as Record<string, unknown>
         return {
           value: String(record.id ?? ""),
-          label: String(record.contract_number ?? record.number ?? record.id ?? ""),
+          label: contractLabel(record),
         }
       }).filter((item) => item.value))
     })

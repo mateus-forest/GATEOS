@@ -133,6 +133,16 @@ const writableColumnsByTable: Record<string, Set<string>> = {
     "description",
     "status",
   ]),
+  partners: new Set([
+    "name",
+    "role",
+    "share",
+    "percentage",
+    "email",
+    "phone",
+    "status",
+    "notes",
+  ]),
   dre_manual_adjustments: new Set([
     "description",
     "amount",

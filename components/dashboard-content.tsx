@@ -133,6 +133,19 @@ function text(row: Row | undefined, keys: string[], fallback = "") {
   return fallback
 }
 
+function formatActivityTime(value: string) {
+  if (!value) return ""
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).replace(",", " às")
+}
+
 function isCurrentMonth(value: unknown) {
   if (!value) return false
   const date = new Date(String(value))
@@ -390,7 +403,7 @@ export function DashboardContent() {
       type: text(row, ["type", "tipo"], "notification"),
       title: text(row, ["title", "titulo"], "Notificacao"),
       description: text(row, ["message", "description", "mensagem"], ""),
-      time: text(row, ["time", "created_at", "createdAt"], ""),
+      time: formatActivityTime(text(row, ["time", "created_at", "createdAt"], "")),
       status: text(row, ["status", "severity"], "info"),
     }))
     const today = new Date()
@@ -870,7 +883,7 @@ export function DashboardContent() {
                   <ActivityItem key={activity.id} activity={activity} />
                 ))
               ) : (
-                <p className="py-4 text-sm text-muted-foreground">Nenhuma notificacao retornada pelo Supabase.</p>
+                <p className="py-4 text-sm text-muted-foreground">Nenhuma atividade recente encontrada.</p>
               )}
             </div>
           </CardContent>

@@ -70,6 +70,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildContractsReport } from "@/lib/reports/report-builders"
 import type { SupabaseRow } from "@/lib/supabase/types"
+import { clientLabel, equipmentLabel } from "@/lib/data/display-labels"
 
 type ContractWithPublicLink = ContractView & {
   public_access_token?: string
@@ -512,7 +513,7 @@ export function ContratosContent() {
         items.map((item) => {
           const record = item as Record<string, unknown>
           return {
-            label: String(record.name ?? record.trade_name ?? record.company_name ?? record.nome_fantasia ?? record.razao_social ?? record.id ?? ""),
+            label: clientLabel(record),
             value: String(record.id ?? ""),
           }
         }).filter((item) => item.value)
@@ -528,7 +529,7 @@ export function ContratosContent() {
             const status = String(record.status ?? "available")
             return {
               id: String(record.id ?? ""),
-              name: String(record.name ?? record.nome ?? record.description ?? record.id ?? ""),
+              name: equipmentLabel(record),
               category: String(record.category ?? record.type ?? record.categoria ?? ""),
               status,
               totalQuantity,
@@ -694,7 +695,7 @@ export function ContratosContent() {
                     const status = String(record.status ?? "available")
                     return {
                       id: String(record.id ?? ""),
-                      name: String(record.name ?? record.nome ?? record.description ?? record.id ?? ""),
+                      name: equipmentLabel(record),
                       category: String(record.category ?? record.type ?? record.categoria ?? ""),
                       status,
                       totalQuantity,

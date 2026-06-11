@@ -194,9 +194,13 @@ export function RelatoriosContent() {
       rows: [relatorio],
     }))
 
-  const handlePrint = () => {
-    window.print()
-  }
+  const handlePrint = (relatorio: (typeof relatoriosRecentes)[number]) =>
+    exportPdfReport(buildGenericReport({
+      title: relatorio.nome,
+      subtitle: "Impressao de relatorio",
+      description: "Arquivo gerado no template universal do GATE OS para impressao limpa.",
+      rows: [relatorio],
+    }))
 
   return (
     <div className="space-y-6">
@@ -371,7 +375,7 @@ export function RelatoriosContent() {
                         <Button variant="ghost" size="icon" onClick={() => handleHistoricoDownload(rel)}>
                           <Download className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={handlePrint}>
+                        <Button variant="ghost" size="icon" onClick={() => handlePrint(rel)}>
                           <Printer className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => featureInPreparation("Envio de relatorio por e-mail depende de servico de e-mail no backend.")}>
