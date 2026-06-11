@@ -84,6 +84,13 @@ import {
   getContractDueDateForMonth,
   getContractMonthlyValue,
 } from "@/lib/data/recurring-revenue"
+import {
+  financialStatusValues,
+  getFinancialStatusForEntry,
+  getFinancialStatusLabel,
+  normalizeFinancialStatus,
+  type FinancialStatus,
+} from "@/lib/data/financial-status"
 import type { SupabaseRow } from "@/lib/supabase/types"
 import {
   attachmentTypes,
@@ -119,13 +126,12 @@ type TransactionRow = {
   description: string
   amount: number
   date: string
-  status: string
+  status: FinancialStatus
   contractId?: string
 }
 
 function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow {
   const type = String(item.type ?? "")
-  const status = String(item.status ?? "")
 
   return {
     id: String(item.id ?? crypto.randomUUID()),
@@ -134,7 +140,7 @@ function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow 
     description: String(item.description ?? item.descricao ?? ""),
     amount: Number(item.value ?? item.amount ?? item.valor ?? 0),
     date: String(item.competence_date ?? item.date ?? item.data ?? ""),
-    status: status === "Cancelado" || status === "cancelled" ? "cancelled" : status.includes("pagar") || status.includes("receber") || status === "pending" ? "pending" : "completed",
+    status: normalizeFinancialStatus(item.status),
     contractId: item.contract_id ? String(item.contract_id) : undefined,
   }
 }
@@ -209,7 +215,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
     try {
       const created = await createFinancialEntry({
         type: form.type,
-        status: form.paymentDate ? "Recebido" : "A receber",
+        status: getFinancialStatusForEntry(form.type, Boolean(form.paymentDate)),
         description: form.description,
         value: amount,
         competence_date: form.dueDate,
@@ -377,8 +383,8 @@ export function FinanceiroContent() {
   const totalReceitas = currentRevenue.totalRevenue
   
   const totalDespesas = calculateMonthlyExpense(rawFinancialEntries, currentMonthKey)
-  const pendingReceivables = currentMonthTransactions.filter((t) => t.type === "income" && t.status === "pending")
-  const pendingPayables = currentMonthTransactions.filter((t) => t.type === "expense" && t.status === "pending")
+  const pendingReceivables = currentMonthTransactions.filter((t) => t.type === "income" && ["a_receber", "parcial"].includes(t.status))
+  const pendingPayables = currentMonthTransactions.filter((t) => t.type === "expense" && ["a_pagar", "parcial"].includes(t.status))
   const contractReceivables = currentRevenue.pendingContractReceivables.map((contract) => ({
     id: String(contract.id ?? ""),
     description: String(contract.contract_number ?? contract.number ?? "Contrato ativo"),
@@ -391,16 +397,19 @@ export function FinanceiroContent() {
 
   const saldo = totalReceitas - totalDespesas
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: FinancialStatus) => {
     switch (status) {
-      case "completed":
-        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Concluído</Badge>
-      case "pending":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
-      case "cancelled":
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+      case "recebido":
+      case "pago":
+        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{getFinancialStatusLabel(status)}</Badge>
+      case "a_receber":
+      case "a_pagar":
+      case "parcial":
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">{getFinancialStatusLabel(status)}</Badge>
+      case "cancelado":
+        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">{getFinancialStatusLabel(status)}</Badge>
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return <Badge variant="secondary">{getFinancialStatusLabel(status)}</Badge>
     }
   }
 
@@ -632,9 +641,9 @@ export function FinanceiroContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="completed">Concluído</SelectItem>
-                    <SelectItem value="pending">Pendente</SelectItem>
-                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                    {financialStatusValues.map((status) => (
+                      <SelectItem key={status} value={status}>{getFinancialStatusLabel(status)}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

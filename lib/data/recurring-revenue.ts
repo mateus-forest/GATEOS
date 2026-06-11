@@ -1,4 +1,5 @@
 import type { SupabaseRow } from "@/lib/supabase/types"
+import { isFinancialStatusReceived } from "@/lib/data/financial-status"
 
 export type MonthlyRevenueMetrics = {
   monthKey: string
@@ -41,8 +42,7 @@ export function getEntryMonthKey(entry: SupabaseRow) {
 }
 
 export function isEntryReceived(entry: SupabaseRow) {
-  const status = textValue(entry, ["status"]).toLowerCase()
-  return ["recebido", "pago", "paid", "received", "completed", "concluido"].some((item) => status.includes(item))
+  return isFinancialStatusReceived(textValue(entry, ["status"]))
 }
 
 export function isContractActiveInMonth(contract: SupabaseRow, monthKey: string) {

@@ -1,4 +1,5 @@
 import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
+import { normalizeFinancialStatus } from "@/lib/data/financial-status"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getFinancialEntries() {
@@ -6,7 +7,14 @@ export async function getFinancialEntries() {
 }
 
 export async function createFinancialEntry(payload: SupabaseRow) {
-  return insertRow("financial_entries", payload, { ...payload, id: crypto.randomUUID() })
+  return insertRow(
+    "financial_entries",
+    {
+      ...payload,
+      status: normalizeFinancialStatus(payload.status),
+    },
+    { ...payload, id: crypto.randomUUID() }
+  )
 }
 
 export async function getFinancialSelectOptions() {
