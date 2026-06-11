@@ -13,7 +13,6 @@ import {
   FolderOpen,
   Scale,
   LayoutDashboard,
-  LogOut,
   Package,
   PieChart,
   Settings,
@@ -74,7 +73,6 @@ const menuItems = [
       { icon: FolderOpen, label: "Documentos", href: "/documentos" },
       { icon: FileBarChart, label: "Relatórios", href: "/relatorios" },
       { icon: Settings, label: "Configurações", href: "/configuracoes" },
-      { icon: LogOut, label: "Sair", href: "/login" },
     ],
   },
 ]
@@ -86,25 +84,26 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     <TooltipProvider>
       <aside
         className={cn(
-          "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar text-sidebar-foreground shadow-[8px_0_28px_rgba(2,6,23,0.18)] transition-all duration-300 ease-out",
-          collapsed ? "w-16" : "w-56"
+          "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border/80 bg-sidebar text-sidebar-foreground shadow-[10px_0_34px_rgba(2,6,23,0.16)] transition-all duration-300 ease-out",
+          collapsed ? "w-[72px]" : "w-64"
         )}
       >
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border/70 bg-sidebar px-3">
+        <div className="flex h-20 items-center justify-between border-b border-sidebar-border/70 bg-sidebar px-4">
           {!collapsed && (
-            <Link href="/dashboard" className="flex items-center gap-2">
+            <Link href="/dashboard" className="flex min-w-0 items-center gap-2">
               <Image
                 src="/logo-gate.png"
                 alt="GATE"
-                width={124}
-                height={40}
-                className="h-7 w-auto"
+                width={172}
+                height={58}
+                className="h-11 w-auto object-contain"
+                priority
               />
             </Link>
           )}
           {collapsed && (
             <Link href="/dashboard" className="mx-auto">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-sm ring-1 ring-white/10">
                 G
               </div>
             </Link>
@@ -114,9 +113,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             size="icon"
             onClick={onToggle}
             className={cn(
-              "h-8 w-8 rounded-lg text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "h-8 w-8 rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               collapsed && "mx-auto"
             )}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -126,8 +126,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </Button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar py-3">
-          <nav className="space-y-4 px-2.5 pb-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-sidebar py-4">
+          <nav className="space-y-4 px-3 pb-6">
             {menuItems.map((section) => (
               <div key={section.title}>
                 {!collapsed && (
@@ -135,7 +135,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     {section.title}
                   </h3>
                 )}
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {section.items.map((item) => {
                     const isActive = pathname === item.href
                     const Icon = item.icon
@@ -144,10 +144,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                       <Link
                         href={item.href}
                         className={cn(
-                          "flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-all duration-200",
+                          "relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-all duration-200",
                           isActive
-                            ? "bg-sidebar-primary/95 text-sidebar-primary-foreground shadow-sm ring-1 ring-white/10"
-                            : "text-sidebar-foreground/75 hover:bg-sidebar-accent/85 hover:text-sidebar-accent-foreground hover:translate-x-0.5",
+                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-white/10 before:absolute before:left-0 before:top-2 before:h-6 before:w-1 before:rounded-r-full before:bg-white/90"
+                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/90 hover:text-sidebar-accent-foreground",
                           collapsed && "justify-center px-2"
                         )}
                       >
@@ -170,7 +170,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     return <div key={item.href}>{linkContent}</div>
                   })}
                 </div>
-                {!collapsed && <Separator className="mt-4 bg-sidebar-border" />}
+                {!collapsed && <Separator className="mt-4 bg-sidebar-border/80" />}
               </div>
             ))}
           </nav>

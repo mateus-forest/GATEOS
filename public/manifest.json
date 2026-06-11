@@ -1,17 +1,27 @@
 {
   "name": "GATE OS",
   "short_name": "GATE OS",
-  "description": "Sistema interno de gestão da GATE Soluções Tecnológicas",
+  "description": "Sistema interno de gestao da GATE Solucoes Tecnologicas",
+  "id": "/dashboard",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#020617",
+  "background_color": "#f8fafc",
   "theme_color": "#0ea5e9",
   "orientation": "portrait-primary",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/favicon.png",
       "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     },

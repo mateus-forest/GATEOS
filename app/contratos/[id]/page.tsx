@@ -1,9 +1,9 @@
 import { InternalLayout } from "@/components/internal-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
+import Link from "next/link"
 
 type Row = Record<string, unknown>
 
@@ -49,8 +49,18 @@ export default async function ContratoDetalhePage({
             <p className="text-muted-foreground">Detalhes do contrato</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">Renegociar</Button>
-            <Button>Gerar recibo</Button>
+            <Link
+              href="/contratos"
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              Voltar para contratos
+            </Link>
+            <Link
+              href="/juridico"
+              className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Abrir juridico
+            </Link>
           </div>
         </div>
         <Card>

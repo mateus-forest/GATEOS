@@ -221,9 +221,9 @@ export function Header() {
   }
 
   return (
-    <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between">
-      <div className="flex items-center gap-4 flex-1">
-        <div className="relative w-96">
+    <header className="flex h-16 items-center justify-between border-b border-border bg-card px-3 sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <div className="relative w-full max-w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar clientes, contratos, DRE, documentos..."
@@ -260,7 +260,7 @@ export function Header() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">
@@ -299,8 +299,8 @@ export function Header() {
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-center text-primary cursor-pointer" onClick={() => handleNavigate("/financeiro")}>
-              Ver todas as notificacoes
+            <DropdownMenuItem className="text-center text-primary cursor-pointer" onClick={() => handleNavigate("/dashboard")}>
+              Abrir Dashboard
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -312,7 +312,7 @@ export function Header() {
                 <AvatarImage src={profile.avatar} />
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
-              <div className="flex flex-col items-start">
+              <div className="hidden flex-col items-start md:flex">
                 <span className="text-sm font-medium">{profile.name}</span>
                 <span className="text-xs text-muted-foreground">{profile.role}</span>
               </div>

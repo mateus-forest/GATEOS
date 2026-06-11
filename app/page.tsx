@@ -3,70 +3,64 @@ import Image from "next/image"
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - Login Form */}
-      <div className="flex-1 flex flex-col justify-center px-8 lg:px-16 xl:px-24 bg-card">
-        <div className="w-full max-w-md mx-auto">
-          <div className="flex items-center gap-3 mb-8">
+    <div className="flex min-h-screen bg-background">
+      <div className="flex flex-1 flex-col justify-center px-5 py-10 sm:px-8 lg:px-16 xl:px-24">
+        <div className="mx-auto w-full max-w-md">
+          <div className="mb-9 flex items-center">
             <Image
               src="/logo-gate.png"
-              alt="GATE Soluções Tecnológicas"
-              width={180}
-              height={60}
-              className="h-14 w-auto"
+              alt="GATE Solucoes Tecnologicas"
+              width={230}
+              height={76}
+              className="h-20 w-auto object-contain"
+              priority
             />
           </div>
 
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-foreground mb-2">
+          <div className="mb-7">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Ambiente interno seguro
+            </p>
+            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-foreground">
               Bem-vindo ao GATE OS
             </h1>
-            <p className="text-muted-foreground">
-              Sistema de gestão interna. Faça login para continuar.
+            <p className="max-w-sm text-sm leading-6 text-muted-foreground">
+              Acesse contratos, financeiro, ativos e operacoes com sua conta autorizada.
             </p>
           </div>
 
-          <LoginForm />
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+            <LoginForm />
+          </div>
 
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            GATE OS v2.0 - Sistema de Gestão Interna
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            GATE OS v2.0 - Sistema de Gestao Interna
           </p>
         </div>
       </div>
 
-      {/* Right side - Decorative */}
-      <div className="hidden lg:flex flex-1 bg-primary relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary to-primary/80" />
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-72 h-72 border border-white/30 rounded-3xl rotate-12" />
-          <div className="absolute bottom-20 right-20 w-96 h-96 border border-white/30 rounded-3xl -rotate-12" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border border-white/30 rounded-3xl" />
-        </div>
-        <div className="relative z-10 flex flex-col justify-center items-center text-white p-12 w-full">
-          <div className="text-center max-w-lg">
-            <h2 className="text-4xl font-bold mb-4">
-              Gestão Completa
+      <div className="relative hidden flex-1 overflow-hidden bg-sidebar text-sidebar-foreground lg:flex">
+        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,#fff_1px,transparent_1px),linear-gradient(to_bottom,#fff_1px,transparent_1px)] [background-size:48px_48px]" />
+        <div className="absolute inset-x-10 top-10 h-px bg-white/15" />
+        <div className="absolute inset-y-10 right-10 w-px bg-white/15" />
+        <div className="relative z-10 flex w-full flex-col justify-center p-14">
+          <div className="max-w-xl">
+            <div className="mb-8 inline-flex items-center rounded-full border border-white/15 bg-white/[0.08] px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-white/75">
+              Plataforma operacional GATE
+            </div>
+            <h2 className="mb-5 text-5xl font-semibold tracking-tight text-white">
+              Controle interno com clareza.
             </h2>
-            <p className="text-lg text-white/80 mb-8">
-              Controle total sobre contratos, patrimônio, equipamentos, financeiro e muito mais em uma única plataforma.
+            <p className="text-lg leading-8 text-white/70">
+              Um espaco unico para acompanhar clientes, contratos, lancamentos, equipamentos,
+              manutencoes, documentos e indicadores reais do Supabase.
             </p>
-            <div className="grid grid-cols-2 gap-4 text-left">
-              <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-                <div className="text-3xl font-bold">247</div>
-                <div className="text-sm text-white/70">Contratos Ativos</div>
-              </div>
-              <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-                <div className="text-3xl font-bold">R$ 2.4M</div>
-                <div className="text-sm text-white/70">Receita Mensal</div>
-              </div>
-              <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-                <div className="text-3xl font-bold">1.2K</div>
-                <div className="text-sm text-white/70">Equipamentos</div>
-              </div>
-              <div className="bg-white/10 rounded-xl p-4 backdrop-blur-sm">
-                <div className="text-3xl font-bold">98%</div>
-                <div className="text-sm text-white/70">Satisfação</div>
-              </div>
+            <div className="mt-10 grid grid-cols-2 gap-3">
+              {["Contratos", "Financeiro", "Operacoes", "Documentos"].map((item) => (
+                <div key={item} className="rounded-lg border border-white/10 bg-white/[0.07] px-4 py-3 text-sm font-medium text-white/80">
+                  {item}
+                </div>
+              ))}
             </div>
           </div>
         </div>

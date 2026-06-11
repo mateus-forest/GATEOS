@@ -14,6 +14,7 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
+  const [infoMessage, setInfoMessage] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
@@ -21,6 +22,7 @@ export function LoginForm() {
     e.preventDefault()
     setIsLoading(true)
     setErrorMessage("")
+    setInfoMessage("")
 
     const supabase = createSupabaseBrowserClient()
     if (!supabase) {
@@ -56,7 +58,7 @@ export function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          className="h-11"
+          className="h-11 bg-background"
         />
       </div>
 
@@ -70,7 +72,7 @@ export function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="h-11 pr-10"
+            className="h-11 bg-background pr-10"
           />
           <Button
             type="button"
@@ -78,6 +80,7 @@ export function LoginForm() {
             size="icon"
             className="absolute right-0 top-0 h-11 w-11 hover:bg-transparent"
             onClick={() => setShowPassword(!showPassword)}
+            aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
           >
             {showPassword ? (
               <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -95,10 +98,24 @@ export function LoginForm() {
             Lembrar de mim
           </Label>
         </div>
-        <Button variant="link" className="px-0 text-primary">
+        <Button
+          type="button"
+          variant="link"
+          className="px-0 text-primary"
+          onClick={() => {
+            setErrorMessage("")
+            setInfoMessage("Recuperacao de senha ainda nao configurada para este ambiente.")
+          }}
+        >
           Esqueci minha senha
         </Button>
       </div>
+
+      {infoMessage && (
+        <p className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-primary">
+          {infoMessage}
+        </p>
+      )}
 
       {errorMessage && (
         <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -106,7 +123,7 @@ export function LoginForm() {
         </p>
       )}
 
-      <Button type="submit" className="w-full h-11" disabled={isLoading}>
+      <Button type="submit" className="h-11 w-full shadow-sm" disabled={isLoading}>
         {isLoading ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
