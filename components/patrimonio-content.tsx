@@ -53,16 +53,12 @@ import {
 } from "recharts"
 import type { AssetView } from "@/lib/mock-data"
 import { getAssets } from "@/lib/data/assets"
+import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { exportPdfReport } from "@/lib/cta-actions"
 import { buildAssetsReport } from "@/lib/reports/report-builders"
 
-const assetsByCategory = [
-  { name: "Imóveis", value: 2450000, color: "#22B8CF" },
-  { name: "Veículos", value: 580000, color: "#22C55E" },
-  { name: "Equipamentos", value: 890000, color: "#F59E0B" },
-  { name: "Móveis", value: 125000, color: "#8B5CF6" },
-]
+const CATEGORY_COLORS = ["#22B8CF", "#22C55E", "#F59E0B", "#8B5CF6", "#EF4444"]
 
 function normalizeAsset(item: Record<string, unknown>): AssetView {
   const name = String(item.name ?? item.nome ?? "")
@@ -100,9 +96,11 @@ export function PatrimonioContent() {
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [assets, setAssets] = useState<AssetView[]>([])
+  const [equipmentRows, setEquipmentRows] = useState<Record<string, unknown>[]>([])
 
   useEffect(() => {
     getAssets().then((items) => setAssets(items.map((item) => normalizeAsset(item as Record<string, unknown>))))
+    getEquipment().then((items) => setEquipmentRows(items as Record<string, unknown>[]))
   }, [])
 
   const filteredAssets = assets.filter((a) => {
@@ -114,7 +112,24 @@ export function PatrimonioContent() {
   })
 
   const totalPatrimonio = assets.reduce((sum, a) => sum + a.currentValue, 0)
-  const totalDepreciacao = assets.reduce((sum, a) => sum + (a.acquisitionValue - a.currentValue), 0)
+  const totalEquipmentQuantity = equipmentRows.reduce((sum, item) => sum + getEquipmentTotalQuantity(item), 0)
+  const rentedEquipmentQuantity = equipmentRows.reduce(
+    (sum, item) => sum + Math.max(0, getEquipmentTotalQuantity(item) - getEquipmentAvailableQuantity(item)),
+    0
+  )
+  const maintenanceEquipmentQuantity = equipmentRows
+    .filter((item) => String(item.status ?? "").toLowerCase() === "maintenance")
+    .reduce((sum, item) => sum + getEquipmentTotalQuantity(item), 0)
+  const assetsByCategory = Object.entries(
+    assets.reduce<Record<string, number>>((acc, asset) => {
+      acc[asset.category] = (acc[asset.category] ?? 0) + asset.currentValue
+      return acc
+    }, {
+      equipamentos: equipmentRows.reduce((sum, item) => sum + Number(item.value ?? item.valor_compra ?? 0), 0),
+    })
+  )
+    .filter(([, value]) => value > 0)
+    .map(([name, value], index) => ({ name, value, color: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }))
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -191,8 +206,8 @@ export function PatrimonioContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total de Ativos</p>
-                <p className="text-2xl font-bold">{assets.length}</p>
+                <p className="text-sm text-muted-foreground">Equipamentos</p>
+                <p className="text-2xl font-bold">{totalEquipmentQuantity}</p>
               </div>
               <div className="p-3 rounded-xl bg-emerald-100">
                 <Package className="h-6 w-6 text-emerald-600" />
@@ -205,8 +220,8 @@ export function PatrimonioContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Depreciação Acum.</p>
-                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalDepreciacao)}</p>
+                <p className="text-sm text-muted-foreground">Locados</p>
+                <p className="text-2xl font-bold text-red-600">{rentedEquipmentQuantity}</p>
               </div>
               <div className="p-3 rounded-xl bg-red-100">
                 <TrendingDown className="h-6 w-6 text-red-600" />
@@ -221,7 +236,7 @@ export function PatrimonioContent() {
               <div>
                 <p className="text-sm text-muted-foreground">Em Manutenção</p>
                 <p className="text-2xl font-bold text-amber-600">
-                  {assets.filter((a) => a.status === "maintenance").length}
+                  {maintenanceEquipmentQuantity}
                 </p>
               </div>
               <div className="p-3 rounded-xl bg-amber-100">

@@ -12,3 +12,21 @@ export async function createEquipment(payload: SupabaseRow) {
 export async function updateEquipment(id: string, payload: SupabaseRow) {
   return updateRows("equipment", payload, { id }, [{ ...payload, id }])
 }
+
+export function getEquipmentTotalQuantity(equipment: SupabaseRow) {
+  const value = equipment.total_quantity ?? equipment.quantity ?? equipment.quantidade_total ?? equipment.total ?? 0
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 0
+}
+
+export function getEquipmentAvailableQuantity(equipment: SupabaseRow) {
+  const explicit = equipment.available_quantity ?? equipment.quantidade_disponivel
+  if (explicit !== undefined && explicit !== null && String(explicit) !== "") {
+    const number = Number(explicit)
+    return Number.isFinite(number) ? number : 0
+  }
+
+  const total = getEquipmentTotalQuantity(equipment)
+  const rented = Number(equipment.rented_quantity ?? equipment.quantidade_locada ?? 0)
+  return Math.max(0, total - (Number.isFinite(rented) ? rented : 0))
+}

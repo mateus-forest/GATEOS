@@ -60,8 +60,15 @@ const writableColumnsByTable: Record<string, Set<string>> = {
     "type",
     "status",
     "total_quantity",
+    "available_quantity",
+    "rented_quantity",
     "description",
     "notes",
+  ]),
+  contract_equipment: new Set([
+    "contract_id",
+    "equipment_id",
+    "quantity",
   ]),
   assets: new Set([
     "equipment_id",

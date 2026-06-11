@@ -18,12 +18,23 @@ import {
   RefreshCw,
   Copy,
   Scale,
+  Plus,
+  Package,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -50,18 +61,33 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ContractView } from "@/lib/mock-data"
 import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
-import { createContract, getContracts } from "@/lib/data/contracts"
+import { createContract, createContractEquipment, getContracts, recalculateEquipmentInventory } from "@/lib/data/contracts"
+import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { uploadDocumentFile } from "@/lib/data/documents"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildContractsReport } from "@/lib/reports/report-builders"
+import type { SupabaseRow } from "@/lib/supabase/types"
 
 type ContractWithPublicLink = ContractView & {
   public_access_token?: string
   public_access_enabled?: boolean
+}
+
+type ClientOption = { label: string; value: string }
+type EquipmentOption = {
+  id: string
+  name: string
+  category: string
+  status: string
+  totalQuantity: number
+  availableQuantity: number
+}
+type ContractEquipmentDraft = {
+  equipmentId: string
+  quantity: string
 }
 
 function normalizeContractStatus(status: unknown) {
@@ -83,6 +109,10 @@ function toNumber(value: string | undefined) {
   if (!value) return null
   const parsed = Number(value.replace(",", "."))
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function isEquipmentAvailable(status: string, availableQuantity: number) {
+  return ["available", "active", "ativo", "disponivel"].includes(status.toLowerCase()) && availableQuantity > 0
 }
 
 function normalizeContract(item: Record<string, unknown>): ContractWithPublicLink {
@@ -123,12 +153,357 @@ function normalizeContract(item: Record<string, unknown>): ContractWithPublicLin
   }
 }
 
+function NewContractDialog({
+  clientOptions,
+  equipmentOptions,
+  generateContractNumber,
+  onCreated,
+}: {
+  clientOptions: ClientOption[]
+  equipmentOptions: EquipmentOption[]
+  generateContractNumber: (clientId: string, startDate: string) => string
+  onCreated: (contract: ContractWithPublicLink) => void | Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+  const [values, setValues] = useState({
+    client_id: "",
+    type: "locacao",
+    status: "ativo",
+    start_date: "",
+    end_date: "",
+    due_date: "",
+    monthly_value: "",
+  })
+  const [contractFile, setContractFile] = useState<File | null>(null)
+  const [equipmentDrafts, setEquipmentDrafts] = useState<ContractEquipmentDraft[]>([
+    { equipmentId: "", quantity: "1" },
+  ])
+
+  const selectedEquipmentIds = new Set(equipmentDrafts.map((item) => item.equipmentId).filter(Boolean))
+
+  const setValue = (field: keyof typeof values, value: string) => {
+    setValues((current) => ({ ...current, [field]: value }))
+    setErrorMessage("")
+  }
+
+  const setEquipmentDraft = (index: number, next: Partial<ContractEquipmentDraft>) => {
+    setEquipmentDrafts((current) =>
+      current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...next } : item))
+    )
+    setErrorMessage("")
+  }
+
+  const validate = () => {
+    if (!values.client_id) return "Selecione um cliente."
+    if (!values.type) return "Selecione o tipo de contrato."
+    if (!values.status) return "Selecione o status do contrato."
+    if (!values.start_date) return "Informe a data inicial."
+    if (!values.due_date) return "Informe a data de vencimento."
+    if (!toNumber(values.monthly_value)) return "Informe um valor mensal valido."
+
+    const filledDrafts = equipmentDrafts.filter((item) => item.equipmentId)
+    if (values.type === "locacao" && filledDrafts.length === 0) {
+      return "Contrato de locacao precisa ter pelo menos um equipamento vinculado."
+    }
+
+    for (const draft of filledDrafts) {
+      const equipment = equipmentOptions.find((item) => item.id === draft.equipmentId)
+      const quantity = Number(draft.quantity)
+      if (!equipment) return "Equipamento selecionado nao foi encontrado."
+      if (!Number.isFinite(quantity) || quantity <= 0) return "Informe uma quantidade valida para o equipamento."
+      if (quantity > equipment.availableQuantity) {
+        return `${equipment.name}: quantidade solicitada maior que o estoque disponivel.`
+      }
+    }
+
+    return ""
+  }
+
+  const reset = () => {
+    setValues({
+      client_id: "",
+      type: "locacao",
+      status: "ativo",
+      start_date: "",
+      end_date: "",
+      due_date: "",
+      monthly_value: "",
+    })
+    setContractFile(null)
+    setEquipmentDrafts([{ equipmentId: "", quantity: "1" }])
+    setErrorMessage("")
+  }
+
+  const handleSave = async () => {
+    const validationError = validate()
+    if (validationError) {
+      setErrorMessage(validationError)
+      return
+    }
+
+    setSaving(true)
+    setErrorMessage("")
+    try {
+      const publicToken = crypto.randomUUID()
+      const contractNumber = generateContractNumber(values.client_id, values.start_date)
+      const dueDate = new Date(`${values.due_date}T00:00:00`)
+      const created = await createContract({
+        client_id: values.client_id,
+        contract_number: contractNumber,
+        type: values.type,
+        status: values.status,
+        start_date: values.start_date,
+        end_date: values.end_date || null,
+        due_day: dueDate.getDate(),
+        monthly_value: toNumber(values.monthly_value),
+        total_value: toNumber(values.monthly_value),
+        public_access_token: publicToken,
+        public_access_enabled: true,
+        public_access_created_at: new Date().toISOString(),
+      })
+
+      const contractId = String((created as SupabaseRow).id ?? "")
+      const selectedDrafts = equipmentDrafts.filter((item) => item.equipmentId)
+      for (const draft of selectedDrafts) {
+        await createContractEquipment({
+          contract_id: contractId,
+          equipment_id: draft.equipmentId,
+          quantity: Number(draft.quantity),
+        })
+      }
+
+      for (const equipmentId of new Set(selectedDrafts.map((item) => item.equipmentId))) {
+        await recalculateEquipmentInventory(equipmentId)
+      }
+
+      if (contractFile) {
+        await uploadDocumentFile({
+          bucket: "gate-contracts",
+          file: contractFile,
+          folder: `contracts/${contractId}`,
+          record: {
+            contract_id: contractId,
+            contract_number: contractNumber,
+            category: "Contrato",
+          },
+        })
+      }
+
+      await onCreated(normalizeContract(created as Record<string, unknown>))
+      toast.success("Contrato salvo e estoque atualizado.")
+      reset()
+      setOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel salvar o contrato."
+      setErrorMessage(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>
+        <Plus className="mr-2 h-4 w-4" />
+        Novo Contrato
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Novo Contrato</DialogTitle>
+            <DialogDescription>Crie o contrato, vincule equipamentos e atualize o estoque real.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-2 md:col-span-2">
+                <Label htmlFor="contract-client">Cliente *</Label>
+                <Select value={values.client_id} onValueChange={(value) => setValue("client_id", value)}>
+                  <SelectTrigger id="contract-client">
+                    <SelectValue placeholder="Selecione o cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientOptions.length ? (
+                      clientOptions.map((client) => (
+                        <SelectItem key={client.value} value={client.value}>
+                          {client.label}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="empty" disabled>Nenhum cliente encontrado</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="contract-status">Status *</Label>
+                <Select value={values.status} onValueChange={(value) => setValue("status", value)}>
+                  <SelectTrigger id="contract-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                    <SelectItem value="suspenso">Suspenso</SelectItem>
+                    <SelectItem value="encerrado">Encerrado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="contract-type">Tipo *</Label>
+                <Select value={values.type} onValueChange={(value) => setValue("type", value)}>
+                  <SelectTrigger id="contract-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="locacao">Locacao</SelectItem>
+                    <SelectItem value="venda">Venda</SelectItem>
+                    <SelectItem value="manutencao">Manutencao</SelectItem>
+                    <SelectItem value="suporte">Suporte</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="contract-start">Data inicial *</Label>
+                <Input id="contract-start" type="date" value={values.start_date} onChange={(event) => setValue("start_date", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="contract-end">Data final</Label>
+                <Input id="contract-end" type="date" value={values.end_date} onChange={(event) => setValue("end_date", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="contract-due">Data de vencimento *</Label>
+                <Input id="contract-due" type="date" value={values.due_date} onChange={(event) => setValue("due_date", event.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="contract-value">Valor mensal *</Label>
+                <Input
+                  id="contract-value"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={values.monthly_value}
+                  onChange={(event) => setValue("monthly_value", event.target.value)}
+                />
+              </div>
+              <div className="grid gap-2 md:col-span-2">
+                <Label htmlFor="contract-file">Anexo opcional</Label>
+                <Input id="contract-file" type="file" onChange={(event) => setContractFile(event.target.files?.[0] ?? null)} />
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Equipamentos vinculados</h3>
+                  <p className="text-xs text-muted-foreground">Selecione apenas equipamentos com estoque disponivel.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEquipmentDrafts((current) => [...current, { equipmentId: "", quantity: "1" }])}
+                >
+                  <Plus className="mr-2 h-3.5 w-3.5" />
+                  Adicionar
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {equipmentDrafts.map((draft, index) => {
+                  const equipment = equipmentOptions.find((item) => item.id === draft.equipmentId)
+                  return (
+                    <div key={`${draft.equipmentId}-${index}`} className="grid gap-3 rounded-lg bg-muted/40 p-3 md:grid-cols-[1fr_120px_40px]">
+                      <div className="grid gap-2">
+                        <Label>Equipamento</Label>
+                        <Select value={draft.equipmentId} onValueChange={(value) => setEquipmentDraft(index, { equipmentId: value })}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o equipamento" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {equipmentOptions.length ? (
+                              equipmentOptions.map((item) => (
+                                <SelectItem
+                                  key={item.id}
+                                  value={item.id}
+                                  disabled={selectedEquipmentIds.has(item.id) && item.id !== draft.equipmentId}
+                                >
+                                  {item.name} - disponivel: {item.availableQuantity}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="empty" disabled>Nenhum equipamento disponivel</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {equipment && (
+                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-background px-2 py-1">
+                              <Package className="h-3 w-3" />
+                              Total: {equipment.totalQuantity}
+                            </span>
+                            <span className="rounded-md bg-background px-2 py-1">
+                              Disponivel: {equipment.availableQuantity}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Quantidade</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max={equipment?.availableQuantity}
+                          value={draft.quantity}
+                          onChange={(event) => setEquipmentDraft(index, { quantity: event.target.value })}
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => setEquipmentDrafts((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                          disabled={equipmentDrafts.length === 1}
+                          aria-label="Remover equipamento"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {errorMessage && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {errorMessage}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar contrato"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export function ContratosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
   const [contracts, setContracts] = useState<ContractWithPublicLink[]>([])
-  const [clientOptions, setClientOptions] = useState<Array<{ label: string; value: string }>>([])
+  const [clientOptions, setClientOptions] = useState<ClientOption[]>([])
+  const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([])
 
   useEffect(() => {
     getContracts().then((items) => setContracts(items.map((item) => normalizeContract(item as Record<string, unknown>))))
@@ -141,6 +516,26 @@ export function ContratosContent() {
             value: String(record.id ?? ""),
           }
         }).filter((item) => item.value)
+      )
+    )
+    getEquipment().then((items) =>
+      setEquipmentOptions(
+        items
+          .map((item) => {
+            const record = item as SupabaseRow
+            const totalQuantity = getEquipmentTotalQuantity(record)
+            const availableQuantity = getEquipmentAvailableQuantity(record)
+            const status = String(record.status ?? "available")
+            return {
+              id: String(record.id ?? ""),
+              name: String(record.name ?? record.nome ?? record.description ?? record.id ?? ""),
+              category: String(record.category ?? record.type ?? record.categoria ?? ""),
+              status,
+              totalQuantity,
+              availableQuantity,
+            }
+          })
+          .filter((item) => item.id && isEquipmentAvailable(item.status, item.availableQuantity))
       )
     )
   }, [])
@@ -156,7 +551,7 @@ export function ContratosContent() {
   const activeContracts = contracts.filter((c) => c.status === "ativo").length
   const expiringContracts = contracts.filter((c) => c.status === "pendente").length
   const totalMonthlyValue = contracts
-    .filter((c) => c.status === "ativo" || c.status === "pendente")
+    .filter((c) => c.status === "ativo")
     .reduce((sum, c) => sum + c.monthlyValue, 0)
 
   const getPublicContractUrl = (token: string) => `${window.location.origin}/cliente/contrato/${token}`
@@ -278,101 +673,35 @@ export function ContratosContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <MockCreateDialog
-            title="Novo Contrato"
-            description="Preencha os dados do contrato para salvar no Supabase."
-            triggerLabel="Novo Contrato"
-            toastMessage="Contrato salvo com sucesso"
-            sections={[
-              {
-                title: "Cliente",
-                fields: [
-                  { name: "client_id", label: "Cliente", type: "select", required: true, options: clientOptions },
-                  {
-                    name: "type",
-                    label: "Tipo de contrato",
-                    type: "select",
-                    required: true,
-                    options: [
-                      { label: "Locação", value: "locacao" },
-                      { label: "Venda", value: "venda" },
-                      { label: "Manutenção", value: "manutencao" },
-                      { label: "Suporte", value: "suporte" },
-                    ],
-                  },
-                  {
-                    name: "status",
-                    label: "Status",
-                    type: "select",
-                    options: [
-                      { label: "Ativo", value: "ativo" },
-                      { label: "Pendente", value: "pendente" },
-                      { label: "Suspenso", value: "suspenso" },
-                      { label: "Encerrado", value: "encerrado" },
-                    ],
-                  },
-                ],
-              },
-              {
-                title: "Dados do contrato",
-                fields: [
-                  { name: "start_date", label: "Data inicial", type: "date", required: true },
-                  { name: "end_date", label: "Data final", type: "date" },
-                  { name: "due_date", label: "Data de vencimento", type: "date" },
-                ],
-              },
-              {
-                title: "Financeiro",
-                fields: [
-                  { name: "monthly_value", label: "Valor mensal em R$", type: "money" },
-                ],
-              },
-              {
-                title: "Anexos",
-                fields: [
-                  { name: "contract_pdf", label: "Contrato PDF", type: "file" },
-                  { name: "receipt_file", label: "Comprovante", type: "file" },
-                  { name: "other_file", label: "Outros documentos", type: "file" },
-                ],
-              },
-            ]}
-            onSave={async (values, files) => {
-              const publicToken = crypto.randomUUID()
-              const contractNumber = generateContractNumber(values.client_id, values.start_date)
-              const dueDate = values.due_date ? new Date(`${values.due_date}T00:00:00`) : null
-              const created = await createContract({
-                client_id: values.client_id,
-                contract_number: contractNumber,
-                type: values.type ?? "locacao",
-                status: values.status ?? "ativo",
-                start_date: values.start_date,
-                end_date: values.end_date || null,
-                due_day: dueDate ? dueDate.getDate() : null,
-                monthly_value: toNumber(values.monthly_value),
-                total_value: toNumber(values.monthly_value),
-                public_access_token: publicToken,
-                public_access_enabled: true,
-                public_access_created_at: new Date().toISOString(),
-              })
-              const contractId = String((created as Record<string, unknown>).id ?? "")
-              for (const file of Object.values(files).filter(Boolean)) {
-                await uploadDocumentFile({
-                  bucket: "gate-contracts",
-                  file: file as File,
-                  folder: `contracts/${contractId}`,
-                  record: {
-                    contract_id: contractId,
-                    contract_number: contractNumber,
-                    category: "Contrato",
-                  },
-                })
-              }
-              const createdContract = normalizeContract(created as Record<string, unknown>)
-              const refreshed = await getContracts()
-              const refreshedContracts = refreshed.map((item) => normalizeContract(item as Record<string, unknown>))
-              const hasCreatedContract = refreshedContracts.some((contract) => contract.id === createdContract.id)
-              setContracts(
-                hasCreatedContract ? refreshedContracts : [createdContract, ...refreshedContracts]
+          <NewContractDialog
+            clientOptions={clientOptions}
+            equipmentOptions={equipmentOptions}
+            generateContractNumber={generateContractNumber}
+            onCreated={async (createdContract) => {
+              const [refreshedContracts, refreshedEquipment] = await Promise.all([
+                getContracts(),
+                getEquipment(),
+              ])
+              const normalizedContracts = refreshedContracts.map((item) => normalizeContract(item as Record<string, unknown>))
+              const hasCreatedContract = normalizedContracts.some((contract) => contract.id === createdContract.id)
+              setContracts(hasCreatedContract ? normalizedContracts : [createdContract, ...normalizedContracts])
+              setEquipmentOptions(
+                refreshedEquipment
+                  .map((item) => {
+                    const record = item as SupabaseRow
+                    const totalQuantity = getEquipmentTotalQuantity(record)
+                    const availableQuantity = getEquipmentAvailableQuantity(record)
+                    const status = String(record.status ?? "available")
+                    return {
+                      id: String(record.id ?? ""),
+                      name: String(record.name ?? record.nome ?? record.description ?? record.id ?? ""),
+                      category: String(record.category ?? record.type ?? record.categoria ?? ""),
+                      status,
+                      totalQuantity,
+                      availableQuantity,
+                    }
+                  })
+                  .filter((item) => item.id && isEquipmentAvailable(item.status, item.availableQuantity))
               )
             }}
           />

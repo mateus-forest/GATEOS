@@ -339,13 +339,6 @@ export function DashboardContent() {
     const equipmentSummary = data.equipmentSummaryRows[0]
     const assetSummary = data.assetSummaryRows[0]
     const profit = data.profitRows[0]
-    const currentMonthRevenueFromEntries = sumRows(
-      data.financialEntries,
-      ["amount", "valor", "value"],
-      (row) =>
-        isCurrentMonth(row.competence_date ?? row.due_date ?? row.date ?? row.created_at) &&
-        ["receita", "income", "entrada"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase())
-    )
     const currentMonthExpensesFromEntries = sumRows(
       data.financialEntries,
       ["amount", "valor", "value"],
@@ -355,6 +348,10 @@ export function DashboardContent() {
     )
     const activeContractsFromTable = data.contracts.filter((row) =>
       ["ativo", "active"].includes(text(row, ["status"]).toLowerCase())
+    )
+    const activeContractMonthlyValue = activeContractsFromTable.reduce(
+      (sum, row) => sum + num(row, ["monthly_value", "valor_mensal", "monthlyValue", "value"]),
+      0
     )
     const overdueAmount = data.overdueRows.length
       ? sumRows(data.overdueRows, ["amount", "valor", "value", "total_amount"], () => true)
@@ -411,7 +408,7 @@ export function DashboardContent() {
         status: text(row, ["status"], "pending"),
       }))
     const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
-    const monthlyRevenue = num(financial, ["monthly_revenue", "revenue_month", "revenue", "receita_mensal"], currentMonthRevenueFromEntries)
+    const monthlyRevenue = activeContractMonthlyValue
     const monthlyExpenses = num(financial, ["monthly_expenses", "expenses_month", "expenses", "despesas_mensais"], currentMonthExpensesFromEntries)
     const profitDistribution = {
       revenue: num(profit, ["revenue", "receita"], monthlyRevenue),
@@ -462,7 +459,7 @@ export function DashboardContent() {
       upcomingPayments,
       renewalRate: data.contracts.length ? Math.round((activeContractsFromTable.length / data.contracts.length) * 100) : 0,
       averageTicket: activeContractsFromTable.length
-        ? activeContractsFromTable.reduce((sum, row) => sum + num(row, ["monthly_value", "valor_mensal", "value"]), 0) / activeContractsFromTable.length
+        ? activeContractMonthlyValue / activeContractsFromTable.length
         : 0,
       delinquencyRate: receivableAmount > 0 ? Math.min(100, (overdueAmount / receivableAmount) * 100) : 0,
       receivableAmount,
@@ -605,7 +602,7 @@ export function DashboardContent() {
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          title="Receita Mensal"
+          title="Receita Prevista Mensal"
           value={formatCurrency(monthlyRevenue)}
           change={formatCurrency(monthlyProfit)}
           changeType={monthlyProfit >= 0 ? "positive" : "negative"}

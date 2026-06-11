@@ -46,18 +46,27 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { EquipmentView } from "@/lib/mock-data"
-import { createEquipment, getEquipment } from "@/lib/data/equipment"
+import { createEquipment, getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { createAsset } from "@/lib/data/assets"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildEquipmentReport } from "@/lib/reports/report-builders"
 
-function normalizeEquipment(item: Record<string, unknown>): EquipmentView {
+type EquipmentInventoryView = EquipmentView & {
+  totalQuantity: number
+  availableQuantity: number
+  rentedQuantity: number
+}
+
+function normalizeEquipment(item: Record<string, unknown>): EquipmentInventoryView {
   const name = String(item.name ?? item.nome ?? "")
   const code = String(item.code ?? item.codigo ?? "")
   const value = Number(item.value ?? item.valor_compra ?? item.valorCompra ?? 0)
   const status = String(item.status ?? "available")
+  const totalQuantity = getEquipmentTotalQuantity(item)
+  const availableQuantity = getEquipmentAvailableQuantity(item)
+  const rentedQuantity = Math.max(0, totalQuantity - availableQuantity)
 
   return {
     id: String(item.id ?? ""),
@@ -87,6 +96,9 @@ function normalizeEquipment(item: Record<string, unknown>): EquipmentView {
     purchaseDate: String(item.purchaseDate ?? item.data_compra ?? item.dataCompra ?? ""),
     warrantyUntil: item.warrantyUntil || item.garantia_ate ? String(item.warrantyUntil ?? item.garantia_ate) : undefined,
     status,
+    totalQuantity,
+    availableQuantity,
+    rentedQuantity,
   }
 }
 
@@ -94,7 +106,7 @@ export function EquipamentosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [equipments, setEquipments] = useState<EquipmentView[]>([])
+  const [equipments, setEquipments] = useState<EquipmentInventoryView[]>([])
 
   useEffect(() => {
     getEquipment().then((items) => setEquipments(items.map((item) => normalizeEquipment(item as Record<string, unknown>))))
@@ -109,10 +121,10 @@ export function EquipamentosContent() {
     return matchesSearch && matchesType && matchesStatus
   })
 
-  const totalEquipments = equipments.length
-  const activeEquipments = equipments.filter((e) => e.status === "active").length
+  const totalEquipments = equipments.reduce((sum, item) => sum + item.totalQuantity, 0)
+  const rentedEquipments = equipments.reduce((sum, item) => sum + item.rentedQuantity, 0)
+  const availableEquipments = equipments.reduce((sum, item) => sum + item.availableQuantity, 0)
   const maintenanceEquipments = equipments.filter((e) => e.status === "maintenance").length
-  const totalValue = equipments.reduce((sum, e) => sum + e.value, 0)
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -226,11 +238,14 @@ export function EquipamentosContent() {
               },
             ]}
             onSave={async (values) => {
+              const totalQuantity = Number(values.total_quantity ?? 0)
               const created = await createEquipment({
                 name: values.name ?? "",
                 category: values.category ?? "",
                 description: values.description ?? "",
-                total_quantity: Number(values.total_quantity ?? 0),
+                total_quantity: totalQuantity,
+                available_quantity: totalQuantity,
+                rented_quantity: 0,
                 status: values.status ?? "available",
                 notes: values.notes ?? "",
               })
@@ -268,8 +283,8 @@ export function EquipamentosContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Ativos</p>
-                <p className="text-2xl font-bold text-emerald-600">{activeEquipments}</p>
+                <p className="text-sm text-muted-foreground">Locados</p>
+                <p className="text-2xl font-bold text-emerald-600">{rentedEquipments}</p>
               </div>
               <div className="p-3 rounded-xl bg-emerald-100">
                 <CheckCircle2 className="h-6 w-6 text-emerald-600" />
@@ -282,8 +297,8 @@ export function EquipamentosContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Em Manutenção</p>
-                <p className="text-2xl font-bold text-amber-600">{maintenanceEquipments}</p>
+                <p className="text-sm text-muted-foreground">Disponiveis</p>
+                <p className="text-2xl font-bold text-amber-600">{availableEquipments}</p>
               </div>
               <div className="p-3 rounded-xl bg-amber-100">
                 <Wrench className="h-6 w-6 text-amber-600" />
@@ -296,8 +311,8 @@ export function EquipamentosContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Valor Total</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalValue)}</p>
+                <p className="text-sm text-muted-foreground">Em Manutencao</p>
+                <p className="text-2xl font-bold">{maintenanceEquipments}</p>
               </div>
               <div className="p-3 rounded-xl bg-blue-100">
                 <Server className="h-6 w-6 text-blue-600" />
@@ -359,6 +374,7 @@ export function EquipamentosContent() {
                 <TableHead>Número de Série</TableHead>
                 <TableHead>Cliente / Localização</TableHead>
                 <TableHead>Contrato</TableHead>
+                <TableHead>Estoque</TableHead>
                 <TableHead>Valor</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-12"></TableHead>
@@ -390,6 +406,14 @@ export function EquipamentosContent() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{equipment.contractNumber}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      <p>Total: {equipment.totalQuantity}</p>
+                      <p className="text-muted-foreground">
+                        Locado: {equipment.rentedQuantity} | Disponivel: {equipment.availableQuantity}
+                      </p>
+                    </div>
                   </TableCell>
                   <TableCell className="font-semibold">{formatCurrency(equipment.value)}</TableCell>
                   <TableCell>{getStatusBadge(equipment.status)}</TableCell>
@@ -425,7 +449,7 @@ export function EquipamentosContent() {
               ))}
               {filteredEquipments.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-28 text-center">
+                  <TableCell colSpan={8} className="h-28 text-center">
                     <div className="space-y-1">
                       <p className="font-medium">Nenhum equipamento cadastrado ainda.</p>
                       <p className="text-sm text-muted-foreground">Clique em Novo Equipamento para começar.</p>

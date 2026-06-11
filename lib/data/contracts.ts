@@ -1,6 +1,7 @@
-import { selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { deleteRows, insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import type { SupabaseRow } from "@/lib/supabase/types"
+import { getEquipment, getEquipmentTotalQuantity, updateEquipment } from "@/lib/data/equipment"
 
 export async function getContracts() {
   const [summaryRows, contractRows] = await Promise.all([
@@ -68,4 +69,48 @@ export async function updateContract(id: string, payload: SupabaseRow) {
 
 export async function prepareInstallmentsForContract(contractId: string) {
   return { contract_id: contractId, ready: true }
+}
+
+export async function getContractEquipment(contractId?: string) {
+  return selectRows<SupabaseRow>(
+    "contract_equipment",
+    [],
+    contractId ? { eq: { contract_id: contractId } } : {}
+  )
+}
+
+export async function createContractEquipment(payload: SupabaseRow) {
+  return insertRow("contract_equipment", payload, { ...payload, id: crypto.randomUUID() })
+}
+
+export async function updateContractEquipment(id: string, payload: SupabaseRow) {
+  return updateRows("contract_equipment", payload, { id }, [{ ...payload, id }])
+}
+
+export async function deleteContractEquipment(id: string) {
+  return deleteRows("contract_equipment", { id }, [])
+}
+
+export async function recalculateEquipmentInventory(equipmentId: string) {
+  const [equipmentRows, links] = await Promise.all([
+    getEquipment(),
+    getContractEquipment(),
+  ])
+  const equipment = equipmentRows.find((item) => String((item as SupabaseRow).id ?? "") === equipmentId) as SupabaseRow | undefined
+  if (!equipment) {
+    throw new Error("Equipamento nao encontrado para recalcular estoque.")
+  }
+
+  const total = getEquipmentTotalQuantity(equipment)
+  const rented = links
+    .filter((item) => String(item.equipment_id ?? "") === equipmentId)
+    .reduce((sum, item) => sum + Number(item.quantity ?? 0), 0)
+  const available = Math.max(0, total - rented)
+
+  await updateEquipment(equipmentId, {
+    rented_quantity: rented,
+    available_quantity: available,
+  })
+
+  return { total, rented, available }
 }
