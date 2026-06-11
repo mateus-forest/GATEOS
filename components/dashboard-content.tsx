@@ -68,6 +68,10 @@ import { getEquipment } from "@/lib/data/equipment"
 import { getFinancialEntries } from "@/lib/data/financial"
 import { getInstallments } from "@/lib/data/installments"
 import { getMaintenanceOrders } from "@/lib/data/maintenance"
+import {
+  calculateMonthlyRevenueMetrics,
+  getContractMonthlyValue,
+} from "@/lib/data/recurring-revenue"
 
 const COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6"]
 
@@ -349,10 +353,8 @@ export function DashboardContent() {
     const activeContractsFromTable = data.contracts.filter((row) =>
       ["ativo", "active"].includes(text(row, ["status"]).toLowerCase())
     )
-    const activeContractMonthlyValue = activeContractsFromTable.reduce(
-      (sum, row) => sum + num(row, ["monthly_value", "valor_mensal", "monthlyValue", "value"]),
-      0
-    )
+    const revenueMetrics = calculateMonthlyRevenueMetrics(data.contracts, data.financialEntries)
+    const activeContractMonthlyValue = activeContractsFromTable.reduce((sum, row) => sum + getContractMonthlyValue(row), 0)
     const overdueAmount = data.overdueRows.length
       ? sumRows(data.overdueRows, ["amount", "valor", "value", "total_amount"], () => true)
       : sumRows(
@@ -408,7 +410,7 @@ export function DashboardContent() {
         status: text(row, ["status"], "pending"),
       }))
     const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
-    const monthlyRevenue = activeContractMonthlyValue
+    const monthlyRevenue = revenueMetrics.totalRevenue
     const monthlyExpenses = num(financial, ["monthly_expenses", "expenses_month", "expenses", "despesas_mensais"], currentMonthExpensesFromEntries)
     const profitDistribution = {
       revenue: num(profit, ["revenue", "receita"], monthlyRevenue),
@@ -430,7 +432,7 @@ export function DashboardContent() {
       monthlyRevenue,
       monthlyExpenses,
       monthlyProfit: operatingProfit,
-      activeContracts: num(data.contractSummaryRows[0], ["active_contracts", "ativos"], activeContractsFromTable.length),
+      activeContracts: revenueMetrics.activeContracts.length || num(data.contractSummaryRows[0], ["active_contracts", "ativos"], activeContractsFromTable.length),
       totalClients: data.clients.length,
       totalEquipments: num(equipmentSummary, ["total_equipment", "total", "equipments"], data.equipment.length),
       equipmentInMaintenance: num(
@@ -458,9 +460,11 @@ export function DashboardContent() {
       recentActivities,
       upcomingPayments,
       renewalRate: data.contracts.length ? Math.round((activeContractsFromTable.length / data.contracts.length) * 100) : 0,
-      averageTicket: activeContractsFromTable.length
-        ? activeContractMonthlyValue / activeContractsFromTable.length
+      averageTicket: revenueMetrics.activeContracts.length
+        ? revenueMetrics.mrr / revenueMetrics.activeContracts.length
         : 0,
+      mrr: revenueMetrics.mrr || activeContractMonthlyValue,
+      arr: revenueMetrics.arr || activeContractMonthlyValue * 12,
       delinquencyRate: receivableAmount > 0 ? Math.min(100, (overdueAmount / receivableAmount) * 100) : 0,
       receivableAmount,
       payableAmount: sumRows(
@@ -512,6 +516,8 @@ export function DashboardContent() {
     payableAmount,
     assetsValue,
     expiringContracts,
+    mrr,
+    arr,
   } = dashboard
 
   const handleExportReport = () => {
@@ -646,8 +652,8 @@ export function DashboardContent() {
               ["Despesas mensais", formatCurrency(monthlyExpenses)],
               ["Contas a receber", formatCurrency(receivableAmount)],
               ["Contas a pagar", formatCurrency(payableAmount)],
-              ["MRR", formatCurrency(monthlyRevenue)],
-              ["ARR", formatCurrency(monthlyRevenue * 12)],
+              ["MRR", formatCurrency(mrr)],
+              ["ARR", formatCurrency(arr)],
               ["Inadimplencia", `${delinquencyRate.toFixed(1)}%`],
               ["Patrimonio", formatCurrency(assetsValue)],
             ].map(([label, value]) => (

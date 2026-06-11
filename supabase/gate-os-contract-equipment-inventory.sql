@@ -1,0 +1,61 @@
+-- GATE OS - integracao contratos/equipamentos/estoque
+-- Data: 2026-06-11
+--
+-- NAO executar automaticamente.
+-- Execute apenas no Supabase SQL Editor apos validar o schema real.
+
+-- 1. Vinculo contrato x equipamento.
+--
+-- create table if not exists public.contract_equipment (
+--   id uuid primary key default gen_random_uuid(),
+--   contract_id uuid not null references public.contracts(id) on delete cascade,
+--   equipment_id uuid not null references public.equipment(id),
+--   quantity integer not null check (quantity > 0),
+--   created_at timestamptz not null default now()
+-- );
+--
+-- create index if not exists idx_contract_equipment_contract_id
+--   on public.contract_equipment(contract_id);
+--
+-- create index if not exists idx_contract_equipment_equipment_id
+--   on public.contract_equipment(equipment_id);
+
+-- 2. Quantidades operacionais em equipment.
+--
+-- alter table public.equipment
+--   add column if not exists total_quantity integer not null default 0,
+--   add column if not exists available_quantity integer not null default 0,
+--   add column if not exists rented_quantity integer not null default 0;
+
+-- 3. Vinculo opcional de lancamento financeiro ao contrato para evitar duplicidade.
+--
+-- alter table public.financial_entries
+--   add column if not exists contract_id uuid references public.contracts(id);
+
+-- 4. Backfill de estoque disponivel.
+-- Revise antes se ja houver controle manual preenchido.
+--
+-- update public.equipment
+-- set available_quantity = greatest(coalesce(total_quantity, 0) - coalesce(rented_quantity, 0), 0)
+-- where available_quantity is null;
+
+-- 5. RLS minimo para authenticated.
+-- Revise conforme o modelo de permissao aprovado pela GATE.
+--
+-- alter table public.contract_equipment enable row level security;
+--
+-- drop policy if exists gate_authenticated_select on public.contract_equipment;
+-- create policy gate_authenticated_select on public.contract_equipment
+--   for select to authenticated using (auth.uid() is not null);
+--
+-- drop policy if exists gate_authenticated_insert on public.contract_equipment;
+-- create policy gate_authenticated_insert on public.contract_equipment
+--   for insert to authenticated with check (auth.uid() is not null);
+--
+-- drop policy if exists gate_authenticated_update on public.contract_equipment;
+-- create policy gate_authenticated_update on public.contract_equipment
+--   for update to authenticated using (auth.uid() is not null) with check (auth.uid() is not null);
+--
+-- drop policy if exists gate_authenticated_delete on public.contract_equipment;
+-- create policy gate_authenticated_delete on public.contract_equipment
+--   for delete to authenticated using (auth.uid() is not null);

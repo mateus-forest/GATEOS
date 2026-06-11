@@ -51,6 +51,7 @@ const writableColumnsByTable: Record<string, Set<string>> = {
     "dre_category_id",
     "bank_account_id",
     "client_id",
+    "contract_id",
     "payment_method",
     "attachment_type",
   ]),

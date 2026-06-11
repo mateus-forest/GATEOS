@@ -74,9 +74,17 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
+import { getContracts } from "@/lib/data/contracts"
 import { uploadDocumentFile } from "@/lib/data/documents"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
+import {
+  calculateMonthlyExpense,
+  calculateMonthlyRevenueMetrics,
+  getContractDueDateForMonth,
+  getContractMonthlyValue,
+} from "@/lib/data/recurring-revenue"
+import type { SupabaseRow } from "@/lib/supabase/types"
 import {
   attachmentTypes,
   launchTypes,
@@ -112,6 +120,7 @@ type TransactionRow = {
   amount: number
   date: string
   status: string
+  contractId?: string
 }
 
 function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow {
@@ -126,6 +135,7 @@ function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow 
     amount: Number(item.value ?? item.amount ?? item.valor ?? 0),
     date: String(item.competence_date ?? item.date ?? item.data ?? ""),
     status: status === "Cancelado" || status === "cancelled" ? "cancelled" : status.includes("pagar") || status.includes("receber") || status === "pending" ? "pending" : "completed",
+    contractId: item.contract_id ? String(item.contract_id) : undefined,
   }
 }
 
@@ -317,13 +327,21 @@ export function FinanceiroContent() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [financialEntries, setFinancialEntries] = useState<TransactionRow[]>([])
+  const [rawFinancialEntries, setRawFinancialEntries] = useState<SupabaseRow[]>([])
+  const [contracts, setContracts] = useState<SupabaseRow[]>([])
 
   useEffect(() => {
-    getFinancialEntries().then((items) =>
-      setFinancialEntries(items.map((item) => normalizeFinancialEntry(item as Record<string, unknown>)))
-    )
+    Promise.all([getFinancialEntries(), getContracts()]).then(([entries, contractRows]) => {
+      setRawFinancialEntries(entries as SupabaseRow[])
+      setFinancialEntries((entries as Record<string, unknown>[]).map((item) => normalizeFinancialEntry(item)))
+      setContracts(contractRows as SupabaseRow[])
+    })
   }, [])
+
   const allTransactions = financialEntries
+  const currentRevenue = calculateMonthlyRevenueMetrics(contracts, rawFinancialEntries)
+  const currentMonthKey = currentRevenue.monthKey
+  const currentMonthTransactions = allTransactions.filter((transaction) => transaction.date.slice(0, 7) === currentMonthKey)
   const chartRows = allTransactions.reduce((acc, transaction) => {
     const month = transaction.date ? transaction.date.slice(0, 7) : "Sem data"
     const current = acc.get(month) ?? { month, receitas: 0, despesas: 0, balance: 0 }
@@ -337,6 +355,10 @@ export function FinanceiroContent() {
     acc.set(month, current)
     return acc
   }, new Map<string, { month: string; receitas: number; despesas: number; balance: number }>())
+  const currentChartRow = chartRows.get(currentMonthKey) ?? { month: currentMonthKey, receitas: 0, despesas: 0, balance: 0 }
+  currentChartRow.receitas += currentRevenue.contractExpectedRevenue
+  currentChartRow.balance += currentRevenue.contractExpectedRevenue
+  chartRows.set(currentMonthKey, currentChartRow)
   const monthlyData = Array.from(chartRows.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-12)
   const cashFlowData = monthlyData.reduce((items, item) => {
     const previous = items.at(-1)?.balance ?? 0
@@ -352,16 +374,20 @@ export function FinanceiroContent() {
     return matchesSearch && matchesType && matchesStatus
   })
 
-  const totalReceitas = allTransactions
-    .filter((t) => t.type === "income" && t.status === "completed")
-    .reduce((sum, t) => sum + t.amount, 0)
+  const totalReceitas = currentRevenue.totalRevenue
   
-  const totalDespesas = allTransactions
-    .filter((t) => t.type === "expense" && t.status === "completed")
-    .reduce((sum, t) => sum + t.amount, 0)
-  const pendingReceivables = allTransactions.filter((t) => t.type === "income" && t.status === "pending")
-  const pendingPayables = allTransactions.filter((t) => t.type === "expense" && t.status === "pending")
-  const pendingReceivableAmount = pendingReceivables.reduce((sum, t) => sum + t.amount, 0)
+  const totalDespesas = calculateMonthlyExpense(rawFinancialEntries, currentMonthKey)
+  const pendingReceivables = currentMonthTransactions.filter((t) => t.type === "income" && t.status === "pending")
+  const pendingPayables = currentMonthTransactions.filter((t) => t.type === "expense" && t.status === "pending")
+  const contractReceivables = currentRevenue.pendingContractReceivables.map((contract) => ({
+    id: String(contract.id ?? ""),
+    description: String(contract.contract_number ?? contract.number ?? "Contrato ativo"),
+    date: getContractDueDateForMonth(contract, currentMonthKey),
+    amount: getContractMonthlyValue(contract),
+  }))
+  const pendingReceivableAmount =
+    pendingReceivables.reduce((sum, t) => sum + t.amount, 0) +
+    contractReceivables.reduce((sum, item) => sum + item.amount, 0)
 
   const saldo = totalReceitas - totalDespesas
 
@@ -387,7 +413,17 @@ export function FinanceiroContent() {
           <p className="text-muted-foreground">Gestão de receitas, despesas e fluxo de caixa</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => exportPdfReport(buildFinancialEntriesReport(filteredTransactions.map((transaction) => ({
+          <Button variant="outline" onClick={() => exportPdfReport(buildFinancialEntriesReport([
+            ...currentRevenue.pendingContractReceivables.map((contract) => ({
+              id: String(contract.id ?? ""),
+              date: getContractDueDateForMonth(contract, currentMonthKey),
+              description: `Receita prevista contrato ${String(contract.contract_number ?? contract.number ?? "")}`,
+              categoria: "Contrato ativo",
+              type: "income",
+              status: "previsto",
+              amount: getContractMonthlyValue(contract),
+            })),
+            ...filteredTransactions.map((transaction) => ({
             id: transaction.id,
             date: transaction.date,
             description: transaction.description,
@@ -395,7 +431,8 @@ export function FinanceiroContent() {
             type: transaction.type,
             status: transaction.status,
             amount: transaction.amount,
-          }))))}>
+          })),
+          ]))}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
@@ -418,7 +455,7 @@ export function FinanceiroContent() {
             </div>
             <div className="flex items-center gap-1 mt-2 text-sm text-emerald-600">
               <TrendingUp className="h-4 w-4" />
-              Base financial_entries
+              Contratos + financial_entries
             </div>
           </CardContent>
         </Card>
@@ -472,11 +509,34 @@ export function FinanceiroContent() {
               </div>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              {pendingReceivables.length} faturas pendentes
+              {pendingReceivables.length + contractReceivables.length} recebiveis pendentes
             </p>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Financeiro operacional</CardTitle>
+          <CardDescription>Receita recorrente prevista por contratos ativos e receitas realizadas no mes.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            {[
+              ["Receita prevista por contratos", formatCurrency(currentRevenue.contractExpectedRevenue)],
+              ["Receita realizada", formatCurrency(currentRevenue.financialRealizedRevenue)],
+              ["Receita pendente lancada", formatCurrency(currentRevenue.financialPendingRevenue)],
+              ["Contratos ativos", currentRevenue.activeContracts.length],
+              ["Proximos vencimentos", contractReceivables.length],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-1 font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -748,6 +808,18 @@ export function FinanceiroContent() {
                         <Button variant="link" size="sm" className="h-auto p-0 text-xs">
                           Registrar pagamento
                         </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {contractReceivables.map((item) => (
+                    <div key={`contract-${item.id}`} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div>
+                        <p className="font-medium">{item.description}</p>
+                        <p className="text-sm text-muted-foreground">Vence em {formatDate(item.date)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-emerald-600">{formatCurrency(item.amount)}</p>
+                        <Badge variant="secondary">Previsto</Badge>
                       </div>
                     </div>
                   ))}

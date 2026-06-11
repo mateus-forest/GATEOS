@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CalendarCheck2, Download, FileSpreadsheet, History, Lock, RotateCcw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -35,6 +35,16 @@ import { exportCsv, exportExcelTable, exportPdfReport, featureInPreparation } fr
 import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builders"
 import { createDreManualAdjustment, deleteDreManualAdjustment } from "@/lib/data/dre"
 import { formatCurrency } from "@/lib/utils"
+import { getContracts } from "@/lib/data/contracts"
+import { getFinancialEntries } from "@/lib/data/financial"
+import {
+  calculateContractRevenueByMonth,
+  getEntryAmount,
+  getEntryMonthKey,
+  isExpenseEntry,
+  isIncomeEntry,
+} from "@/lib/data/recurring-revenue"
+import type { SupabaseRow } from "@/lib/supabase/types"
 
 const months = ["jan-26", "fev-26", "mar-26", "abr-26", "mai-26", "jun-26", "jul-26", "ago-26", "set-26", "out-26", "nov-26", "dez-26"]
 
@@ -71,6 +81,7 @@ const v = (...values: number[]) => [...values, ...Array(12 - values.length).fill
 
 const baseRows: DreRow[] = [
   { label: "RECEITAS 2026", kind: "section" },
+  { label: "Contratos ativos", values: empty },
   { label: "Fribal", values: v(8903.88, 8903.88, 8903.88, 8903.88, 8903.88) },
   { label: "Estacio Itapipoca", values: v(0, 1900, 0, 0, 1500) },
   { label: "Fortaleza Iguatemi", values: v(3599, 3599, 3599, 3599) },
@@ -124,6 +135,7 @@ const baseRows: DreRow[] = [
   { label: "Viagens", values: v(289.64, 289.64) },
   { label: "Imposto", values: v(10.99, 10.99, 683.88) },
   { label: "Simples Nacional", values: empty },
+  { label: "Outras despesas", values: empty },
   { label: "TOTAL DESPESAS GERAIS", kind: "total" },
   { label: "% Despesas s/Receita", kind: "percent", percentOf: "TOTAL DESPESAS GERAIS" },
   { label: "Tarifa Bancaria", values: v(381.79, 990.67, 1324.47, 510, 365) },
@@ -172,7 +184,13 @@ const derivedRows = new Set([
   "SALDO OPERACAO -(RO+SALDO ANT)",
 ])
 
-function useDreRows(launches: DreLaunch[], adjustments: ManualAdjustment[]) {
+function useDreRows(
+  launches: DreLaunch[],
+  adjustments: ManualAdjustment[],
+  contracts: SupabaseRow[],
+  financialEntries: SupabaseRow[],
+  year: string
+) {
   return useMemo(() => {
     const rows = new Map<string, number[]>()
     baseRows.forEach((row) => {
@@ -188,6 +206,24 @@ function useDreRows(launches: DreLaunch[], adjustments: ManualAdjustment[]) {
       rows.set(rowLabel, current)
     })
 
+    const numericYear = Number(year)
+    if (Number.isFinite(numericYear)) {
+      rows.set("Contratos ativos", calculateContractRevenueByMonth(contracts, financialEntries, numericYear))
+    }
+
+    financialEntries.forEach((entry) => {
+      const monthIndex = Number(getEntryMonthKey(entry).slice(5, 7)) - 1
+      if (monthIndex < 0 || monthIndex > 11) return
+      const type = isIncomeEntry(entry) ? "Receita" : isExpenseEntry(entry) ? "Despesa" : null
+      if (!type) return
+
+      const category = String(entry.dre_category_name ?? entry.category ?? entry.categoria ?? "")
+      const rowLabel = rows.has(getDreRowLabel(category, type)) ? getDreRowLabel(category, type) : type === "Receita" ? "Outras receitas" : "Outras despesas"
+      const current = [...(rows.get(rowLabel) ?? empty)]
+      current[monthIndex] += Math.abs(getEntryAmount(entry))
+      rows.set(rowLabel, current)
+    })
+
     adjustments
       .filter((adjustment) => !derivedRows.has(adjustment.category))
       .forEach((adjustment) => {
@@ -197,7 +233,7 @@ function useDreRows(launches: DreLaunch[], adjustments: ManualAdjustment[]) {
       })
 
     const receitaTotal = addRows(
-      ["Fribal", "Estacio Itapipoca", "Fortaleza Iguatemi", "Rio de Janeiro", "Intech", "Paulinia Nova", "Curitiba", "SG Itapipoca", "SG Atibaia", "Venda de produto", "Rendimento aplicacao", "Outras receitas"],
+      ["Contratos ativos", "Fribal", "Estacio Itapipoca", "Fortaleza Iguatemi", "Rio de Janeiro", "Intech", "Paulinia Nova", "Curitiba", "SG Itapipoca", "SG Atibaia", "Venda de produto", "Rendimento aplicacao", "Outras receitas"],
       rows
     )
     rows.set("RECEITA TOTAL", receitaTotal)
@@ -205,7 +241,7 @@ function useDreRows(launches: DreLaunch[], adjustments: ManualAdjustment[]) {
     rows.set("CUSTO DO PRODUTO VENDIDO (CPV)", cpvTotal)
     rows.set("RECEITA LIQUIDA TOTAL", subtractRows(receitaTotal, cpvTotal))
     rows.set("TOTAL DESPESAS COM PESSOAL", addRows(["Salarios", "Ferias", "Fgts", "Inss", "Freelancer", "Alimentacao", "Ajuda de Custo", "Vale transporte", "Rescisao", "13 Salario", "Outros Custos com Socios", "Premiacoes e Comissoes"], rows))
-    rows.set("TOTAL DESPESAS GERAIS", addRows(["Aluguel", "Condominio", "Contabilidade", "Energia Eletrica", "Serv. de Terceiros", "Sistema", "Mat. Limpeza e Higiene", "Mat. Escritorio/grafico", "Taxas - outras", "Propagandas e Marketing", "Material de Manutencao e Reparos", "Internet/ip", "Materiais Diversos (embalagens)", "Prestacao de servicos", "Viagens", "Imposto", "Simples Nacional"], rows))
+    rows.set("TOTAL DESPESAS GERAIS", addRows(["Aluguel", "Condominio", "Contabilidade", "Energia Eletrica", "Serv. de Terceiros", "Sistema", "Mat. Limpeza e Higiene", "Mat. Escritorio/grafico", "Taxas - outras", "Propagandas e Marketing", "Material de Manutencao e Reparos", "Internet/ip", "Materiais Diversos (embalagens)", "Prestacao de servicos", "Viagens", "Imposto", "Simples Nacional", "Outras despesas"], rows))
     rows.set("Total de despesas financeiras", addRows(["Tarifa Bancaria", "Juros e Emprestimos"], rows))
     rows.set("Total de Despesas Operacionais", addRows(["TOTAL DESPESAS COM PESSOAL", "TOTAL DESPESAS GERAIS", "Total de despesas financeiras"], rows))
     rows.set("LUCRO OPERACIONAL", subtractRows(receitaTotal, rows.get("Total de Despesas Operacionais") ?? empty))
@@ -221,7 +257,7 @@ function useDreRows(launches: DreLaunch[], adjustments: ManualAdjustment[]) {
     })
 
     return baseRows.map((row) => ({ ...row, values: rows.get(row.label) ?? row.values ?? empty }))
-  }, [launches, adjustments])
+  }, [launches, adjustments, contracts, financialEntries, year])
 }
 
 function rowClass(kind: RowKind = "normal") {
@@ -245,8 +281,17 @@ export function DREContent() {
   const [newValue, setNewValue] = useState("")
   const [reason, setReason] = useState("")
   const [responsible, setResponsible] = useState("Carlos Silva")
+  const [contracts, setContracts] = useState<SupabaseRow[]>([])
+  const [financialEntries, setFinancialEntries] = useState<SupabaseRow[]>([])
   const launches = useDreLaunches()
-  const rows = useDreRows(launches, adjustments)
+  const rows = useDreRows(launches, adjustments, contracts, financialEntries, year)
+
+  useEffect(() => {
+    Promise.all([getContracts(), getFinancialEntries()]).then(([contractRows, entryRows]) => {
+      setContracts(contractRows as SupabaseRow[])
+      setFinancialEntries(entryRows as SupabaseRow[])
+    })
+  }, [])
 
   const receitaTotal = rows.find((row) => row.label === "RECEITA TOTAL")?.values ?? empty
   const despesasOperacionais = rows.find((row) => row.label === "Total de Despesas Operacionais")?.values ?? empty

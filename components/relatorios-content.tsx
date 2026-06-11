@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,8 +15,17 @@ import { FileText, Download, Printer, Mail, Calendar as CalendarIcon, Clock, Bar
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
-import { buildGenericReport } from "@/lib/reports/report-builders"
+import { buildContractsReport, buildFinancialEntriesReport, buildGenericReport } from "@/lib/reports/report-builders"
 import { cn } from "@/lib/utils"
+import { getContracts } from "@/lib/data/contracts"
+import { getFinancialEntries } from "@/lib/data/financial"
+import {
+  calculateMonthlyExpense,
+  calculateMonthlyRevenueMetrics,
+  getContractDueDateForMonth,
+  getContractMonthlyValue,
+} from "@/lib/data/recurring-revenue"
+import type { SupabaseRow } from "@/lib/supabase/types"
 
 const relatoriosPredefinidos = [
   {
@@ -112,6 +121,15 @@ export function RelatoriosContent() {
   const [dataFim, setDataFim] = useState<Date>()
   const [categoriaFiltro, setCategoriaFiltro] = useState("Todos")
   const [gerando, setGerando] = useState<number | null>(null)
+  const [contracts, setContracts] = useState<SupabaseRow[]>([])
+  const [financialEntries, setFinancialEntries] = useState<SupabaseRow[]>([])
+
+  useEffect(() => {
+    Promise.all([getContracts(), getFinancialEntries()]).then(([contractRows, entryRows]) => {
+      setContracts(contractRows as SupabaseRow[])
+      setFinancialEntries(entryRows as SupabaseRow[])
+    })
+  }, [])
 
   const relatoriosFiltrados = categoriaFiltro === "Todos" 
     ? relatoriosPredefinidos 
@@ -121,14 +139,49 @@ export function RelatoriosContent() {
     setGerando(id)
     const relatorio = relatoriosPredefinidos.find((item) => item.id === id)
     if (relatorio) {
-      exportPdfReport(buildGenericReport({
-        title: relatorio.nome,
-        subtitle: relatorio.categoria,
-        description: relatorio.descricao,
-        periodStart: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
-        periodEnd: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
-        rows: [],
-      }))
+      const revenue = calculateMonthlyRevenueMetrics(contracts, financialEntries)
+      const expense = calculateMonthlyExpense(financialEntries, revenue.monthKey)
+      if (id === 1) {
+        exportPdfReport(buildFinancialEntriesReport([
+          ...revenue.pendingContractReceivables.map((contract) => ({
+            id: String(contract.id ?? ""),
+            date: getContractDueDateForMonth(contract, revenue.monthKey),
+            description: `Receita prevista contrato ${String(contract.contract_number ?? contract.number ?? "")}`,
+            type: "income",
+            categoria: "Contrato ativo",
+            status: "previsto",
+            amount: getContractMonthlyValue(contract),
+          })),
+          ...financialEntries,
+          { id: "summary-revenue", description: "Receita total do mes", type: "summary", amount: revenue.totalRevenue },
+          { id: "summary-expense", description: "Despesas do mes", type: "summary", amount: expense },
+          { id: "summary-balance", description: "Saldo operacional", type: "summary", amount: revenue.totalRevenue - expense },
+        ]))
+      } else if (id === 2) {
+        exportPdfReport(buildGenericReport({
+          title: relatorio.nome,
+          subtitle: "DRE operacional",
+          description: "DRE gerencial considerando contratos ativos e lancamentos financeiros.",
+          rows: [
+            { indicador: "Receita prevista por contratos", valor: revenue.contractExpectedRevenue },
+            { indicador: "Receita realizada", valor: revenue.financialRealizedRevenue },
+            { indicador: "Receita pendente lancada", valor: revenue.financialPendingRevenue },
+            { indicador: "Despesas", valor: expense },
+            { indicador: "Resultado", valor: revenue.totalRevenue - expense },
+          ],
+        }))
+      } else if (id === 4) {
+        exportPdfReport(buildContractsReport(contracts))
+      } else {
+        exportPdfReport(buildGenericReport({
+          title: relatorio.nome,
+          subtitle: relatorio.categoria,
+          description: relatorio.descricao,
+          periodStart: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          periodEnd: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
+          rows: [],
+        }))
+      }
     }
     setGerando(null)
   }
