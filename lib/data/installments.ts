@@ -15,8 +15,8 @@ export async function createInstallment(payload: SupabaseRow) {
 
 export async function markInstallmentAsPaid(id: string, paidValue: number, paymentDate: string) {
   return updateRows("installments", {
-    status: "paid",
+    status: "paga",
     paid_value: paidValue,
     payment_date: paymentDate,
-  } satisfies SupabaseRow, { id }, [{ id, status: "paid", paid_value: paidValue, payment_date: paymentDate }])
+  } satisfies SupabaseRow, { id }, [{ id, status: "paga", paid_value: paidValue, payment_date: paymentDate }])
 }

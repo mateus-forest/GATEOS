@@ -54,17 +54,12 @@ export async function uploadDocumentFile({
 
   return createDocumentRecord({
     name: file.name,
-    file_name: file.name,
-    type: file.type || "application/octet-stream",
+    type: String(record?.type ?? "outro"),
     mime_type: file.type || null,
-    size: file.size,
-    file_size: file.size,
-    bucket,
-    storage_bucket: bucket,
+    size_bytes: file.size,
+    file_path: path,
     path,
-    storage_path: path,
-    category: String(record?.category ?? "Documento"),
-    created_at: new Date().toISOString(),
+    bucket,
     ...record,
   })
 }

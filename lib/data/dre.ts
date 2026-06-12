@@ -10,6 +10,10 @@ export async function getDreMonthlyClosings() {
   return selectRows("dre_monthly_closings", [])
 }
 
+export async function getDreCategories() {
+  return selectRows("dre_categories", [])
+}
+
 export async function createDreManualAdjustment(payload: SupabaseRow) {
   return insertRow("dre_manual_adjustments", payload, { ...payload, id: crypto.randomUUID() })
 }

@@ -57,16 +57,18 @@ type EquipmentInventoryView = EquipmentView & {
   totalQuantity: number
   availableQuantity: number
   rentedQuantity: number
+  maintenanceQuantity: number
 }
 
 function normalizeEquipment(item: Record<string, unknown>): EquipmentInventoryView {
   const name = String(item.name ?? item.nome ?? "")
   const code = String(item.code ?? item.codigo ?? "")
   const value = Number(item.value ?? item.valor_compra ?? item.valorCompra ?? 0)
-  const status = String(item.status ?? "available")
+  const status = String(item.status ?? "disponivel")
   const totalQuantity = getEquipmentTotalQuantity(item)
   const availableQuantity = getEquipmentAvailableQuantity(item)
   const rentedQuantity = Math.max(0, totalQuantity - availableQuantity)
+  const maintenanceQuantity = Number(item.quantity_maintenance ?? item.maintenance_quantity ?? 0)
 
   return {
     id: String(item.id ?? ""),
@@ -99,6 +101,7 @@ function normalizeEquipment(item: Record<string, unknown>): EquipmentInventoryVi
     totalQuantity,
     availableQuantity,
     rentedQuantity,
+    maintenanceQuantity: Number.isFinite(maintenanceQuantity) ? maintenanceQuantity : 0,
   }
 }
 
@@ -124,18 +127,29 @@ export function EquipamentosContent() {
   const totalEquipments = equipments.reduce((sum, item) => sum + item.totalQuantity, 0)
   const rentedEquipments = equipments.reduce((sum, item) => sum + item.rentedQuantity, 0)
   const availableEquipments = equipments.reduce((sum, item) => sum + item.availableQuantity, 0)
-  const maintenanceEquipments = equipments.filter((e) => e.status === "maintenance").length
+  const maintenanceEquipments = equipments.reduce(
+    (sum, item) => sum + (["manutencao", "maintenance"].includes(item.status) ? Math.max(1, item.maintenanceQuantity) : item.maintenanceQuantity),
+    0
+  )
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case "disponivel":
       case "active":
-        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
+        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Disponivel</Badge>
+      case "locado":
+        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Locado</Badge>
+      case "reservado":
+        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Reservado</Badge>
+      case "manutencao":
       case "maintenance":
         return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Manutenção</Badge>
+      case "vendido":
+        return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Vendido</Badge>
+      case "baixado":
       case "inactive":
-        return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Inativo</Badge>
       case "disposed":
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Descartado</Badge>
+        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Baixado</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -213,7 +227,7 @@ export function EquipamentosContent() {
               {
                 title: "Quantidade",
                 fields: [
-                  { name: "total_quantity", label: "Quantidade total", type: "number", required: true },
+                  { name: "quantity_total", label: "Quantidade total", type: "number", required: true },
                 ],
               },
               {
@@ -225,12 +239,12 @@ export function EquipamentosContent() {
                     type: "select",
                     required: true,
                     options: [
-                      { label: "Disponível", value: "available" },
-                      { label: "Locado", value: "active" },
-                      { label: "Reservado", value: "reserved" },
-                      { label: "Manutenção", value: "maintenance" },
-                      { label: "Vendido", value: "sold" },
-                      { label: "Baixado", value: "disposed" },
+                      { label: "Disponível", value: "disponivel" },
+                      { label: "Locado", value: "locado" },
+                      { label: "Reservado", value: "reservado" },
+                      { label: "Manutenção", value: "manutencao" },
+                      { label: "Vendido", value: "vendido" },
+                      { label: "Baixado", value: "baixado" },
                     ],
                   },
                   { name: "notes", label: "Observações internas", type: "textarea" },
@@ -238,15 +252,17 @@ export function EquipamentosContent() {
               },
             ]}
             onSave={async (values) => {
-              const totalQuantity = Number(values.total_quantity ?? 0)
+              const totalQuantity = Number(values.quantity_total ?? 0)
               const created = await createEquipment({
                 name: values.name ?? "",
                 category: values.category ?? "",
                 description: values.description ?? "",
-                total_quantity: totalQuantity,
-                available_quantity: totalQuantity,
-                rented_quantity: 0,
-                status: values.status ?? "available",
+                quantity_total: totalQuantity,
+                quantity_available: totalQuantity,
+                quantity_rented: 0,
+                quantity_reserved: 0,
+                quantity_maintenance: 0,
+                status: values.status ?? "disponivel",
                 notes: values.notes ?? "",
               })
               const equipmentId = String((created as Record<string, unknown>).id ?? "")
@@ -254,7 +270,7 @@ export function EquipamentosContent() {
                 equipment_id: equipmentId,
                 name: values.name ?? "",
                 category: values.category ?? "equipamento",
-                status: values.status ?? "available",
+                status: values.status ?? "disponivel",
                 description: values.description ?? "",
               })
               setEquipments((current) => [normalizeEquipment(created as Record<string, unknown>), ...current])
@@ -354,10 +370,12 @@ export function EquipamentosContent() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="active">Ativo</SelectItem>
-                <SelectItem value="maintenance">Manutenção</SelectItem>
-                <SelectItem value="inactive">Inativo</SelectItem>
-                <SelectItem value="disposed">Descartado</SelectItem>
+                <SelectItem value="disponivel">Disponivel</SelectItem>
+                <SelectItem value="locado">Locado</SelectItem>
+                <SelectItem value="reservado">Reservado</SelectItem>
+                <SelectItem value="manutencao">Manutenção</SelectItem>
+                <SelectItem value="vendido">Vendido</SelectItem>
+                <SelectItem value="baixado">Baixado</SelectItem>
               </SelectContent>
             </Select>
           </div>

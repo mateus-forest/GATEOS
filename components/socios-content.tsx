@@ -45,8 +45,10 @@ const colors = ["#22B8CF", "#22C55E", "#F59E0B"]
 type Partner = {
   id: string
   name: string
-  role: string
-  share: number
+  participationPercentage: number
+  fixedMonthlyValue: number
+  resultParticipationPercentage: number
+  active: boolean
   received: number
   distributions: number
   contributions: number
@@ -55,25 +57,42 @@ type Partner = {
 
 type PartnerEntry = {
   id: string
+  partnerId: string
   partner: string
-  type: "Distribuicao" | "Aporte" | "Devolucao" | "Pro-labore"
+  type: string
+  typeLabel: string
   date: string
   description: string
   amount: number
-  status: "Pago" | "Previsto"
+  status: string
+}
+
+const partnerEntryTypeOptions = [
+  { label: "Distribuição de lucro", value: "distribuicao_lucro" },
+  { label: "Participação no resultado", value: "participacao_resultado" },
+  { label: "Aporte", value: "aporte" },
+  { label: "Devolução", value: "devolucao" },
+  { label: "Fixo mensal", value: "fixo_mensal" },
+] as const
+
+function getPartnerEntryTypeLabel(value: unknown) {
+  const type = String(value ?? "")
+  return partnerEntryTypeOptions.find((item) => item.value === type)?.label ?? (type || "Distribuição de lucro")
 }
 
 function normalizePartner(item: Record<string, unknown>, entries: PartnerEntry[] = []): Partner {
   const name = partnerLabel(item)
-  const partnerEntries = entries.filter((entry) => entry.partner === name || entry.partner === String(item.id ?? ""))
-  const distributions = partnerEntries.filter((entry) => entry.type === "Distribuicao").reduce((sum, entry) => sum + entry.amount, 0)
-  const contributions = partnerEntries.filter((entry) => entry.type === "Aporte").reduce((sum, entry) => sum + entry.amount, 0)
-  const returns = partnerEntries.filter((entry) => entry.type === "Devolucao").reduce((sum, entry) => sum + entry.amount, 0)
+  const partnerEntries = entries.filter((entry) => entry.partnerId === String(item.id ?? ""))
+  const distributions = partnerEntries.filter((entry) => entry.type === "distribuicao_lucro" || entry.type === "participacao_resultado" || entry.type === "fixo_mensal").reduce((sum, entry) => sum + entry.amount, 0)
+  const contributions = partnerEntries.filter((entry) => entry.type === "aporte").reduce((sum, entry) => sum + entry.amount, 0)
+  const returns = partnerEntries.filter((entry) => entry.type === "devolucao").reduce((sum, entry) => sum + entry.amount, 0)
   return {
     id: String(item.id ?? ""),
     name,
-    role: String(item.role ?? item.cargo ?? ""),
-    share: Number(item.share ?? item.percentage ?? item.participation ?? 0),
+    participationPercentage: Number(item.participation_percentage ?? 0),
+    fixedMonthlyValue: Number(item.fixed_monthly_value ?? 0),
+    resultParticipationPercentage: Number(item.result_participation_percentage ?? 0),
+    active: item.active !== false,
     received: distributions + returns,
     distributions,
     contributions,
@@ -84,12 +103,14 @@ function normalizePartner(item: Record<string, unknown>, entries: PartnerEntry[]
 function normalizePartnerEntry(item: Record<string, unknown>): PartnerEntry {
   return {
     id: String(item.id ?? crypto.randomUUID()),
-    partner: String(item.partner ?? item.partner_name ?? item.socio ?? ""),
-    type: String(item.type ?? item.entry_type ?? "Distribuicao") as PartnerEntry["type"],
-    date: String(item.date ?? item.reference_month ?? ""),
+    partnerId: String(item.partner_id ?? ""),
+    partner: String(item.partner ?? item.partner_name ?? item.socio ?? item.partner_id ?? "Registro sem nome"),
+    type: String(item.type ?? "distribuicao_lucro"),
+    typeLabel: getPartnerEntryTypeLabel(item.type),
+    date: String(item.competence_date ?? ""),
     description: String(item.description ?? ""),
-    amount: Number(item.amount ?? item.value ?? 0),
-    status: String(item.status ?? "Previsto") as PartnerEntry["status"],
+    amount: Number(item.value ?? 0),
+    status: String(item.status ?? "previsto"),
   }
 }
 
@@ -99,13 +120,31 @@ export function SociosContent() {
   const [open, setOpen] = useState(false)
   const [details, setDetails] = useState<Partner | null>(null)
   const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
-  const [editForm, setEditForm] = useState({ name: "", role: "", share: "", status: "active", notes: "" })
+  const [editForm, setEditForm] = useState({
+    name: "",
+    participationPercentage: "",
+    fixedMonthlyValue: "",
+    resultParticipationPercentage: "",
+    active: "true",
+  })
   const [savingPartner, setSavingPartner] = useState(false)
-  const [form, setForm] = useState({ partner: "", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
+  const [form, setForm] = useState({ partner: "", type: "distribuicao_lucro", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "previsto" })
 
   useEffect(() => {
     Promise.all([getPartnerEntries(), getPartners()]).then(([entryItems, partnerItems]) => {
-      const normalizedEntries = entryItems.map((item) => normalizePartnerEntry(item as Record<string, unknown>))
+      const partnerNameById = new Map(
+        partnerItems.map((item) => {
+          const record = item as Record<string, unknown>
+          return [String(record.id ?? ""), partnerLabel(record)]
+        })
+      )
+      const normalizedEntries = entryItems.map((item) => {
+        const record = item as Record<string, unknown>
+        return normalizePartnerEntry({
+          ...record,
+          partner: partnerNameById.get(String(record.partner_id ?? "")) ?? "Registro sem nome",
+        })
+      })
       setEntries(normalizedEntries)
       setPartners(partnerItems.map((item) => normalizePartner(item as Record<string, unknown>, normalizedEntries)))
     })
@@ -119,16 +158,16 @@ export function SociosContent() {
     return { received, distributions, contributions, returns, net: received + returns - contributions }
   }, [partners])
 
-  const chartData = partners.map((partner) => ({ name: partner.name, value: partner.share }))
+  const chartData = partners.map((partner) => ({ name: partner.name, value: partner.participationPercentage }))
 
   const openEditPartner = (partner: Partner) => {
     setEditingPartner(partner)
     setEditForm({
       name: partner.name,
-      role: partner.role,
-      share: String(partner.share || ""),
-      status: "active",
-      notes: "",
+      participationPercentage: String(partner.participationPercentage || ""),
+      fixedMonthlyValue: String(partner.fixedMonthlyValue || ""),
+      resultParticipationPercentage: String(partner.resultParticipationPercentage || ""),
+      active: String(partner.active),
     })
   }
 
@@ -138,10 +177,10 @@ export function SociosContent() {
     try {
       const updated = await updatePartner(editingPartner.id, {
         name: editForm.name,
-        role: editForm.role,
-        share: Number(editForm.share || 0),
-        status: editForm.status,
-        notes: editForm.notes || null,
+        participation_percentage: Number(editForm.participationPercentage || 0),
+        fixed_monthly_value: Number(editForm.fixedMonthlyValue || 0),
+        result_participation_percentage: Number(editForm.resultParticipationPercentage || 0),
+        active: editForm.active === "true",
       })
       const normalized = normalizePartner(updated as Record<string, unknown>, entries)
       setPartners((current) => current.map((partner) => (partner.id === normalized.id ? normalized : partner)))
@@ -164,18 +203,18 @@ export function SociosContent() {
     try {
       const created = await createPartnerEntry({
         partner_id: form.partner || null,
-        partner_name: partners.find((partner) => partner.id === form.partner)?.name ?? form.partner,
         type: form.type,
-        date: form.date,
-        reference_month: form.date,
-        amount,
+        competence_date: form.date,
+        value: amount,
         description: form.description,
         status: form.status,
       })
-      setEntries((current) => [normalizePartnerEntry(created as Record<string, unknown>), ...current])
+      const partnerName = partners.find((partner) => partner.id === form.partner)?.name ?? "Registro sem nome"
+      const normalized = normalizePartnerEntry({ ...(created as Record<string, unknown>), partner: partnerName })
+      setEntries((current) => [normalized, ...current])
       toast.success("Lancamento de socio salvo com sucesso")
       setOpen(false)
-      setForm({ partner: "", type: "Distribuicao", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "Previsto" })
+      setForm({ partner: "", type: "distribuicao_lucro", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "previsto" })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nao foi possivel salvar o lancamento de socio."
       console.error("[socios] Falha ao salvar lancamento", error)
@@ -194,7 +233,7 @@ export function SociosContent() {
           <Button variant="outline" onClick={() => exportPdfReport(buildPartnersReport(entries.map((entry) => ({
             id: entry.id,
             partner: entry.partner,
-            type: entry.type,
+            type: entry.typeLabel,
             date: entry.date,
             status: entry.status,
             amount: entry.amount,
@@ -272,7 +311,7 @@ export function SociosContent() {
                     <span className="h-3 w-3 rounded-full" style={{ backgroundColor: colors[index] }} />
                     {partner.name}
                   </span>
-                  <strong>{partner.share}%</strong>
+                  <strong>{partner.participationPercentage}%</strong>
                 </div>
               ))}
             </div>
@@ -296,13 +335,13 @@ export function SociosContent() {
                     </Avatar>
                     <div>
                       <p className="font-semibold">{partner.name}</p>
-                      <p className="text-sm text-muted-foreground">{partner.role}</p>
+                      <p className="text-sm text-muted-foreground">{partner.active ? "Ativo" : "Inativo"}</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                     <div>
                       <p className="text-muted-foreground">Participacao</p>
-                      <p className="font-bold">{partner.share}%</p>
+                      <p className="font-bold">{partner.participationPercentage}%</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Recebido</p>
@@ -332,7 +371,7 @@ export function SociosContent() {
                       <DropdownMenuItem onClick={() => exportPdfReport(buildPartnersReport(entries.filter((entry) => entry.partner === partner.name).map((entry) => ({
                         id: entry.id,
                         partner: entry.partner,
-                        type: entry.type,
+                        type: entry.typeLabel,
                         date: entry.date,
                         status: entry.status,
                         amount: entry.amount,
@@ -367,12 +406,12 @@ export function SociosContent() {
               {entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">{entry.partner}</TableCell>
-                  <TableCell>{entry.type}</TableCell>
+                  <TableCell>{entry.typeLabel}</TableCell>
                   <TableCell>{entry.date}</TableCell>
                   <TableCell>{entry.description || "-"}</TableCell>
                   <TableCell>
-                    <Badge className={entry.status === "Pago" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
-                      {entry.status}
+                    <Badge className={entry.status === "pago" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
+                      {entry.status === "pago" ? "Pago" : "Previsto"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-semibold">{formatCurrency(entry.amount)}</TableCell>
@@ -411,6 +450,27 @@ export function SociosContent() {
                       )) : <SelectItem value="empty" disabled>Registro sem nome</SelectItem>}
                     </SelectContent>
                   </Select>
+                ) : key === "type" ? (
+                  <Select value={form.type} onValueChange={(value) => setForm((current) => ({ ...current, type: value ?? "" }))}>
+                    <SelectTrigger id={key}>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {partnerEntryTypeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : key === "status" ? (
+                  <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value ?? "" }))}>
+                    <SelectTrigger id={key}>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="previsto">Previsto</SelectItem>
+                      <SelectItem value="pago">Pago</SelectItem>
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <Input
                     id={key}
@@ -432,13 +492,13 @@ export function SociosContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{details?.name}</DialogTitle>
-            <DialogDescription>{details?.role}</DialogDescription>
+            <DialogDescription>{details?.active ? "Ativo" : "Inativo"}</DialogDescription>
           </DialogHeader>
           {details && (
             <div className="grid gap-3">
               <div className="flex justify-between rounded-lg border p-3">
                 <span>Participacao nos lucros</span>
-                <strong>{details.share}%</strong>
+                <strong>{details.participationPercentage}%</strong>
               </div>
               <div className="flex justify-between rounded-lg border p-3">
                 <span>Distribuicoes</span>
@@ -466,10 +526,10 @@ export function SociosContent() {
           <div className="grid gap-4">
             {[
               ["name", "Nome"],
-              ["role", "Funcao"],
-              ["share", "Participacao (%)"],
-              ["status", "Status"],
-              ["notes", "Observacoes"],
+              ["participationPercentage", "Participacao (%)"],
+              ["fixedMonthlyValue", "Fixo mensal"],
+              ["resultParticipationPercentage", "Participacao resultado (%)"],
+              ["active", "Ativo (true/false)"],
             ].map(([key, label]) => (
               <div key={key} className="grid gap-2">
                 <Label htmlFor={`partner-${key}`}>{label}</Label>

@@ -62,7 +62,7 @@ import { buildClientsReport } from "@/lib/reports/report-builders"
 function normalizeClient(item: Record<string, unknown>): ClientView {
   const name = String(item.name ?? item.trade_name ?? item.nome_fantasia ?? item.nomeFantasia ?? item.razao_social ?? item.razaoSocial ?? "")
   const companyName = String(item.companyName ?? item.company_name ?? item.razao_social ?? item.razaoSocial ?? name)
-  const document = String(item.document ?? item.cnpj ?? item.cpf ?? "")
+  const document = String(item.document_number ?? item.document ?? item.cnpj ?? item.cpf ?? "")
   const phone = String(item.phone ?? item.telefone ?? "")
   const segment = String(item.segment ?? item.segmento ?? "")
   const status = String(item.status ?? (item.ativo === false ? "inativo" : "ativo"))
@@ -218,9 +218,7 @@ export function ClientesContent() {
             onSave={async (values) => {
               const created = await createClient({
                 name: values.name,
-                company_name: null,
-                trade_name: null,
-                document: values.document || null,
+                document_number: values.document || null,
                 type: values.type ?? "pj",
                 status: values.status ?? "ativo",
                 email: values.email || null,

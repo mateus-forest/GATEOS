@@ -33,7 +33,7 @@ import {
 } from "@/lib/dre-store"
 import { exportCsv, exportExcelTable, exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builders"
-import { createDreManualAdjustment, deleteDreManualAdjustment } from "@/lib/data/dre"
+import { createDreManualAdjustment, deleteDreManualAdjustment, getDreCategories } from "@/lib/data/dre"
 import { formatCurrency } from "@/lib/utils"
 import { getContracts } from "@/lib/data/contracts"
 import { getFinancialEntries } from "@/lib/data/financial"
@@ -283,13 +283,15 @@ export function DREContent() {
   const [responsible, setResponsible] = useState("Carlos Silva")
   const [contracts, setContracts] = useState<SupabaseRow[]>([])
   const [financialEntries, setFinancialEntries] = useState<SupabaseRow[]>([])
+  const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const launches = useDreLaunches()
   const rows = useDreRows(launches, adjustments, contracts, financialEntries, year)
 
   useEffect(() => {
-    Promise.all([getContracts(), getFinancialEntries()]).then(([contractRows, entryRows]) => {
+    Promise.all([getContracts(), getFinancialEntries(), getDreCategories()]).then(([contractRows, entryRows, categoryRows]) => {
       setContracts(contractRows as SupabaseRow[])
       setFinancialEntries(entryRows as SupabaseRow[])
+      setDreCategories(categoryRows as SupabaseRow[])
     })
   }, [])
 
@@ -339,15 +341,23 @@ export function DREContent() {
     }
 
     try {
+      const category = dreCategories.find((item) => {
+        const name = String(item.name ?? "").toLowerCase()
+        return name === editTarget.row.label.toLowerCase()
+      })
+      if (!category?.id) {
+        toast.error("Categoria DRE real nao encontrada para esta linha. Ajuste nao foi salvo.")
+        return
+      }
+      const numericYear = Number(year)
       const created = await createDreManualAdjustment({
-        category: editTarget.row.label,
-        month: editTarget.month,
-        month_index: editTarget.monthIndex,
+        year: Number.isFinite(numericYear) ? numericYear : new Date().getFullYear(),
+        month: editTarget.monthIndex + 1,
+        dre_category_id: String(category.id),
         previous_value: editTarget.currentValue,
         new_value: parsedValue,
         reason,
         responsible,
-        adjustment_date: new Date().toISOString().slice(0, 10),
       }) as Record<string, unknown>
 
       setAdjustments((current) => [

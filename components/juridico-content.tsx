@@ -47,8 +47,6 @@ import {
   juridicoEtapas,
   juridicoFormasPagamento,
   juridicoResponsaveis,
-  juridicoRiscos,
-  juridicoStatuses,
   type JuridicoCaso,
 } from "@/lib/juridico-data"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
@@ -57,6 +55,37 @@ import { createLegalCase, getLegalCases } from "@/lib/data/legal"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
 import { formatCurrency } from "@/lib/utils"
+import { clientLabel, contractLabel } from "@/lib/data/display-labels"
+
+type SelectOption = { label: string; value: string }
+
+const legalStatusOptions = [
+  { label: "Em análise", value: "em_analise" },
+  { label: "Notificação extrajudicial", value: "notificacao_extrajudicial" },
+  { label: "Em negociação", value: "em_negociacao" },
+  { label: "Acordo firmado", value: "acordo_firmado" },
+  { label: "Ação judicial", value: "acao_judicial" },
+  { label: "Em execução", value: "em_execucao" },
+  { label: "Encerrado", value: "encerrado" },
+  { label: "Perdido", value: "perdido" },
+] as const
+
+const legalRiskOptions = [
+  { label: "Baixo", value: "baixo" },
+  { label: "Médio", value: "medio" },
+  { label: "Alto", value: "alto" },
+  { label: "Crítico", value: "critico" },
+] as const
+
+function legalStatusLabel(value: unknown) {
+  const status = String(value ?? "")
+  return legalStatusOptions.find((item) => item.value === status)?.label ?? (status || "Em análise")
+}
+
+function legalRiskLabel(value: unknown) {
+  const risk = String(value ?? "")
+  return legalRiskOptions.find((item) => item.value === risk)?.label ?? (risk || "Médio")
+}
 
 type CaseForm = {
   cliente: string
@@ -92,7 +121,7 @@ const emptyForm: CaseForm = {
   etapa: "",
   responsavel: "",
   dataEntrada: "",
-  risco: "Médio",
+  risco: "medio",
   processo: "",
   advogado: "",
   parcelas: "",
@@ -109,8 +138,6 @@ const emptyForm: CaseForm = {
   formaPagamento: "Boleto",
   resumo: "",
 }
-
-const clientesGate = ["Fribal", "Estácio Itapipoca", "Fortaleza Iguatemi", "Rio de Janeiro", "Intech", "Paulínia Nova", "Curitiba", "SG Itapipoca", "SG Atibaia"]
 
 function normalizeLegalCase(item: Record<string, unknown>): JuridicoCaso {
   const valorOriginal = Number(item.original_value ?? item.valorOriginal ?? 0)
@@ -129,9 +156,9 @@ function normalizeLegalCase(item: Record<string, unknown>): JuridicoCaso {
     processo: String(item.process_number ?? item.processo ?? ""),
     responsavel: String(item.internal_responsible ?? item.responsavel ?? ""),
     advogado: String(item.lawyer_name ?? item.advogado ?? ""),
-    status: String(item.status ?? "Em análise") as JuridicoCaso["status"],
+    status: legalStatusLabel(item.status) as JuridicoCaso["status"],
     etapa: String(item.stage ?? item.etapa ?? ""),
-    risco: String(item.risk ?? item.risco ?? "Médio") as JuridicoCaso["risco"],
+    risco: legalRiskLabel(item.risk ?? item.risco) as JuridicoCaso["risco"],
     valorOriginal,
     mensalidade: Number(item.monthly_value ?? item.mensalidade ?? valorOriginal),
     parcelasVencidas: Number(item.overdue_installments_count ?? item.parcelasVencidas ?? 0),
@@ -157,7 +184,7 @@ function normalizeLegalCase(item: Record<string, unknown>): JuridicoCaso {
     ultimoAndamento: String(item.last_progress ?? item.ultimoAndamento ?? ""),
     resultadoEsperado: String(item.expected_result ?? item.resultadoEsperado ?? ""),
     resultadoAcao: String(item.lawsuit_result ?? item.resultadoAcao ?? ""),
-    observacoes: String(item.internal_notes ?? item.observacoes ?? ""),
+    observacoes: String(item.notes ?? item.summary ?? item.observacoes ?? ""),
   }
 }
 
@@ -181,8 +208,8 @@ function CaseFormDialog({
   contractOptions,
 }: {
   onCreate: (caso: JuridicoCaso) => void | Promise<void>
-  clientOptions: string[]
-  contractOptions: string[]
+  clientOptions: SelectOption[]
+  contractOptions: SelectOption[]
 }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CaseForm>(emptyForm)
@@ -262,13 +289,16 @@ function CaseFormDialog({
     }
   }
 
-  const select = (field: keyof CaseForm, label: string, options: string[]) => (
+  const select = (field: keyof CaseForm, label: string, options: readonly (string | SelectOption)[]) => (
     <div className="grid gap-2">
       <Label>{label}</Label>
       <Select value={form[field]} onValueChange={(value) => setField(field, value)}>
         <SelectTrigger className="w-full"><SelectValue placeholder={label} /></SelectTrigger>
         <SelectContent>
-          {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+          {options.map((option) => {
+            const item = typeof option === "string" ? { label: option, value: option } : option
+            return <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+          })}
         </SelectContent>
       </Select>
       {errors[field] && <p className="text-xs text-destructive">{errors[field]}</p>}
@@ -296,11 +326,11 @@ function CaseFormDialog({
             <DialogDescription>Cadastro para cobrança jurídica, acordos e ações.</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-2 md:grid-cols-3">
-            {select("cliente", "Cliente", clientOptions.length ? clientOptions : clientesGate)}
+            {select("cliente", "Cliente", clientOptions)}
             {select("contrato", "Contrato vinculado", contractOptions)}
-            {select("status", "Status", juridicoStatuses)}
+            {select("status", "Status", legalStatusOptions)}
             {select("etapa", "Etapa", juridicoEtapas)}
-            {select("risco", "Risco", juridicoRiscos)}
+            {select("risco", "Risco", legalRiskOptions)}
             {input("primeiroVencimento", "Prazo", "date")}
             {input("resumo", "Resumo do caso")}
             {submitError && (
@@ -447,8 +477,8 @@ export function JuridicoContent() {
   const [riscoFilter, setRiscoFilter] = useState("all")
   const [pagamentoFilter, setPagamentoFilter] = useState("all")
   const [selectedCase, setSelectedCase] = useState<JuridicoCaso | null>(null)
-  const [clientOptions, setClientOptions] = useState<string[]>([])
-  const [contractOptions, setContractOptions] = useState<string[]>([])
+  const [clientOptions, setClientOptions] = useState<SelectOption[]>([])
+  const [contractOptions, setContractOptions] = useState<SelectOption[]>([])
 
   useEffect(() => {
     getLegalCases().then((items) =>
@@ -457,14 +487,14 @@ export function JuridicoContent() {
     getClients().then((items) => {
       setClientOptions(items.map((item) => {
         const record = item as Record<string, unknown>
-        return String(record.name ?? record.nome_fantasia ?? record.razao_social ?? record.company_name ?? "")
-      }).filter(Boolean))
+        return { label: clientLabel(record), value: String(record.id ?? "") }
+      }).filter((item) => item.value))
     })
     getContracts().then((items) => {
       setContractOptions(items.map((item) => {
         const record = item as Record<string, unknown>
-        return String(record.contract_number ?? record.number ?? record.numero ?? record.id ?? "")
-      }).filter(Boolean))
+        return { label: contractLabel(record), value: String(record.id ?? "") }
+      }).filter((item) => item.value))
     })
   }, [])
 
@@ -543,16 +573,23 @@ export function JuridicoContent() {
             contractOptions={contractOptions}
             onCreate={async (caso) => {
               const created = await createLegalCase({
-                client_name: caso.cliente,
-                contract_number: caso.contrato || null,
+                case_number: `GATE-JUR-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+                client_id: caso.cliente,
+                contract_id: caso.contrato || null,
                 status: caso.status,
                 stage: caso.etapa,
                 risk: caso.risco,
                 next_deadline: caso.proximoPrazo,
+                summary: caso.resumo,
                 case_summary: caso.resumo,
-                internal_notes: caso.observacoes,
+                notes: caso.observacoes,
               })
-              setCases((current) => [normalizeLegalCase(created as Record<string, unknown>), ...current])
+              const displayRecord = {
+                ...(created as Record<string, unknown>),
+                cliente: clientOptions.find((client) => client.value === caso.cliente)?.label ?? "Registro sem nome",
+                contrato: contractOptions.find((contract) => contract.value === caso.contrato)?.label ?? "",
+              }
+              setCases((current) => [normalizeLegalCase(displayRecord), ...current])
             }}
           />
         </div>
@@ -576,11 +613,11 @@ export function JuridicoContent() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input placeholder="Buscar por cliente, contrato ou processo..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="pl-10" />
             </div>
-            {selectFilter(statusFilter, setStatusFilter, "Status", juridicoStatuses)}
+            {selectFilter(statusFilter, setStatusFilter, "Status", legalStatusOptions.map((item) => item.label))}
             {selectFilter(etapaFilter, setEtapaFilter, "Etapa", juridicoEtapas)}
             {selectFilter(responsavelFilter, setResponsavelFilter, "Responsável", juridicoResponsaveis)}
             {selectFilter(periodoFilter, setPeriodoFilter, "Período", ["Últimos 30 dias", "Este trimestre", "Este ano"])}
-            {selectFilter(riscoFilter, setRiscoFilter, "Risco", juridicoRiscos)}
+            {selectFilter(riscoFilter, setRiscoFilter, "Risco", legalRiskOptions.map((item) => item.label))}
             {selectFilter(pagamentoFilter, setPagamentoFilter, "Forma de pagamento", juridicoFormasPagamento)}
           </div>
         </CardContent>

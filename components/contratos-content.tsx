@@ -96,12 +96,12 @@ function normalizeContractStatus(status: unknown) {
   const map: Record<string, string> = {
     active: "ativo",
     closed: "encerrado",
-    cancelled: "encerrado",
+    cancelled: "cancelado",
     expired: "encerrado",
-    overdue: "pendente",
-    legal: "pendente",
-    expiring: "pendente",
-    draft: "pendente",
+    overdue: "inadimplente",
+    legal: "juridico",
+    expiring: "ativo",
+    draft: "ativo",
   }
   return map[value] ?? value
 }
@@ -215,7 +215,7 @@ function NewContractDialog({
       if (!equipment) return "Equipamento selecionado nao foi encontrado."
       if (!Number.isFinite(quantity) || quantity <= 0) return "Informe uma quantidade valida para o equipamento."
       if (quantity > equipment.availableQuantity) {
-        return `${equipment.name}: quantidade solicitada maior que o estoque disponivel.`
+        return `Estoque insuficiente. Disponivel: ${equipment.availableQuantity}.`
       }
     }
 
@@ -286,8 +286,7 @@ function NewContractDialog({
           folder: `contracts/${contractId}`,
           record: {
             contract_id: contractId,
-            contract_number: contractNumber,
-            category: "Contrato",
+            type: "contrato",
           },
         })
       }
@@ -347,9 +346,10 @@ function NewContractDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ativo">Ativo</SelectItem>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                    <SelectItem value="suspenso">Suspenso</SelectItem>
                     <SelectItem value="encerrado">Encerrado</SelectItem>
+                    <SelectItem value="cancelado">Cancelado</SelectItem>
+                    <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                    <SelectItem value="juridico">Juridico</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -362,8 +362,7 @@ function NewContractDialog({
                   <SelectContent>
                     <SelectItem value="locacao">Locacao</SelectItem>
                     <SelectItem value="venda">Venda</SelectItem>
-                    <SelectItem value="manutencao">Manutencao</SelectItem>
-                    <SelectItem value="suporte">Suporte</SelectItem>
+                    <SelectItem value="servico">Servico</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -550,7 +549,11 @@ export function ContratosContent() {
   })
 
   const activeContracts = contracts.filter((c) => c.status === "ativo").length
-  const expiringContracts = contracts.filter((c) => c.status === "pendente").length
+  const expiringContracts = contracts.filter((contract) => {
+    if (contract.status !== "ativo" || !contract.endDate) return false
+    const diffDays = (new Date(`${contract.endDate}T00:00:00`).getTime() - Date.now()) / 86400000
+    return diffDays >= 0 && diffDays <= 30
+  }).length
   const totalMonthlyValue = contracts
     .filter((c) => c.status === "ativo")
     .reduce((sum, c) => sum + c.monthlyValue, 0)
@@ -620,12 +623,14 @@ export function ContratosContent() {
     switch (status) {
       case "ativo":
         return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
-      case "pendente":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Pendente</Badge>
+      case "inadimplente":
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Inadimplente</Badge>
       case "encerrado":
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Encerrado</Badge>
-      case "suspenso":
-        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Suspenso</Badge>
+      case "cancelado":
+        return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
+      case "juridico":
+        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Juridico</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -635,9 +640,10 @@ export function ContratosContent() {
     switch (status) {
       case "ativo":
         return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-      case "pendente":
+      case "inadimplente":
         return <AlertCircle className="h-4 w-4 text-amber-600" />
-      case "suspenso":
+      case "cancelado":
+      case "juridico":
         return <XCircle className="h-4 w-4 text-red-600" />
       case "encerrado":
         return <XCircle className="h-4 w-4 text-gray-600" />
@@ -819,9 +825,10 @@ export function ContratosContent() {
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="ativo">Ativo</SelectItem>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                    <SelectItem value="suspenso">Suspenso</SelectItem>
                     <SelectItem value="encerrado">Encerrado</SelectItem>
+                    <SelectItem value="cancelado">Cancelado</SelectItem>
+                    <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                    <SelectItem value="juridico">Juridico</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -831,9 +838,8 @@ export function ContratosContent() {
                   <SelectContent>
                     <SelectItem value="all">Todos os tipos</SelectItem>
                     <SelectItem value="locacao">Locação</SelectItem>
-                    <SelectItem value="manutencao">Manutenção</SelectItem>
-                    <SelectItem value="manutencao">Manutenção</SelectItem>
-                    <SelectItem value="suporte">Suporte</SelectItem>
+                    <SelectItem value="venda">Venda</SelectItem>
+                    <SelectItem value="servico">Serviço</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

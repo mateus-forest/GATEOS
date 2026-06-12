@@ -32,6 +32,23 @@ type DocumentoView = {
 type SelectOption = { label: string; value: string }
 
 const categorias = ["Todos", "Contratos", "Notas Fiscais", "Relatórios", "Propostas", "Termos", "Imagens", "Laudos", "Controles"]
+const documentTypeOptions = [
+  { label: "Contrato", value: "contrato" },
+  { label: "Boleto", value: "boleto" },
+  { label: "Recibo", value: "recibo" },
+  { label: "Nota fiscal", value: "nota_fiscal" },
+  { label: "Comprovante", value: "comprovante" },
+  { label: "Petição", value: "peticao" },
+  { label: "Sentença", value: "sentenca" },
+  { label: "Acordo", value: "acordo" },
+  { label: "Documento interno", value: "documento_interno" },
+  { label: "Outro", value: "outro" },
+] as const
+
+function getDocumentTypeLabel(value: unknown) {
+  const type = String(value ?? "")
+  return documentTypeOptions.find((option) => option.value === type)?.label ?? (type || "Outro")
+}
 
 const getFileIcon = (tipo: string) => {
   switch (tipo) {
@@ -68,9 +85,9 @@ export function DocumentosContent() {
         return {
           id: String(record.id ?? ""),
           nome: String(record.name ?? record.file_name ?? record.nome ?? ""),
-          tipo: String(record.type ?? record.category ?? record.tipo ?? ""),
-          tamanho: record.size ? `${Math.round(Number(record.size) / 1024)} KB` : "-",
-          categoria: String(record.category ?? record.tipo ?? "Documento"),
+          tipo: String(record.type ?? record.tipo ?? "outro"),
+          tamanho: record.size_bytes ? `${Math.round(Number(record.size_bytes) / 1024)} KB` : "-",
+          categoria: getDocumentTypeLabel(record.type ?? record.tipo ?? "outro"),
           cliente: record.client_name ? String(record.client_name) : null,
           dataUpload: String(record.created_at ?? new Date().toISOString()),
           usuario: String(record.created_by ?? "GATE OS"),
@@ -134,10 +151,7 @@ export function DocumentosContent() {
           folder: "documents",
           record: {
             name: file.name,
-            file_name: file.name,
             type: documentType,
-            category: documentType,
-            size: file.size,
             client_id: clientId || null,
             contract_id: contractId || null,
             notes: notes || null,
@@ -149,7 +163,7 @@ export function DocumentosContent() {
           nome: file.name,
           tipo: documentType,
           tamanho: `${Math.round(file.size / 1024)} KB`,
-          categoria: documentType,
+          categoria: getDocumentTypeLabel(documentType),
           cliente: null,
           dataUpload: new Date().toISOString(),
           usuario: "GATE OS",
@@ -234,8 +248,8 @@ export function DocumentosContent() {
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
                     <SelectContent>
-                      {["Contrato", "Boleto", "Recibo", "Nota fiscal", "Comprovante", "Petição", "Sentença", "Acordo", "Documento interno", "Outro"].map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      {documentTypeOptions.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

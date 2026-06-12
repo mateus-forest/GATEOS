@@ -51,6 +51,7 @@ import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport } from "@/lib/cta-actions"
 import { buildMaintenanceReport } from "@/lib/reports/report-builders"
+import { clientLabel, contractLabel, equipmentLabel } from "@/lib/data/display-labels"
 
 function normalizeMaintenance(item: Record<string, unknown>): MaintenanceView {
   return {
@@ -94,15 +95,19 @@ export function ManutencoesContent() {
       setMaintenances(items.map((item) => normalizeMaintenance(item as Record<string, unknown>)))
     )
     Promise.all([getEquipment(), getClients(), getContracts()]).then(([equipment, clients, contracts]) => {
-      const option = (item: unknown, labelKeys: string[]) => {
-        const record = item as Record<string, unknown>
-        const label = labelKeys.map((key) => record[key]).find(Boolean) ?? record.id
-        return { label: String(label ?? ""), value: String(record.id ?? "") }
-      }
       setRelationshipOptions({
-        equipment: equipment.map((item) => option(item, ["name", "nome", "serial_number"])).filter((item) => item.value),
-        clients: clients.map((item) => option(item, ["name", "nome_fantasia", "razao_social"])).filter((item) => item.value),
-        contracts: contracts.map((item) => option(item, ["contract_number", "number", "numero"])).filter((item) => item.value),
+        equipment: equipment.map((item) => {
+          const record = item as Record<string, unknown>
+          return { label: equipmentLabel(record), value: String(record.id ?? "") }
+        }).filter((item) => item.value),
+        clients: clients.map((item) => {
+          const record = item as Record<string, unknown>
+          return { label: clientLabel(record), value: String(record.id ?? "") }
+        }).filter((item) => item.value),
+        contracts: contracts.map((item) => {
+          const record = item as Record<string, unknown>
+          return { label: contractLabel(record), value: String(record.id ?? "") }
+        }).filter((item) => item.value),
       })
     })
   }, [])
@@ -236,16 +241,15 @@ export function ManutencoesContent() {
               },
             ]}
             onSave={async (values) => {
+              const ticketNumber = `GATE-MAN-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
               const created = await createMaintenanceOrder({
                 equipment_id: values.equipment_id ?? "",
                 client_id: values.client_id || null,
                 contract_id: values.contract_id || null,
-                ticket_number: values.ticket_number ?? "",
-                type: values.type ?? "preventiva",
+                ticket_number: ticketNumber,
                 priority: values.priority ?? "medium",
                 status: values.status ?? "open",
-                problem: values.problem ?? "",
-                description: values.problem ?? "",
+                problem: `${values.type ? `[${values.type}] ` : ""}${values.problem ?? ""}`.trim(),
                 entry_date: new Date().toISOString().slice(0, 10),
                 expected_exit_date: values.expected_exit_date || null,
               })

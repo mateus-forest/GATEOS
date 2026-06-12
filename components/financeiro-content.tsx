@@ -95,7 +95,6 @@ import { bankAccountLabel, clientLabel, dreCategoryLabel } from "@/lib/data/disp
 import type { SupabaseRow } from "@/lib/supabase/types"
 import {
   attachmentTypes,
-  launchTypes,
   paymentMethods,
 } from "@/lib/dre-store"
 
@@ -104,6 +103,11 @@ const bankConnections = [
   { name: "Aplicação", balance: 0, status: "Pendente", lastSync: "Sem sincronização" },
   { name: "Caixa", balance: 0, status: "Manual", lastSync: "Sem sincronização" },
 ]
+
+const financialTypeOptions = [
+  { label: "Receita", value: "receita" },
+  { label: "Despesa", value: "despesa" },
+] as const
 
 type SelectOption = { label: string; value: string }
 
@@ -132,11 +136,11 @@ type TransactionRow = {
 }
 
 function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow {
-  const type = String(item.type ?? "")
+  const type = String(item.type ?? "").trim().toLowerCase()
 
   return {
     id: String(item.id ?? crypto.randomUUID()),
-    type: type === "Receita" || type === "income" ? "income" : "expense",
+    type: ["receita", "income", "entrada"].includes(type) ? "income" : "expense",
     category: String(item.dre_category_name ?? item.category ?? item.categoria ?? ""),
     description: String(item.description ?? item.descricao ?? ""),
     amount: Number(item.value ?? item.amount ?? item.valor ?? 0),
@@ -147,7 +151,7 @@ function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow 
 }
 
 const initialLaunchForm: NewLaunchForm = {
-  type: "Receita",
+  type: "receita",
   description: "",
   amount: "",
   dueDate: "",
@@ -243,7 +247,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
           folder: `financial/${String((created as Record<string, unknown>).id ?? "entry")}`,
           record: {
             financial_entry_id: String((created as Record<string, unknown>).id ?? ""),
-            category: form.attachment || "Comprovante",
+            type: "comprovante",
           },
         })
       }
@@ -307,7 +311,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
             <DialogDescription>O lançamento entra no mês da competência e alimenta a linha escolhida da DRE.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
-            {renderSelect("type", "Tipo de lançamento", launchTypes)}
+            {renderSelect("type", "Tipo de lançamento", financialTypeOptions)}
             {renderInput("description", "Descrição")}
             {renderInput("amount", "Valor", "number")}
             {renderInput("dueDate", "Data de vencimento", "date")}
