@@ -39,6 +39,13 @@ const monthLabels = new Map([
   ["dezembro", 12],
 ])
 
+const accountHeaderCandidates = new Set([
+  "conta",
+  "categoria",
+  "descricao",
+  "item",
+])
+
 const ignoredExactRows = new Set([
   "RECEITAS 2026",
   "RECEITA TOTAL",
@@ -71,11 +78,17 @@ function normalizeText(value: unknown) {
     .replace(/\s+/g, " ")
 }
 
+function normalizeKey(value: unknown) {
+  return normalizeText(value).toLowerCase()
+}
+
 function parseNumber(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
 
   const text = String(value ?? "")
     .trim()
+    .replace(/\*/g, "")
+    .replace(/#DIV\/0!/gi, "")
     .replace(/[R$\s]/g, "")
     .replace(/\./g, "")
     .replace(",", ".")
@@ -99,6 +112,52 @@ async function parseWorkbook(file: File) {
   const workbook = XLSX.read(buffer, { type: "array" })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
   return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })
+}
+
+function detectMonth(cell: unknown) {
+  const normalized = normalizeKey(cell)
+  if (!normalized || normalized === "total") return null
+
+  const token = normalized
+    .replace(/[._]/g, "-")
+    .split(/[-/ ]/)
+    .find(Boolean)
+
+  if (!token) return null
+  return monthLabels.get(token) ?? null
+}
+
+function detectHeader(matrix: unknown[][]) {
+  const candidates = matrix
+    .map((row, index) => {
+      const monthColumns = row
+        .map((cell, cellIndex) => {
+          const month = detectMonth(cell)
+          return month ? { index: cellIndex, month } : null
+        })
+        .filter(Boolean) as Array<{ index: number; month: number }>
+
+      return { index, monthColumns }
+    })
+    .filter((candidate) => candidate.monthColumns.length >= 2)
+    .sort((a, b) => b.monthColumns.length - a.monthColumns.length)
+
+  return candidates[0] ?? null
+}
+
+function detectAccountColumn(header: unknown[], monthColumns: Array<{ index: number; month: number }>) {
+  const firstMonthIndex = Math.min(...monthColumns.map((column) => column.index))
+  const explicitAccountIndex = header.findIndex((cell) => accountHeaderCandidates.has(normalizeKey(cell)))
+  if (explicitAccountIndex >= 0 && explicitAccountIndex < firstMonthIndex) return explicitAccountIndex
+  if (firstMonthIndex > 0) return firstMonthIndex - 1
+
+  const firstTextColumn = header.findIndex((cell, index) => {
+    if (monthColumns.some((column) => column.index === index)) return false
+    const normalized = normalizeKey(cell)
+    return Boolean(normalized) && normalized !== "total"
+  })
+
+  return firstTextColumn >= 0 ? firstTextColumn : 0
 }
 
 function detectGroup(account: string, currentGroup: string) {
@@ -131,32 +190,18 @@ export async function parseDreImportFile(file: File): Promise<DreImportPreview> 
     ? parseCsv(await file.text())
     : await parseWorkbook(file)
 
-  const headerIndex = matrix.findIndex((row) =>
-    row.some((cell) => normalizeText(cell).toLowerCase() === "conta")
-  )
-  if (headerIndex < 0) {
-    throw new Error("Nao foi possivel identificar a coluna Conta na planilha.")
+  const header = detectHeader(matrix)
+  if (!header) {
+    throw new Error("Nao foi possivel identificar os meses da DRE na planilha. Confirme se ha colunas jan-26, fev-26...")
   }
 
-  const header = matrix[headerIndex]
-  const accountIndex = header.findIndex((cell) => normalizeText(cell).toLowerCase() === "conta")
-  const monthColumns = header
-    .map((cell, index) => {
-      const label = normalizeText(cell).toLowerCase().split("-")[0]
-      const month = monthLabels.get(label)
-      return month ? { index, month } : null
-    })
-    .filter(Boolean) as Array<{ index: number; month: number }>
-
-  if (!monthColumns.length) {
-    throw new Error("Nao foi possivel identificar colunas mensais como jan-26, fev-26, mar-26.")
-  }
-
+  const headerRow = matrix[header.index]
+  const accountIndex = detectAccountColumn(headerRow, header.monthColumns)
   const rows: DreImportRow[] = []
   const ignoredRows: string[] = []
   let currentGroup = "Receitas"
 
-  matrix.slice(headerIndex + 1).forEach((row) => {
+  matrix.slice(header.index + 1).forEach((row) => {
     const account = normalizeText(row[accountIndex])
     if (!account) return
 
@@ -172,19 +217,14 @@ export async function parseDreImportFile(file: File): Promise<DreImportPreview> 
       return
     }
 
-    const values = monthColumns.reduce<Record<number, number>>((acc, column) => {
+    const values = header.monthColumns.reduce<Record<number, number>>((acc, column) => {
       const value = parseNumber(row[column.index])
       if (value !== 0) acc[column.month] = value
       return acc
     }, {})
 
     if (!Object.keys(values).length) {
-      rows.push({
-        account,
-        groupName: currentGroup,
-        type: typeForGroup(currentGroup),
-        values: {},
-      })
+      ignoredRows.push(account)
       return
     }
 
@@ -195,6 +235,10 @@ export async function parseDreImportFile(file: File): Promise<DreImportPreview> 
       values,
     })
   })
+
+  if (!rows.length) {
+    throw new Error("Nenhuma linha com valor financeiro foi encontrada para importar.")
+  }
 
   return { fileName: file.name, rows, ignoredRows }
 }
