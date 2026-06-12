@@ -30,6 +30,8 @@ import {
   createDreManualAdjustment,
   createDreMonthlyClosing,
   createDreCategory,
+  deleteAllDreManualAdjustments,
+  deleteDreImportedAdjustments,
   deleteDreManualAdjustment,
   getDreCategories,
   getDreManualAdjustments,
@@ -39,7 +41,7 @@ import { formatCurrency } from "@/lib/utils"
 import { getContracts } from "@/lib/data/contracts"
 import { getFinancialEntries } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
-import { parseDreImportFile, type DreImportPreview } from "@/lib/dre-import-parser"
+import { getDreWorkbookSheets, parseDreImportFile, type DreImportPreview, type DreWorkbookSheet } from "@/lib/dre-import-parser"
 import { clientLabel } from "@/lib/data/display-labels"
 import {
   getEntryAmount,
@@ -449,6 +451,12 @@ export function DREContent() {
   const [importPreview, setImportPreview] = useState<DreImportPreview | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [sheetNames, setSheetNames] = useState<DreWorkbookSheet[]>([])
+  const [selectedSheetName, setSelectedSheetName] = useState("")
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [cleanupMode, setCleanupMode] = useState<"imported" | "manual" | null>(null)
+  const [cleaning, setCleaning] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -592,16 +600,42 @@ export function DREContent() {
     }
   }
 
+  const openImportPreview = async (file: File, sheetName?: string) => {
+    const preview = await parseDreImportFile(file, sheetName)
+    setImportPreview(preview)
+    setImportOpen(true)
+  }
+
   const handleImportFile = async (file: File | null | undefined) => {
     if (!file) return
     try {
-      const preview = await parseDreImportFile(file)
-      setImportPreview(preview)
-      setImportOpen(true)
+      const sheets = await getDreWorkbookSheets(file)
+      const extension = file.name.split(".").pop()?.toLowerCase()
+      if (extension !== "csv" && sheets.length > 1) {
+        setPendingImportFile(file)
+        setSheetNames(sheets)
+        setSelectedSheetName(sheets[0]?.name ?? "")
+        setSheetOpen(true)
+        return
+      }
+
+      await openImportPreview(file, sheets[0]?.name)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel ler o arquivo.")
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  const handleConfirmSheet = async () => {
+    if (!pendingImportFile || !selectedSheetName) return
+    try {
+      await openImportPreview(pendingImportFile, selectedSheetName)
+      setSheetOpen(false)
+      setPendingImportFile(null)
+      setSheetNames([])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel ler a aba selecionada.")
     }
   }
 
@@ -647,8 +681,8 @@ export function DREContent() {
             dre_category_id: categoryId,
             previous_value: 0,
             new_value: value,
-            reason: `Importacao Excel - ${row.account}`,
-            responsible,
+            reason: `IMPORTACAO_DRE: ${importPreview.sheetName} - ${row.account}`,
+            responsible: responsible || "Sistema",
           }) as SupabaseRow
 
           nextAdjustments.push(normalizeAdjustment(created, new Map(nextCategories.map((item) => [String(item.id ?? ""), item]))))
@@ -664,6 +698,29 @@ export function DREContent() {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {
       setImporting(false)
+    }
+  }
+
+  const handleCleanup = async () => {
+    if (!cleanupMode) return
+    setCleaning(true)
+    try {
+      if (cleanupMode === "imported") {
+        await deleteDreImportedAdjustments()
+        setAdjustments((current) => current.filter((item) => !item.reason.toUpperCase().startsWith("IMPORTACAO_DRE:")))
+        toast.success("Importacoes da DRE removidas.")
+      } else {
+        await deleteAllDreManualAdjustments()
+        setAdjustments([])
+        toast.success("Ajustes manuais da DRE zerados.")
+      }
+      window.localStorage.removeItem("gate-dre-import")
+      window.sessionStorage.removeItem("gate-dre-import")
+      setCleanupMode(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel limpar a DRE manual.")
+    } finally {
+      setCleaning(false)
     }
   }
 
@@ -734,6 +791,20 @@ export function DREContent() {
           }]
     ))
 
+  const importPreviewRows = importPreview?.rows.flatMap((row) =>
+    Object.entries(row.values).map(([month, value]) => ({
+      account: row.account,
+      groupName: row.groupName,
+      type: row.type,
+      month: Number(month),
+      value,
+    }))
+  ) ?? []
+  const importPreviewMonthTotals = importPreviewRows.reduce((totals, row) => {
+    totals.set(row.month, (totals.get(row.month) ?? 0) + row.value)
+    return totals
+  }, new Map<number, number>())
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -774,6 +845,14 @@ export function DREContent() {
           <Button variant="outline" onClick={() => setHistoryOpen(true)}>
             <History className="mr-2 h-4 w-4" />
             Ver ajustes manuais
+          </Button>
+          <Button variant="outline" onClick={() => setCleanupMode("imported")}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Limpar importacao
+          </Button>
+          <Button variant="outline" onClick={() => setCleanupMode("manual")}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Zerar DRE manual
           </Button>
         </div>
       </div>
@@ -1001,6 +1080,34 @@ export function DREContent() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Selecionar aba da planilha</DialogTitle>
+            <DialogDescription>
+              Escolha a aba que contem a DRE mensal. Nenhuma aba sera importada automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label>Aba do Excel</Label>
+            <Select value={selectedSheetName} onValueChange={(value) => setSelectedSheetName(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a aba" />
+              </SelectTrigger>
+              <SelectContent>
+                {sheetNames.map((sheet) => (
+                  <SelectItem key={sheet.name} value={sheet.name}>{sheet.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancelar</Button>
+            <Button onClick={handleConfirmSheet} disabled={!selectedSheetName}>Continuar para preview</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
@@ -1013,8 +1120,17 @@ export function DREContent() {
             <div className="space-y-4">
               <div className="rounded-lg border p-3 text-sm">
                 <p><strong>Arquivo:</strong> {importPreview.fileName}</p>
-                <p><strong>Linhas importaveis:</strong> {importPreview.rows.filter((row) => Object.values(row.values).some((value) => value !== 0)).length}</p>
+                <p><strong>Aba:</strong> {importPreview.sheetName}</p>
+                <p><strong>Linhas importaveis:</strong> {importPreviewRows.length}</p>
                 <p><strong>Linhas ignoradas:</strong> {importPreview.ignoredRows.length}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+                {Array.from(importPreviewMonthTotals.entries()).map(([month, total]) => (
+                  <div key={month} className="rounded-lg border p-2 text-sm">
+                    <p className="text-muted-foreground">{months[month - 1] ?? month}</p>
+                    <p className="font-semibold">{formatCurrency(total)}</p>
+                  </div>
+                ))}
               </div>
               <div className="max-h-80 overflow-auto rounded-lg border">
                 <table className="w-full text-sm">
@@ -1023,22 +1139,19 @@ export function DREContent() {
                       <th className="px-3 py-2 text-left">Conta</th>
                       <th className="px-3 py-2 text-left">Grupo</th>
                       <th className="px-3 py-2 text-left">Tipo</th>
-                      <th className="px-3 py-2 text-right">Meses com valor</th>
-                      <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-3 py-2 text-left">Mes</th>
+                      <th className="px-3 py-2 text-right">Valor</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {importPreview.rows
-                      .filter((row) => Object.values(row.values).some((value) => value !== 0))
+                    {importPreviewRows
                       .map((row) => (
-                        <tr key={`${row.groupName}-${row.account}`} className="border-t">
+                        <tr key={`${row.groupName}-${row.account}-${row.month}`} className="border-t">
                           <td className="px-3 py-2">{row.account}</td>
                           <td className="px-3 py-2">{row.groupName}</td>
                           <td className="px-3 py-2">{row.type === "receita" ? "Receita" : "Despesa"}</td>
-                          <td className="px-3 py-2 text-right">{Object.keys(row.values).length}</td>
-                          <td className="px-3 py-2 text-right font-semibold">
-                            {formatCurrency(Object.values(row.values).reduce((total, value) => total + value, 0))}
-                          </td>
+                          <td className="px-3 py-2">{months[row.month - 1] ?? row.month}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(row.value)}</td>
                         </tr>
                       ))}
                   </tbody>
@@ -1055,6 +1168,28 @@ export function DREContent() {
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancelar</Button>
             <Button onClick={handleConfirmImport} disabled={importing || !importPreview}>
               {importing ? "Importando..." : "Confirmar importacao"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!cleanupMode} onOpenChange={(open) => !open && setCleanupMode(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{cleanupMode === "manual" ? "Zerar DRE manual" : "Limpar importacao da DRE"}</DialogTitle>
+            <DialogDescription>
+              {cleanupMode === "manual"
+                ? "Esta acao apaga todos os registros de dre_manual_adjustments. Contratos, clientes, financeiro, categorias e fechamentos mensais serao preservados."
+                : "Esta acao apaga somente ajustes importados com reason IMPORTACAO_DRE:. Ajustes manuais, contratos, clientes, financeiro, categorias e fechamentos serao preservados."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            Confirme apenas se voce ja validou que deseja remover esses ajustes da DRE. A tela sera recalculada com os dados reais restantes do Supabase.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCleanupMode(null)} disabled={cleaning}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleCleanup} disabled={cleaning}>
+              {cleaning ? "Limpando..." : "Confirmar limpeza"}
             </Button>
           </DialogFooter>
         </DialogContent>

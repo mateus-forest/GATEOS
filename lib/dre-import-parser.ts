@@ -7,8 +7,13 @@ export type DreImportRow = {
 
 export type DreImportPreview = {
   fileName: string
+  sheetName: string
   rows: DreImportRow[]
   ignoredRows: string[]
+}
+
+export type DreWorkbookSheet = {
+  name: string
 }
 
 const monthLabels = new Map([
@@ -98,6 +103,13 @@ function parseNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function parseExcelDateNumber(value: number) {
+  if (value < 20000 || value > 60000) return null
+  const epoch = new Date(Date.UTC(1899, 11, 30))
+  epoch.setUTCDate(epoch.getUTCDate() + value)
+  return epoch.getUTCMonth() + 1
+}
+
 function parseCsv(text: string) {
   const delimiter = text.includes(";") ? ";" : ","
   return text
@@ -106,17 +118,46 @@ function parseCsv(text: string) {
     .map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, "")))
 }
 
-async function parseWorkbook(file: File) {
+async function readWorkbook(file: File) {
   const XLSX = await import("xlsx")
   const buffer = await file.arrayBuffer()
-  const workbook = XLSX.read(buffer, { type: "array" })
-  const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  return XLSX.read(buffer, { type: "array", cellDates: true })
+}
+
+async function parseWorkbook(file: File, sheetName?: string) {
+  const XLSX = await import("xlsx")
+  const workbook = await readWorkbook(file)
+  const selectedSheetName = sheetName && workbook.Sheets[sheetName] ? sheetName : workbook.SheetNames[0]
+  const sheet = workbook.Sheets[selectedSheetName]
   return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })
 }
 
+export async function getDreWorkbookSheets(file: File): Promise<DreWorkbookSheet[]> {
+  const extension = file.name.split(".").pop()?.toLowerCase()
+  if (extension === "csv") return [{ name: "CSV" }]
+
+  const workbook = await readWorkbook(file)
+  return workbook.SheetNames.map((name) => ({ name }))
+}
+
 function detectMonth(cell: unknown) {
+  if (cell instanceof Date && !Number.isNaN(cell.getTime())) return cell.getMonth() + 1
+  if (typeof cell === "number") return parseExcelDateNumber(cell)
+
   const normalized = normalizeKey(cell)
   if (!normalized || normalized === "total") return null
+
+  const numericMonthYear = normalized.match(/^(\d{1,2})[/-](\d{2,4})$/)
+  if (numericMonthYear) {
+    const month = Number(numericMonthYear[1])
+    return month >= 1 && month <= 12 ? month : null
+  }
+
+  const yearMonth = normalized.match(/^(\d{4})[-/](\d{1,2})$/)
+  if (yearMonth) {
+    const month = Number(yearMonth[2])
+    return month >= 1 && month <= 12 ? month : null
+  }
 
   const token = normalized
     .replace(/[._]/g, "-")
@@ -129,6 +170,7 @@ function detectMonth(cell: unknown) {
 
 function detectHeader(matrix: unknown[][]) {
   const candidates = matrix
+    .slice(0, 20)
     .map((row, index) => {
       const monthColumns = row
         .map((cell, cellIndex) => {
@@ -139,7 +181,7 @@ function detectHeader(matrix: unknown[][]) {
 
       return { index, monthColumns }
     })
-    .filter((candidate) => candidate.monthColumns.length >= 2)
+    .filter((candidate) => candidate.monthColumns.length >= 3)
     .sort((a, b) => b.monthColumns.length - a.monthColumns.length)
 
   return candidates[0] ?? null
@@ -184,15 +226,18 @@ function isIgnoredRow(account: string) {
   return false
 }
 
-export async function parseDreImportFile(file: File): Promise<DreImportPreview> {
+export async function parseDreImportFile(file: File, sheetName?: string): Promise<DreImportPreview> {
   const extension = file.name.split(".").pop()?.toLowerCase()
   const matrix = extension === "csv"
     ? parseCsv(await file.text())
-    : await parseWorkbook(file)
+    : await parseWorkbook(file, sheetName)
 
   const header = detectHeader(matrix)
   if (!header) {
-    throw new Error("Nao foi possivel identificar os meses da DRE na planilha. Confirme se ha colunas jan-26, fev-26...")
+    throw new Error(sheetName
+      ? "Essa aba nao parece ser uma DRE mensal. Escolha a aba correta."
+      : "Nao foi possivel identificar os meses da DRE na planilha. Confirme se ha colunas jan-26, fev-26..."
+    )
   }
 
   const headerRow = matrix[header.index]
@@ -240,5 +285,5 @@ export async function parseDreImportFile(file: File): Promise<DreImportPreview> 
     throw new Error("Nenhuma linha com valor financeiro foi encontrada para importar.")
   }
 
-  return { fileName: file.name, rows, ignoredRows }
+  return { fileName: file.name, sheetName: sheetName ?? (extension === "csv" ? "CSV" : "Primeira aba"), rows, ignoredRows }
 }
