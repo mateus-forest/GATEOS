@@ -27,3 +27,7 @@ export async function getFinancialSelectOptions() {
   ])
   return { dreCategories, costCenters, bankAccounts, clients, contracts }
 }
+
+export async function createBankAccount(payload: SupabaseRow) {
+  return insertRow("bank_accounts", payload, { ...payload, id: crypto.randomUUID() })
+}

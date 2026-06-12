@@ -72,7 +72,7 @@ import {
 } from "recharts"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
+import { createBankAccount, createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
 import { uploadDocumentFile } from "@/lib/data/documents"
@@ -124,6 +124,16 @@ type NewLaunchForm = {
   attachment: string
 }
 
+type BankAccountForm = {
+  name: string
+  bankName: string
+  agency: string
+  accountNumber: string
+  accountType: string
+  openingBalance: string
+  isActive: string
+}
+
 type TransactionRow = {
   id: string
   type: string
@@ -163,6 +173,134 @@ const initialLaunchForm: NewLaunchForm = {
   attachment: "Comprovante",
 }
 
+const initialBankAccountForm: BankAccountForm = {
+  name: "",
+  bankName: "",
+  agency: "",
+  accountNumber: "",
+  accountType: "corrente",
+  openingBalance: "0",
+  isActive: "true",
+}
+
+function NewBankAccountDialog() {
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<BankAccountForm>(initialBankAccountForm)
+  const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+
+  const setField = (field: keyof BankAccountForm, value: string | null) => {
+    setForm((current) => ({ ...current, [field]: value ?? "" }))
+    setErrorMessage("")
+  }
+
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      setErrorMessage("Informe o nome da conta.")
+      return
+    }
+
+    const openingBalance = Number(form.openingBalance.replace(",", ".") || 0)
+    if (!Number.isFinite(openingBalance)) {
+      setErrorMessage("Informe um saldo inicial valido.")
+      return
+    }
+
+    setSaving(true)
+    try {
+      await createBankAccount({
+        name: form.name,
+        bank_name: form.bankName || null,
+        agency: form.agency || null,
+        account_number: form.accountNumber || null,
+        account_type: form.accountType,
+        opening_balance: openingBalance,
+        current_balance: openingBalance,
+        is_active: form.isActive === "true",
+      })
+      toast.success("Conta bancaria cadastrada.")
+      setForm(initialBankAccountForm)
+      setOpen(false)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Nao foi possivel cadastrar a conta bancaria."
+      setErrorMessage(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <Landmark className="mr-2 h-4 w-4" />
+        Cadastrar conta
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cadastrar conta bancaria</DialogTitle>
+            <DialogDescription>Cadastro manual salvo em bank_accounts. Sem conexao bancaria real.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>Nome da conta</Label>
+              <Input value={form.name} onChange={(event) => setField("name", event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Banco</Label>
+              <Input value={form.bankName} onChange={(event) => setField("bankName", event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Agencia</Label>
+              <Input value={form.agency} onChange={(event) => setField("agency", event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Numero da conta</Label>
+              <Input value={form.accountNumber} onChange={(event) => setField("accountNumber", event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Tipo da conta</Label>
+              <Select value={form.accountType} onValueChange={(value) => setField("accountType", value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="corrente">Corrente</SelectItem>
+                  <SelectItem value="poupanca">Poupanca</SelectItem>
+                  <SelectItem value="caixa">Caixa</SelectItem>
+                  <SelectItem value="investimento">Investimento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Saldo inicial</Label>
+              <Input type="number" value={form.openingBalance} onChange={(event) => setField("openingBalance", event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Ativa</Label>
+              <Select value={form.isActive} onValueChange={(value) => setField("isActive", value)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Sim</SelectItem>
+                  <SelectItem value="false">Nao</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {errorMessage && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive md:col-span-2">
+                {errorMessage}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar conta"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => void }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<NewLaunchForm>(initialLaunchForm)
@@ -177,6 +315,8 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
   })
 
   useEffect(() => {
+    if (!open) return
+
     Promise.all([getFinancialSelectOptions(), getClients()]).then(([options, clients]) => {
       const option = (item: unknown): SelectOption => {
         const record = item as Record<string, unknown>
@@ -199,7 +339,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
         clients: clients.map(clientOption).filter((item) => item.value),
       })
     })
-  }, [])
+  }, [open])
 
   const setField = (field: keyof NewLaunchForm, value: string | null) => {
     setForm((current) => ({ ...current, [field]: value ?? "" }))
@@ -435,6 +575,7 @@ export function FinanceiroContent() {
           <p className="text-muted-foreground">Gestão de receitas, despesas e fluxo de caixa</p>
         </div>
         <div className="flex items-center gap-2">
+          <NewBankAccountDialog />
           <Button variant="outline" onClick={() => exportPdfReport(buildFinancialEntriesReport([
             ...currentRevenue.pendingContractReceivables.map((contract) => ({
               id: String(contract.id ?? ""),

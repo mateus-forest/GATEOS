@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Download, FileSpreadsheet, History, Lock, RotateCcw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -29,6 +29,7 @@ import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builder
 import {
   createDreManualAdjustment,
   createDreMonthlyClosing,
+  createDreCategory,
   deleteDreManualAdjustment,
   getDreCategories,
   getDreManualAdjustments,
@@ -37,8 +38,10 @@ import {
 import { formatCurrency } from "@/lib/utils"
 import { getContracts } from "@/lib/data/contracts"
 import { getFinancialEntries } from "@/lib/data/financial"
+import { getClients } from "@/lib/data/clients"
+import { parseDreImportFile, type DreImportPreview } from "@/lib/dre-import-parser"
+import { clientLabel } from "@/lib/data/display-labels"
 import {
-  calculateContractRevenueByMonth,
   getEntryAmount,
   getEntryMonthKey,
   isExpenseEntry,
@@ -49,7 +52,7 @@ import type { SupabaseRow } from "@/lib/supabase/types"
 const months = ["jan-26", "fev-26", "mar-26", "abr-26", "mai-26", "jun-26", "jul-26", "ago-26", "set-26", "out-26", "nov-26", "dez-26"]
 const empty = Array(12).fill(0)
 
-type RowKind = "normal" | "total" | "highlight" | "percent"
+type RowKind = "section" | "normal" | "total" | "highlight" | "percent"
 
 type DreRow = {
   label: string
@@ -58,6 +61,7 @@ type DreRow = {
   percentOf?: string
   categoryId?: string
   group: "revenue" | "expense" | "result" | "balance"
+  groupName?: string
 }
 
 type ManualAdjustment = {
@@ -92,6 +96,25 @@ function subtractValues(a: number[], b: number[]) {
   return a.map((value, index) => value - b[index])
 }
 
+function valuesForContract(contract: SupabaseRow, year: string) {
+  const values = [...empty]
+  if (String(contract.status ?? "").toLowerCase() !== "ativo") return values
+
+  const monthlyValue = Number(contract.monthly_value ?? contract.monthlyValue ?? 0)
+  if (!monthlyValue) return values
+
+  const start = contract.start_date ? new Date(`${contract.start_date}T00:00:00`) : new Date(`${year}-01-01T00:00:00`)
+  const end = contract.end_date ? new Date(`${contract.end_date}T00:00:00`) : new Date(`${year}-12-31T00:00:00`)
+
+  for (let index = 0; index < 12; index += 1) {
+    const monthStart = new Date(`${year}-${String(index + 1).padStart(2, "0")}-01T00:00:00`)
+    const monthEnd = new Date(Number(year), index + 1, 0)
+    if (monthEnd >= start && monthStart <= end) values[index] += monthlyValue
+  }
+
+  return values
+}
+
 function monthLabelToNumber(label: string) {
   return months.indexOf(label) + 1
 }
@@ -105,11 +128,40 @@ function getCategoryName(category: SupabaseRow) {
   return String(category.name ?? category.description ?? "Registro sem nome")
 }
 
+function normalizeTextKey(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+}
+
 function normalizeCategoryType(category: SupabaseRow) {
   const value = String(category.type ?? category.group_name ?? "").toLowerCase()
   if (["receita", "revenue", "income"].includes(value)) return "revenue"
   if (["despesa", "expense", "cost", "custo"].includes(value)) return "expense"
   return "expense"
+}
+
+function isRevenueType(value: unknown) {
+  return ["receita", "revenue", "income"].includes(String(value ?? "").toLowerCase())
+}
+
+function isCategoryActive(category: SupabaseRow) {
+  return category.active !== false
+}
+
+function categoryGroupKey(value: unknown) {
+  const normalized = normalizeTextKey(value)
+  if (normalized.includes("pessoal")) return "people"
+  if (normalized.includes("financeira")) return "financial"
+  if (normalized.includes("nao operacion")) return "non-operational"
+  if (normalized.includes("custo do produto")) return "cpv"
+  if (normalized.includes("aporte")) return "aporte"
+  if (normalized.includes("fechamento")) return "closing"
+  if (normalized.includes("operacion")) return "operational"
+  return "operational"
 }
 
 function normalizeAdjustment(item: SupabaseRow, categoryById: Map<string, SupabaseRow>): ManualAdjustment {
@@ -134,17 +186,22 @@ function normalizeAdjustment(item: SupabaseRow, categoryById: Map<string, Supaba
 function buildRows({
   year,
   categories,
+  clients,
   contracts,
   financialEntries,
   adjustments,
 }: {
   year: string
   categories: SupabaseRow[]
+  clients: SupabaseRow[]
   contracts: SupabaseRow[]
   financialEntries: SupabaseRow[]
   adjustments: ManualAdjustment[]
 }) {
   const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
+  const clientIdByName = new Map(
+    clients.map((client) => [normalizeTextKey(clientLabel(client)), String(client.id ?? "")])
+  )
   const rowMap = new Map<string, DreRow>()
 
   const ensureRow = (key: string, row: Omit<DreRow, "values"> & { values?: number[] }) => {
@@ -155,18 +212,74 @@ function buildRows({
     return created
   }
 
-  const numericYear = Number(year)
-  const contractValues = Number.isFinite(numericYear)
-    ? calculateContractRevenueByMonth(contracts, financialEntries, numericYear)
-    : [...empty]
+  ensureRow("section-revenue", {
+    label: `RECEITAS ${year}`,
+    kind: "section",
+    group: "revenue",
+  })
 
-  if (sum(contractValues) > 0) {
-    ensureRow("contracts", {
-      label: "Contratos ativos",
+  clients.forEach((client) => {
+    const clientId = String(client.id ?? "")
+    const values = contracts
+      .filter((contract) => String(contract.client_id ?? "") === clientId)
+      .reduce((acc, contract) => addValues(acc, valuesForContract(contract, year)), [...empty])
+
+    financialEntries
+      .filter((entry) => String(entry.client_id ?? "") === clientId && isIncomeEntry(entry) && getEntryMonthKey(entry).startsWith(`${year}-`))
+      .forEach((entry) => {
+        const monthIndex = Number(getEntryMonthKey(entry).slice(5, 7)) - 1
+        if (monthIndex >= 0 && monthIndex <= 11) values[monthIndex] += Math.abs(getEntryAmount(entry))
+      })
+
+    ensureRow(`client-${clientId}`, {
+      label: clientLabel(client),
       group: "revenue",
-      values: contractValues,
+      groupName: "Clientes/Contratos",
+      values,
     })
-  }
+  })
+
+  categories
+    .filter((category) => isCategoryActive(category) && isRevenueType(category.type))
+    .forEach((category) => {
+      const id = String(category.id ?? "")
+      if (!id) return
+      ensureRow(id, {
+        label: getCategoryName(category),
+        group: "revenue",
+        groupName: String(category.group_name ?? "Receitas"),
+        categoryId: id,
+      })
+    })
+
+  ensureRow("section-expenses-people", {
+    label: "DESPESAS COM PESSOAL",
+    kind: "section",
+    group: "expense",
+  })
+  ensureRow("section-expenses-operational", {
+    label: "DESPESAS OPERACIONAIS",
+    kind: "section",
+    group: "expense",
+  })
+  ensureRow("section-expenses-non-operational", {
+    label: "OUTRAS DESPESAS NAO OPERACIONAIS",
+    kind: "section",
+    group: "expense",
+  })
+
+  categories
+    .filter((category) => isCategoryActive(category) && !isRevenueType(category.type))
+    .forEach((category) => {
+      const id = String(category.id ?? "")
+      if (!id) return
+      ensureRow(id, {
+        label: getCategoryName(category),
+        group: "expense",
+        groupName: String(category.group_name ?? "Despesas operacionais"),
+        categoryId: id,
+      })
+    })
 
   financialEntries.forEach((entry) => {
     const monthKey = getEntryMonthKey(entry)
@@ -184,6 +297,7 @@ function buildRows({
     const row = ensureRow(key, {
       label: category ? getCategoryName(category) : group === "revenue" ? "Outras receitas" : "Outras despesas",
       group,
+      groupName: category ? String(category.group_name ?? "") : "",
       categoryId: categoryId || undefined,
     })
     row.values[monthIndex] += Math.abs(getEntryAmount(entry))
@@ -192,55 +306,125 @@ function buildRows({
   adjustments.forEach((adjustment) => {
     const category = categoryById.get(adjustment.categoryId)
     if (!category) return
+    const matchedClientId = clientIdByName.get(normalizeTextKey(getCategoryName(category)))
+    const matchedClientRow = matchedClientId ? rowMap.get(`client-${matchedClientId}`) : undefined
+    if (matchedClientRow) {
+      matchedClientRow.values[adjustment.monthIndex] += adjustment.newValue
+      return
+    }
+
     const group = normalizeCategoryType(category)
     const row = ensureRow(adjustment.categoryId, {
       label: getCategoryName(category),
       group,
+      groupName: String(category.group_name ?? ""),
       categoryId: adjustment.categoryId,
     })
     row.values[adjustment.monthIndex] = adjustment.newValue
   })
 
-  const detailRows = Array.from(rowMap.values())
+  const allRows = Array.from(rowMap.values())
+  const detailRows = allRows.filter((row) => row.kind !== "section")
   const revenueRows = detailRows.filter((row) => row.group === "revenue")
   const expenseRows = detailRows.filter((row) => row.group === "expense")
-  const receitaTotal = revenueRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
-  const despesasTotal = expenseRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
-  const resultado = subtractValues(receitaTotal, despesasTotal)
+  const expenseRowsByGroup = (key: string) =>
+    expenseRows.filter((row) => categoryGroupKey(row.groupName) === key)
+  const cpvRows = expenseRowsByGroup("cpv")
+  const peopleRows = expenseRowsByGroup("people")
+  const operationalRows = expenseRowsByGroup("operational")
+  const financialRows = expenseRowsByGroup("financial")
+  const nonOperationalRows = expenseRowsByGroup("non-operational")
+  const aporteRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "aporte")
+  const closingRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "closing")
+  const ordinaryRevenueRows = revenueRows.filter((row) => !["aporte", "closing"].includes(categoryGroupKey(row.groupName)))
+  const receitaTotal = ordinaryRevenueRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const cpvTotal = cpvRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const peopleTotal = peopleRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const generalTotal = operationalRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const financialTotal = financialRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const nonOperationalTotal = nonOperationalRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const receitaLiquida = subtractValues(receitaTotal, cpvTotal)
+  const despesasOperacionais = [peopleTotal, generalTotal, financialTotal].reduce((acc, values) => addValues(acc, values), [...empty])
+  const lucroOperacional = subtractValues(receitaLiquida, despesasOperacionais)
+  const resultado = subtractValues(lucroOperacional, nonOperationalTotal)
+  const saldoAnteriorValues = closingRows
+    .filter((row) => normalizeTextKey(row.label).includes("saldo anterior"))
+    .reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const saldoBancoValues = closingRows
+    .filter((row) => normalizeTextKey(row.label).includes("saldo banco"))
+    .reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const saldoOperacaoValues = addValues(resultado, saldoAnteriorValues)
+  const diferencaValues = subtractValues(saldoOperacaoValues, saldoBancoValues)
 
-  if (detailRows.length === 0) {
+  if (clients.length === 0 && categories.length === 0 && detailRows.every((row) => sum(row.values) === 0)) {
     return {
       rows: [] as DreRow[],
       receitaTotal,
-      despesasTotal,
+      despesasTotal: despesasOperacionais,
       resultado,
       hasRealData: false,
+      lucroOperacional,
+      saldoAnteriorValues,
+      saldoOperacaoValues,
+      saldoBancoValues,
+      diferencaValues,
     }
   }
 
   return {
     rows: [
-      ...revenueRows,
+      rowMap.get("section-revenue"),
+      ...ordinaryRevenueRows,
       { label: "RECEITA TOTAL", kind: "total", group: "result", values: receitaTotal },
-      ...expenseRows,
-      { label: "Total de Despesas Operacionais", kind: "highlight", group: "result", values: despesasTotal },
+      { label: "CUSTO DO PRODUTO VENDIDO (CPV)", kind: "highlight", group: "result", values: cpvTotal },
+      ...cpvRows,
+      { label: "RECEITA LIQUIDA TOTAL", kind: "total", group: "result", values: receitaLiquida },
+      rowMap.get("section-expenses-people"),
+      ...peopleRows,
+      { label: "TOTAL DESPESAS COM PESSOAL", kind: "total", group: "result", values: peopleTotal },
+      { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS COM PESSOAL", values: peopleTotal },
+      rowMap.get("section-expenses-operational"),
+      ...operationalRows,
+      { label: "TOTAL DESPESAS GERAIS", kind: "total", group: "result", values: generalTotal },
+      { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS GERAIS", values: generalTotal },
+      ...financialRows,
+      { label: "Total de despesas financeiras", kind: "total", group: "result", values: financialTotal },
+      { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "Total de despesas financeiras", values: financialTotal },
+      { label: "Total de Despesas Operacionais", kind: "highlight", group: "result", values: despesasOperacionais },
       {
         label: "% Despesas s/Receita",
         kind: "percent",
         group: "result",
         percentOf: "Total de Despesas Operacionais",
-        values: despesasTotal,
+        values: despesasOperacionais,
       },
+      { label: "LUCRO OPERACIONAL", kind: "total", group: "result", values: lucroOperacional },
+      { label: "Lucro operacional %", kind: "percent", group: "result", percentOf: "LUCRO OPERACIONAL", values: lucroOperacional },
+      rowMap.get("section-expenses-non-operational"),
+      ...nonOperationalRows,
+      { label: "Total de despesas nao operacionais", kind: "highlight", group: "result", values: nonOperationalTotal },
       { label: "RESULTADO OPERACIONAL", kind: "total", group: "result", values: resultado },
-    ] as DreRow[],
+      ...aporteRows,
+      { label: "TOTAL APORTES TERCEIROS", kind: "highlight", group: "result", values: aporteRows.reduce((acc, row) => addValues(acc, row.values), [...empty]) },
+      { label: "SALDO ANTERIOR", group: "balance", values: saldoAnteriorValues },
+      { label: "SALDO OPERACAO - (RO+SALDO ANT)", kind: "total", group: "balance", values: saldoOperacaoValues },
+      { label: "SALDO BANCO", group: "balance", values: saldoBancoValues },
+      { label: "DIFERENCA", kind: "highlight", group: "balance", values: diferencaValues },
+    ].filter(Boolean) as DreRow[],
     receitaTotal,
-    despesasTotal,
+    despesasTotal: despesasOperacionais,
     resultado,
+    lucroOperacional,
+    saldoAnteriorValues,
+    saldoOperacaoValues,
+    saldoBancoValues,
+    diferencaValues,
     hasRealData: true,
   }
 }
 
 function rowClass(kind: RowKind = "normal") {
+  if (kind === "section") return "bg-slate-100 font-bold text-slate-900"
   if (kind === "total") return "bg-emerald-100 font-bold"
   if (kind === "highlight") return "bg-yellow-100 font-bold"
   if (kind === "percent") return "bg-muted/40 text-xs italic"
@@ -258,22 +442,29 @@ export function DREContent() {
   const [reason, setReason] = useState("")
   const [responsible, setResponsible] = useState("Administrador GATE")
   const [contracts, setContracts] = useState<SupabaseRow[]>([])
+  const [clients, setClients] = useState<SupabaseRow[]>([])
   const [financialEntries, setFinancialEntries] = useState<SupabaseRow[]>([])
   const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const [closings, setClosings] = useState<SupabaseRow[]>([])
+  const [importPreview, setImportPreview] = useState<DreImportPreview | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     Promise.all([
       getContracts(),
+      getClients(),
       getFinancialEntries(),
       getDreCategories(),
       getDreManualAdjustments(),
       getDreMonthlyClosings(),
-    ]).then(([contractRows, entryRows, categoryRows, adjustmentRows, closingRows]) => {
+    ]).then(([contractRows, clientRows, entryRows, categoryRows, adjustmentRows, closingRows]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
       setContracts(contractRows as SupabaseRow[])
+      setClients(clientRows as SupabaseRow[])
       setFinancialEntries(entryRows as SupabaseRow[])
       setDreCategories(categories)
       setAdjustments((adjustmentRows as SupabaseRow[]).map((item) => normalizeAdjustment(item, categoryById)))
@@ -281,9 +472,20 @@ export function DREContent() {
     })
   }, [])
 
-  const { rows, receitaTotal, despesasTotal, resultado, hasRealData } = useMemo(
-    () => buildRows({ year, categories: dreCategories, contracts, financialEntries, adjustments }),
-    [adjustments, contracts, dreCategories, financialEntries, year]
+  const {
+    rows,
+    receitaTotal,
+    despesasTotal,
+    resultado,
+    lucroOperacional,
+    saldoAnteriorValues,
+    saldoOperacaoValues,
+    saldoBancoValues,
+    diferencaValues,
+    hasRealData,
+  } = useMemo(
+    () => buildRows({ year, categories: dreCategories, clients, contracts, financialEntries, adjustments }),
+    [adjustments, clients, contracts, dreCategories, financialEntries, year]
   )
 
   const monthIndex = months.indexOf(closingMonth)
@@ -296,11 +498,10 @@ export function DREContent() {
     .filter((closing) => Number(closing.year) === Number(year))
     .map((closing) => monthNumberToLabel(closing.month))
 
-  const saldoAnterior = empty
-  const saldoOperacao = resultado
-  const saldoBanco = empty
-  const diferenca = empty
-  const lucroOperacional = resultado
+  const saldoAnterior = saldoAnteriorValues
+  const saldoOperacao = saldoOperacaoValues
+  const saldoBanco = saldoBancoValues
+  const diferenca = diferencaValues
 
   const handleCloseMonth = async () => {
     try {
@@ -391,6 +592,81 @@ export function DREContent() {
     }
   }
 
+  const handleImportFile = async (file: File | null | undefined) => {
+    if (!file) return
+    try {
+      const preview = await parseDreImportFile(file)
+      setImportPreview(preview)
+      setImportOpen(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel ler o arquivo.")
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  const handleConfirmImport = async () => {
+    if (!importPreview) return
+
+    setImporting(true)
+    try {
+      const categoriesByName = new Map(
+        dreCategories.map((category) => [normalizeTextKey(getCategoryName(category)), category])
+      )
+      const nextCategories = [...dreCategories]
+      const nextAdjustments: ManualAdjustment[] = []
+
+      for (const row of importPreview.rows) {
+        const hasValues = Object.values(row.values).some((value) => value !== 0)
+        if (!hasValues) continue
+
+        const key = normalizeTextKey(row.account)
+        let category = categoriesByName.get(key)
+        if (!category) {
+          category = await createDreCategory({
+            name: row.account,
+            group_name: row.groupName,
+            type: row.type,
+            sort_order: nextCategories.length + 1,
+            active: true,
+          }) as SupabaseRow
+          categoriesByName.set(key, category)
+          nextCategories.push(category)
+        }
+
+        const categoryId = String(category.id ?? "")
+        if (!categoryId) continue
+
+        for (const [monthText, value] of Object.entries(row.values)) {
+          const month = Number(monthText)
+          if (!month || value === 0) continue
+
+          const created = await createDreManualAdjustment({
+            year: Number(year),
+            month,
+            dre_category_id: categoryId,
+            previous_value: 0,
+            new_value: value,
+            reason: `Importacao Excel - ${row.account}`,
+            responsible,
+          }) as SupabaseRow
+
+          nextAdjustments.push(normalizeAdjustment(created, new Map(nextCategories.map((item) => [String(item.id ?? ""), item]))))
+        }
+      }
+
+      setDreCategories(nextCategories)
+      setAdjustments((current) => [...nextAdjustments, ...current])
+      setImportOpen(false)
+      setImportPreview(null)
+      toast.success("Importacao DRE salva no Supabase.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const renderValue = (row: DreRow, month: number) => {
     if (row.kind === "percent" && row.percentOf) {
       const value = rows.find((item) => item.label === row.percentOf)?.values?.[month] ?? 0
@@ -476,7 +752,14 @@ export function DREContent() {
               <SelectItem value="2024">2024</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => featureInPreparation("Importação Excel ainda não configurada.")}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(event) => handleImportFile(event.target.files?.[0])}
+          />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Importar Excel
           </Button>
@@ -592,7 +875,9 @@ export function DREContent() {
         <CardContent className="p-0">
           {!hasRealData ? (
             <div className="p-10 text-center text-muted-foreground">
-              Sem dados financeiros para o período selecionado.
+              {dreCategories.length === 0
+                ? "Cadastre categorias DRE ou execute o seed base para iniciar."
+                : "Sem dados financeiros para o período selecionado."}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -712,6 +997,65 @@ export function DREContent() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditTarget(null)}>Cancelar</Button>
             <Button onClick={handleApplyAdjustment}>Salvar ajuste</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Preview da importacao DRE</DialogTitle>
+            <DialogDescription>
+              Confira as linhas que serao salvas como ajustes reais em `dre_manual_adjustments`.
+            </DialogDescription>
+          </DialogHeader>
+          {importPreview && (
+            <div className="space-y-4">
+              <div className="rounded-lg border p-3 text-sm">
+                <p><strong>Arquivo:</strong> {importPreview.fileName}</p>
+                <p><strong>Linhas importaveis:</strong> {importPreview.rows.filter((row) => Object.values(row.values).some((value) => value !== 0)).length}</p>
+                <p><strong>Linhas ignoradas:</strong> {importPreview.ignoredRows.length}</p>
+              </div>
+              <div className="max-h-80 overflow-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Conta</th>
+                      <th className="px-3 py-2 text-left">Grupo</th>
+                      <th className="px-3 py-2 text-left">Tipo</th>
+                      <th className="px-3 py-2 text-right">Meses com valor</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.rows
+                      .filter((row) => Object.values(row.values).some((value) => value !== 0))
+                      .map((row) => (
+                        <tr key={`${row.groupName}-${row.account}`} className="border-t">
+                          <td className="px-3 py-2">{row.account}</td>
+                          <td className="px-3 py-2">{row.groupName}</td>
+                          <td className="px-3 py-2">{row.type === "receita" ? "Receita" : "Despesa"}</td>
+                          <td className="px-3 py-2 text-right">{Object.keys(row.values).length}</td>
+                          <td className="px-3 py-2 text-right font-semibold">
+                            {formatCurrency(Object.values(row.values).reduce((total, value) => total + value, 0))}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              {importPreview.ignoredRows.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Totais, percentuais, cabecalhos e linhas vazias foram ignorados automaticamente.
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancelar</Button>
+            <Button onClick={handleConfirmImport} disabled={importing || !importPreview}>
+              {importing ? "Importando..." : "Confirmar importacao"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

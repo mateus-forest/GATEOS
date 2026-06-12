@@ -26,6 +26,10 @@ export async function createDreMonthlyClosing(payload: SupabaseRow) {
   return insertRow("dre_monthly_closings", payload, { ...payload, id: crypto.randomUUID() })
 }
 
+export async function createDreCategory(payload: SupabaseRow) {
+  return insertRow("dre_categories", payload, { ...payload, id: crypto.randomUUID() })
+}
+
 export async function deleteDreManualAdjustment(id: string) {
   return deleteRows("dre_manual_adjustments", { id }, [])
 }

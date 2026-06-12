@@ -286,6 +286,18 @@ const writableColumnsByTable: Record<string, Set<string>> = {
     "sort_order",
     "active",
   ]),
+  bank_accounts: new Set([
+    "name",
+    "bank_name",
+    "agency",
+    "account_number",
+    "account_type",
+    "opening_balance",
+    "current_balance",
+    "is_active",
+    "open_finance_connected",
+    "last_sync_at",
+  ]),
   notifications: new Set([
     "title",
     "message",
