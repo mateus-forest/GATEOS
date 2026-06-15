@@ -210,6 +210,7 @@ export async function createDreImportSnapshot(payload: {
   let result = await supabase.from("dre_imports").insert(insertPayload).select("*").single()
 
   if (result.error && (result.error.code === "PGRST204" || result.error.message.toLowerCase().includes("import_kind"))) {
+    console.warn("[dre-import] Coluna dre_imports.import_kind ausente. Execute supabase/gate-os-dre-history-import-support.sql para classificar historico/operacional.")
     insertPayload = {
       file_name: payload.fileName,
       sheet_name: payload.sheetName,
@@ -222,7 +223,7 @@ export async function createDreImportSnapshot(payload: {
   const dreImport = result.data
   if (result.error) {
     if (result.error.code === "42P01" || result.error.code === "PGRST205" || result.error.message.toLowerCase().includes("dre_imports")) {
-      throw new Error("Estrutura de importacao integral da DRE ainda nao foi criada. Execute o SQL indicado.")
+      throw new Error("Estrutura de historico da DRE incompleta. Execute o SQL de suporte.")
     }
     throw new Error(`dre_imports: falha ao salvar importacao. ${result.error.message}`)
   }
@@ -235,6 +236,7 @@ export async function createDreImportSnapshot(payload: {
     .select("*")
 
   if (rowsResult.error && (rowsResult.error.code === "PGRST204" || rowsResult.error.message.toLowerCase().includes("raw_data"))) {
+    console.warn("[dre-import] Coluna dre_import_rows.raw_data ausente. Execute supabase/gate-os-dre-history-import-support.sql para preservar historicos genericos completos.")
     rowsResult = await supabase
       .from("dre_import_rows")
       .insert(rows.map(({ raw_data, ...row }) => row))
@@ -242,6 +244,9 @@ export async function createDreImportSnapshot(payload: {
   }
 
   if (rowsResult.error) {
+    if (rowsResult.error.code === "42P01" || rowsResult.error.code === "PGRST205" || rowsResult.error.message.toLowerCase().includes("dre_import_rows")) {
+      throw new Error("Estrutura de historico da DRE incompleta. Execute o SQL de suporte.")
+    }
     throw new Error(`dre_import_rows: falha ao salvar linhas importadas. ${rowsResult.error.message}`)
   }
 

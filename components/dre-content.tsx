@@ -880,20 +880,38 @@ export function DREContent() {
             raw_data: row.rawData ?? null,
           })),
         })
+
+        const savedMonths = new Set(preview.rows.flatMap((row) => Object.keys(row.values))).size
+        console.info("[dre-import] Snapshot salvo", {
+          importId: latestSnapshot.import.id,
+          sheetName: preview.sheetName,
+          rowsSaved: latestSnapshot.rows.length,
+          monthsIdentified: preview.monthNumbers.length,
+          monthsSaved: savedMonths,
+          ignoredRows: preview.ignoredRows.length,
+        })
       }
 
       if (latestSnapshot) {
         const snapshotImport = latestSnapshot.import as SupabaseRow
+        const snapshotYear = String(snapshotImport.year ?? year)
+        const refreshedImports = await getDreImportSnapshots(snapshotYear)
         setImportedSnapshotInfo(latestSnapshot.import as SupabaseRow)
         setImportedRows(snapshotRowsToDreRows(latestSnapshot.rows as SupabaseRow[]))
         setSelectedImportId(String(snapshotImport.id ?? ""))
-        setImportHistory((current) => [snapshotImport, ...current.filter((item) => item.id !== snapshotImport.id)])
+        setImportHistory(refreshedImports.imports.length ? refreshedImports.imports : [snapshotImport])
+        if (snapshotYear !== year) setYear(snapshotYear)
       }
       setImportStructureMissing(false)
-      setDreView("operational")
+      setDreView("imported")
       setImportOpen(false)
       setImportPreviews([])
-      toast.success(importMode === "operational" ? "DRE 2026 importada como referencia historica, sem congelar a DRE operacional." : "Historico da DRE arquivado para consulta e relatorios.")
+      toast.success("Importacao salva no Historico importado. A DRE operacional nao foi alterada.", {
+        action: {
+          label: "Ver historico importado",
+          onClick: () => setDreView("imported"),
+        },
+      })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {
