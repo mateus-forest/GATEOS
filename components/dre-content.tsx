@@ -348,7 +348,9 @@ function makeRowLookup(rows: DreRow[]) {
   const lookup = new Map<string, DreRow>()
   rows.forEach((row) => {
     const key = normalizeTextKey(row.label)
-    if (key && !lookup.has(key)) lookup.set(key, row)
+    if (!key) return
+    const current = lookup.get(key)
+    if (!current || (sum(current.values) === 0 && sum(row.values) !== 0)) lookup.set(key, row)
   })
   return lookup
 }
@@ -375,6 +377,20 @@ function buildRows({
   templateRows: OperationalTemplateRow[]
 }) {
   const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
+  const categoryBySortOrder = new Map(
+    categories
+      .filter((category) => isCategoryActive(category))
+      .map((category) => [Number(category.sort_order ?? 0), category])
+      .filter(([sortOrder]) => sortOrder > 0)
+  )
+  const categoryByNameAndGroup = new Map(
+    categories
+      .filter((category) => isCategoryActive(category))
+      .map((category) => [
+        `${normalizeTextKey(category.group_name)}::${normalizeTextKey(getCategoryName(category))}`,
+        category,
+      ])
+  )
   const clientIdByName = new Map(
     clients.map((client) => [normalizeTextKey(clientLabel(client)), String(client.id ?? "")])
   )
@@ -423,10 +439,15 @@ function buildRows({
     .forEach((templateRow) => {
       const group = templateRowGroup(templateRow)
       if (!group) return
-      ensureRow(`template-${normalizeTextKey(templateRow.label)}`, {
+      const matchedCategory =
+        categoryBySortOrder.get(templateRow.order) ??
+        categoryByNameAndGroup.get(`${normalizeTextKey(templateRow.groupName)}::${normalizeTextKey(templateRow.label)}`)
+      const categoryId = matchedCategory ? String(matchedCategory.id ?? "") : ""
+      ensureRow(categoryId || `template-${normalizeTextKey(templateRow.label)}`, {
         label: templateRow.label,
         group,
         groupName: templateRow.groupName || "Template operacional",
+        categoryId: categoryId || undefined,
       })
     })
 
@@ -641,6 +662,7 @@ function buildRows({
         groupName: templateRow.groupName,
         values: matchedRow?.values ?? [...empty],
         percentOf: matchedRow?.percentOf,
+        categoryId: matchedRow?.categoryId,
       } as DreRow
     })
 

@@ -107,6 +107,37 @@ Despesas realizadas entram no total financeiro somente quando tambem possuem sta
 - `npm run lint`
 - `npm run build`
 
+## Correcao do mapeamento de categorias nas linhas operacionais
+
+### Causa exata
+
+A DRE 2026 montava duas linhas internas para a mesma conta quando existia template operacional e categoria DRE:
+
+- uma linha criada por `dre_operational_template_rows.account_name`, sem `categoryId` e com valores zerados;
+- uma linha criada por `dre_categories.id`, com `categoryId` e com o valor vindo de `financial_entries`.
+
+Os totais somavam a linha da categoria, por isso `RECEITA TOTAL` e `RECEITA LIQUIDA TOTAL` exibiam R$ 3.500,00. Mas a renderizacao final, baseada nas linhas oficiais do template, procurava a primeira linha pelo nome normalizado e encontrava a linha zerada do template antes da linha categorizada.
+
+### Criterio de vinculo adotado
+
+Cada linha operacional de detalhe agora tenta receber a categoria correspondente antes de ser criada:
+
+- primeiro por `dre_categories.sort_order -> dre_operational_template_rows.row_index`;
+- depois por `dre_categories.group_name + dre_categories.name -> dre_operational_template_rows.group_name + dre_operational_template_rows.account_name`.
+
+Quando existe categoria correspondente, a linha operacional e criada usando o proprio `dre_categories.id` como chave interna e recebe `categoryId`. Assim o lancamento agregado por `financial_entries.dre_category_id` cai na mesma linha que sera renderizada pelo template.
+
+O lookup final tambem passa a preferir, em caso de duplicidade de nome, a linha que possui valores reais.
+
+### Validacoes executadas nesta correcao
+
+- O lancamento real segue com `dre_category_id` preenchido e valor agregado de `3500` em `jun-26`.
+- O mapeamento agora preserva `categoryId` na linha operacional renderizada.
+- `RECEITA TOTAL` e `RECEITA LIQUIDA TOTAL` continuam usando os mesmos totais, sem mudanca de regra.
+- O historico `2022`-`2025` nao foi alterado.
+- `npm run lint`
+- `npm run build`
+
 ### SQL criado
 
 Foi criado o SQL idempotente:
