@@ -34,7 +34,7 @@ export function isExpenseEntry(entry: SupabaseRow) {
 }
 
 export function getEntryAmount(entry: SupabaseRow) {
-  return numberValue(entry, ["amount", "valor", "value"])
+  return numberValue(entry, ["value", "amount", "valor"])
 }
 
 export function getEntryMonthKey(entry: SupabaseRow) {
@@ -114,7 +114,7 @@ export function calculateMonthlyRevenueMetrics(
 
 export function calculateMonthlyExpense(financialEntries: SupabaseRow[], monthKey: string) {
   return financialEntries
-    .filter((entry) => getEntryMonthKey(entry) === monthKey && isExpenseEntry(entry))
+    .filter((entry) => getEntryMonthKey(entry) === monthKey && isExpenseEntry(entry) && isEntryReceived(entry))
     .reduce((sum, entry) => sum + getEntryAmount(entry), 0)
 }
 
@@ -140,6 +140,7 @@ function textValue(row: SupabaseRow, keys: string[]) {
 function numberValue(row: SupabaseRow, keys: string[], fallback = 0) {
   for (const key of keys) {
     const value = row[key]
+    if (value === undefined || value === null || String(value).trim() === "") continue
     const parsed = typeof value === "number" ? value : Number(value)
     if (Number.isFinite(parsed)) return parsed
   }

@@ -55,6 +55,58 @@ O template operacional `dre_operational_template_rows` estava carregado e render
 
 O modal financeiro ja possuia o campo `dre_category_id` e ja salvava esse valor em `financial_entries`, mas a lista vinha vazia porque dependia de `dre_categories`.
 
+## Correcao da agregacao de lancamentos financeiros
+
+### Causa exata
+
+O lancamento real criado em `financial_entries` foi salvo corretamente com:
+
+- `type = receita`
+- `status = recebido`
+- `value = 3500`
+- `amount = null`
+- `competence_date = 2026-06-15`
+- `dre_category_id` preenchido
+
+A leitura compartilhada por Financeiro e DRE usava `getEntryAmount`, que tentava ler `amount` antes de `value`. Como `Number(null)` retorna `0`, o helper aceitava o campo `amount` nulo como valor valido e nunca chegava em `value = 3500`.
+
+Com isso, o registro aparecia na tabela de lancamentos, mas os cards financeiros, Receita Realizada, DRE 2026, linha `Estacio Itapipoca` e `RECEITA TOTAL` recebiam `0`.
+
+### Arquivo corrigido
+
+- `lib/data/recurring-revenue.ts`
+
+### Campos reais usados
+
+O agregador agora usa:
+
+- `value` como valor principal
+- `amount` como compatibilidade/fallback
+- `valor` como fallback legado
+- `competence_date` para competencia mensal
+- `type` para receita/despesa
+- `status` para realizado/pendente
+- `dre_category_id` para ligar `financial_entries` a `dre_categories`
+
+Campos nulos, indefinidos ou vazios passam a ser ignorados antes da conversao numerica.
+
+### Impacto na DRE 2026 e Financeiro
+
+Receitas com `type = receita`, `status = recebido`, `competence_date` no ano selecionado e `dre_category_id` preenchido passam a alimentar a linha da categoria DRE correspondente e os totais mensais.
+
+Despesas realizadas entram no total financeiro somente quando tambem possuem status normalizado como realizado/pago, mantendo a mesma regra usada pela DRE.
+
+### Validacoes executadas nesta correcao
+
+- Consulta local ao Supabase com `.env.local` confirmou `1` registro em `financial_entries`.
+- O registro real possui `value = 3500`, `amount = null`, `type = receita`, `status = recebido`, `competence_date = 2026-06-15` e `dre_category_id` preenchido.
+- A agregacao local pelo mesmo criterio corrigido retorna `3500` para receita realizada em `jun-26`.
+- O valor passa a entrar pela competencia (`competence_date`) e nao por `created_at`.
+- A ligacao operacional continua usando `financial_entries.dre_category_id -> dre_categories.id -> dre_operational_template_rows.account_name/group_name`.
+- O historico `2022`-`2025` nao foi alterado.
+- `npm run lint`
+- `npm run build`
+
 ### SQL criado
 
 Foi criado o SQL idempotente:
