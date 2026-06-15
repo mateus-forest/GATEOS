@@ -32,9 +32,12 @@ import {
   deleteAllDreManualAdjustments,
   deleteDreImportedAdjustments,
   deleteDreImportSnapshots,
+  deleteDreImportSnapshot,
   deleteDreManualAdjustment,
   createDreImportSnapshot,
   getDreCategories,
+  getDreImportSnapshotById,
+  getDreImportSnapshots,
   getLatestDreImportSnapshot,
   getDreManualAdjustments,
   getDreMonthlyClosings,
@@ -44,7 +47,7 @@ import { getFinancialEntries } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
 import { getFinancialSelectOptions } from "@/lib/data/financial"
 import { getPartnerEntries } from "@/lib/data/partners"
-import { getDreWorkbookSheets, parseDreImportFile, type DreImportPreview, type DreWorkbookSheet } from "@/lib/dre-import-parser"
+import { getDreWorkbookSheets, parseDreImportFile, type DreImportMode, type DreImportPreview, type DreWorkbookSheet } from "@/lib/dre-import-parser"
 import { clientLabel } from "@/lib/data/display-labels"
 import {
   getEntryAmount,
@@ -199,6 +202,20 @@ function normalizeAdjustment(item: SupabaseRow, categoryById: Map<string, Supaba
 
 function isDreSheetName(sheetName: string) {
   return normalizeTextKey(sheetName).startsWith("dre")
+}
+
+function isOperationalDreSheetName(sheetName: string) {
+  const normalized = normalizeTextKey(sheetName)
+  return normalized.startsWith("dre") && normalized.includes("2026")
+}
+
+function isHistorySheetName(sheetName: string) {
+  const normalized = normalizeTextKey(sheetName)
+  return normalized.includes("2024") || normalized.includes("2025") || normalized.includes("2023") || (normalized.startsWith("dre") && !normalized.includes("2026"))
+}
+
+function importKindLabel(value: unknown) {
+  return String(value ?? "") === "operacional" ? "DRE operacional atual" : "Historico"
 }
 
 function dreImportRowTypeLabel(type: string) {
@@ -571,16 +588,19 @@ export function DREContent() {
   const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const [closings, setClosings] = useState<SupabaseRow[]>([])
   const [importPreviews, setImportPreviews] = useState<DreImportPreview[]>([])
+  const [importMode, setImportMode] = useState<DreImportMode>("operational")
   const [importOpen, setImportOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
   const [sheetNames, setSheetNames] = useState<DreWorkbookSheet[]>([])
   const [selectedSheetNames, setSelectedSheetNames] = useState<string[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [cleanupMode, setCleanupMode] = useState<"imported" | "manual" | null>(null)
+  const [cleanupMode, setCleanupMode] = useState<"imported-selected" | "imported-all" | "manual" | null>(null)
   const [cleaning, setCleaning] = useState(false)
   const [importedRows, setImportedRows] = useState<DreRow[]>([])
   const [importedSnapshotInfo, setImportedSnapshotInfo] = useState<SupabaseRow | null>(null)
+  const [importHistory, setImportHistory] = useState<SupabaseRow[]>([])
+  const [selectedImportId, setSelectedImportId] = useState("")
   const [importStructureMissing, setImportStructureMissing] = useState(false)
   const [dreView, setDreView] = useState<"operational" | "imported">("operational")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -595,7 +615,8 @@ export function DREContent() {
       getPartnerEntries(),
       getFinancialSelectOptions(),
       getLatestDreImportSnapshot(year),
-    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult]) => {
+      getDreImportSnapshots(year),
+    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
@@ -609,8 +630,28 @@ export function DREContent() {
       setImportStructureMissing(importResult.missingStructure)
       setImportedSnapshotInfo(importResult.snapshot?.import ?? null)
       setImportedRows(importResult.snapshot?.rows ? snapshotRowsToDreRows(importResult.snapshot.rows as SupabaseRow[]) : [])
+      setImportHistory(importListResult.imports)
+      setSelectedImportId(String(importResult.snapshot?.import?.id ?? importListResult.imports[0]?.id ?? ""))
     })
   }, [year])
+
+  useEffect(() => {
+    if (!selectedImportId) return
+
+    let active = true
+    getDreImportSnapshotById(selectedImportId)
+      .then((result) => {
+        if (!active || !result.snapshot) return
+        setImportStructureMissing(result.missingStructure)
+        setImportedSnapshotInfo(result.snapshot.import as SupabaseRow)
+        setImportedRows(snapshotRowsToDreRows(result.snapshot.rows as SupabaseRow[]))
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "Nao foi possivel carregar o historico importado."))
+
+    return () => {
+      active = false
+    }
+  }, [selectedImportId])
 
   const {
     rows,
@@ -753,8 +794,8 @@ export function DREContent() {
     }
   }
 
-  const openImportPreview = async (file: File, sheetNamesToParse: string[]) => {
-    const previews = await Promise.all(sheetNamesToParse.map((sheetName) => parseDreImportFile(file, sheetName)))
+  const openImportPreview = async (file: File, sheetNamesToParse: string[], mode = importMode) => {
+    const previews = await Promise.all(sheetNamesToParse.map((sheetName) => parseDreImportFile(file, sheetName, { mode })))
     setImportPreviews(previews)
     setImportOpen(true)
   }
@@ -764,16 +805,22 @@ export function DREContent() {
     try {
       const sheets = await getDreWorkbookSheets(file)
       const extension = file.name.split(".").pop()?.toLowerCase()
-      if (extension !== "csv" && sheets.length > 1) {
-        const dreSheets = sheets.filter((sheet) => isDreSheetName(sheet.name))
+      if (extension !== "csv") {
+        const operationalSheets = sheets.filter((sheet) => isOperationalDreSheetName(sheet.name))
+        const historySheets = sheets.filter((sheet) => isHistorySheetName(sheet.name))
+        const nextMode = operationalSheets.length ? "operational" : "history"
         setPendingImportFile(file)
         setSheetNames(sheets)
-        setSelectedSheetNames(dreSheets.map((sheet) => sheet.name))
+        setImportMode(nextMode)
+        setSelectedSheetNames((nextMode === "operational" ? operationalSheets : (historySheets.length ? historySheets : sheets)).map((sheet) => sheet.name).filter(Boolean))
         setSheetOpen(true)
         return
       }
 
-      await openImportPreview(file, [sheets[0]?.name ?? "CSV"])
+      const singleSheetName = sheets[0]?.name ?? "CSV"
+      const nextMode = isOperationalDreSheetName(singleSheetName) ? "operational" : "history"
+      setImportMode(nextMode)
+      await openImportPreview(file, [singleSheetName], nextMode)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel ler o arquivo.")
     } finally {
@@ -783,6 +830,10 @@ export function DREContent() {
 
   const handleConfirmSheet = async () => {
     if (!pendingImportFile || selectedSheetNames.length === 0) return
+    if (importMode === "operational" && selectedSheetNames.some((sheetName) => !isOperationalDreSheetName(sheetName))) {
+      toast.error("DRE operacional atual deve usar a aba DRE 2026. Use o modo Historico para arquivar anos anteriores.")
+      return
+    }
     try {
       await openImportPreview(pendingImportFile, selectedSheetNames)
       setSheetOpen(false)
@@ -806,6 +857,7 @@ export function DREContent() {
           sheetName: preview.sheetName,
           year: yearFromSheetName(preview.sheetName, year),
           importedBy: responsible || "Sistema",
+          importKind: importMode === "operational" ? "operacional" : "historico",
           rows: preview.rows.map((row) => ({
             row_index: row.rowIndex,
             group_name: row.groupName,
@@ -825,19 +877,23 @@ export function DREContent() {
             dez: row.values[12] ?? null,
             total: row.total,
             raw_label: row.rawLabel,
+            raw_data: row.rawData ?? null,
           })),
         })
       }
 
       if (latestSnapshot) {
+        const snapshotImport = latestSnapshot.import as SupabaseRow
         setImportedSnapshotInfo(latestSnapshot.import as SupabaseRow)
         setImportedRows(snapshotRowsToDreRows(latestSnapshot.rows as SupabaseRow[]))
+        setSelectedImportId(String(snapshotImport.id ?? ""))
+        setImportHistory((current) => [snapshotImport, ...current.filter((item) => item.id !== snapshotImport.id)])
       }
       setImportStructureMissing(false)
       setDreView("operational")
       setImportOpen(false)
       setImportPreviews([])
-      toast.success(importPreviews.length > 1 ? "DREs importadas como historicos separados." : "DRE importada salva como historico separado.")
+      toast.success(importMode === "operational" ? "DRE 2026 importada como referencia historica, sem congelar a DRE operacional." : "Historico da DRE arquivado para consulta e relatorios.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {
@@ -849,7 +905,23 @@ export function DREContent() {
     if (!cleanupMode) return
     setCleaning(true)
     try {
-      if (cleanupMode === "imported") {
+      if (cleanupMode === "imported-selected") {
+        if (!selectedImportId) {
+          toast.info("Nenhum historico importado selecionado para limpar.")
+          return
+        }
+        const deletedSnapshots = await deleteDreImportSnapshot(selectedImportId)
+        setImportHistory((current) => current.filter((item) => String(item.id ?? "") !== selectedImportId))
+        setImportedRows([])
+        setImportedSnapshotInfo(null)
+        setSelectedImportId("")
+        setDreView("operational")
+        if (deletedSnapshots.length) {
+          toast.success("Historico importado selecionado removido.")
+        } else {
+          toast.info("Nenhum historico importado encontrado para limpar.")
+        }
+      } else if (cleanupMode === "imported-all") {
         const deletedAdjustments = await deleteDreImportedAdjustments()
         const deletedSnapshots = await deleteDreImportSnapshots()
         setAdjustments((current) => current.filter((item) => {
@@ -858,11 +930,13 @@ export function DREContent() {
         }))
         setImportedRows([])
         setImportedSnapshotInfo(null)
+        setImportHistory([])
+        setSelectedImportId("")
         setDreView("operational")
         if (deletedAdjustments.length || deletedSnapshots.length) {
-          toast.success("Importacao da DRE removida.")
+          toast.success("Historicos importados da DRE removidos.")
         } else {
-          toast.info("Nenhuma importacao encontrada para limpar.")
+          toast.info("Nenhum historico importado encontrado para limpar.")
         }
       } else {
         await deleteAllDreManualAdjustments()
@@ -956,18 +1030,35 @@ export function DREContent() {
   const totalImportRows = importPreviews.reduce((total, preview) => total + preview.rows.length, 0)
   const totalIgnoredRows = importPreviews.reduce((total, preview) => total + preview.ignoredRows.length, 0)
   const importPreviewRows = importPreviews.flatMap((preview) =>
-    preview.rows.flatMap((row) => Object.entries(row.values).map(([month, value]) => ({
-      sheetName: preview.sheetName,
-      rowIndex: row.rowIndex,
-      account: row.account,
-      groupName: row.groupName,
-      type: row.type,
-      rowType: row.rowType,
-      month: Number(month),
-      value,
-    })))
+    preview.rows.flatMap((row) => {
+      const entries = Object.entries(row.values)
+      if (!entries.length) {
+        return [{
+          sheetName: preview.sheetName,
+          rowIndex: row.rowIndex,
+          account: row.account,
+          groupName: row.groupName,
+          type: row.type,
+          rowType: row.rowType,
+          month: 0,
+          value: 0,
+        }]
+      }
+
+      return entries.map(([month, value]) => ({
+        sheetName: preview.sheetName,
+        rowIndex: row.rowIndex,
+        account: row.account,
+        groupName: row.groupName,
+        type: row.type,
+        rowType: row.rowType,
+        month: Number(month),
+        value,
+      }))
+    })
   )
   const importPreviewMonthTotals = importPreviewRows.reduce((totals, row) => {
+    if (!row.month) return totals
     totals.set(row.month, (totals.get(row.month) ?? 0) + row.value)
     return totals
   }, new Map<number, number>())
@@ -1006,6 +1097,20 @@ export function DREContent() {
               <SelectItem value="imported" disabled={!importedRows.length}>Historico importado</SelectItem>
             </SelectContent>
           </Select>
+          {dreView === "imported" && importHistory.length > 0 && (
+            <Select value={selectedImportId} onValueChange={setSelectedImportId}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Escolha ano/aba" />
+              </SelectTrigger>
+              <SelectContent>
+                {importHistory.map((item) => (
+                  <SelectItem key={String(item.id)} value={String(item.id)}>
+                    {String(item.year ?? "-")} - {String(item.sheet_name ?? "Aba sem nome")} ({importKindLabel(item.import_kind)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -1029,9 +1134,13 @@ export function DREContent() {
             <History className="mr-2 h-4 w-4" />
             Ver ajustes manuais
           </Button>
-          <Button variant="outline" onClick={() => setCleanupMode("imported")}>
+          <Button variant="outline" onClick={() => setCleanupMode("imported-selected")} disabled={!selectedImportId}>
             <Trash2 className="mr-2 h-4 w-4" />
-            Limpar importacao
+            Limpar historico
+          </Button>
+          <Button variant="outline" onClick={() => setCleanupMode("imported-all")} disabled={!importHistory.length}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Limpar todos
           </Button>
           <Button variant="outline" onClick={() => setCleanupMode("manual")}>
             <Trash2 className="mr-2 h-4 w-4" />
@@ -1039,6 +1148,14 @@ export function DREContent() {
           </Button>
         </div>
       </div>
+
+      {usingImportedDre && (
+        <Card className="border-amber-200 bg-amber-50/60">
+          <CardContent className="p-4 text-sm text-amber-900">
+            Visualizacao historica. Esses dados ficam arquivados para consulta, relatorios e exportacoes, mas nao alimentam a DRE operacional, o Dashboard ou o Financeiro.
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <Card>
@@ -1275,15 +1392,46 @@ export function DREContent() {
           <DialogHeader>
             <DialogTitle>Selecionar aba da planilha</DialogTitle>
             <DialogDescription>
-              Escolha uma ou mais abas DRE. Abas fora desse padrao ficam separadas para evitar importacao acidental.
+              Escolha o modo de importacao e depois selecione as abas que serao processadas.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label>Abas DRE detectadas</Label>
+              <Label>Modo de importacao</Label>
+              <div className="grid gap-2 md:grid-cols-2">
+                <button
+                  type="button"
+                  className={`rounded-lg border p-3 text-left text-sm ${importMode === "operational" ? "border-primary bg-primary/10" : "bg-background"}`}
+                  onClick={() => {
+                    setImportMode("operational")
+                    setSelectedSheetNames(sheetNames.filter((sheet) => isOperationalDreSheetName(sheet.name)).map((sheet) => sheet.name))
+                  }}
+                >
+                  <span className="font-semibold">DRE operacional atual</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Use para importar a estrutura atual da DRE 2026. Essa visao serve de referencia para a DRE viva do sistema.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg border p-3 text-left text-sm ${importMode === "history" ? "border-primary bg-primary/10" : "bg-background"}`}
+                  onClick={() => {
+                    setImportMode("history")
+                    setSelectedSheetNames(sheetNames.filter((sheet) => isHistorySheetName(sheet.name)).map((sheet) => sheet.name))
+                  }}
+                >
+                  <span className="font-semibold">Historico</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Use para arquivar DREs antigas, como 2024 e 2025. Esses dados ficam disponiveis para consulta e relatorios, mas nao alteram a DRE operacional.
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Abas DRE atuais/recomendadas</Label>
               <div className="space-y-2 rounded-lg border p-3">
-                {sheetNames.filter((sheet) => isDreSheetName(sheet.name)).length ? (
-                  sheetNames.filter((sheet) => isDreSheetName(sheet.name)).map((sheet) => (
+                {sheetNames.filter((sheet) => isOperationalDreSheetName(sheet.name)).length ? (
+                  sheetNames.filter((sheet) => isOperationalDreSheetName(sheet.name)).map((sheet) => (
                     <label key={sheet.name} className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -1300,15 +1448,62 @@ export function DREContent() {
                     </label>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">Nenhuma aba iniciada por DRE foi detectada.</p>
+                  <p className="text-sm text-muted-foreground">Nenhuma aba DRE 2026 foi detectada.</p>
                 )}
               </div>
             </div>
-            {sheetNames.some((sheet) => !isDreSheetName(sheet.name)) && (
+            <div className="grid gap-2">
+              <Label>Abas historicas</Label>
+              <div className="space-y-2 rounded-lg border p-3">
+                {sheetNames.filter((sheet) => isHistorySheetName(sheet.name)).length ? (
+                  sheetNames.filter((sheet) => isHistorySheetName(sheet.name)).map((sheet) => (
+                    <label key={sheet.name} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedSheetNames.includes(sheet.name)}
+                        onChange={(event) => {
+                          setSelectedSheetNames((current) =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, sheet.name]))
+                              : current.filter((name) => name !== sheet.name)
+                          )
+                        }}
+                      />
+                      <span className="font-medium">{sheet.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhuma aba historica foi detectada.</p>
+                )}
+                {importMode === "history" && (
+                  <p className="text-xs text-muted-foreground">
+                    Essas abas serao arquivadas para consulta e relatorios. Elas nao alteram a DRE operacional.
+                  </p>
+                )}
+              </div>
+            </div>
+            {sheetNames.some((sheet) => !isOperationalDreSheetName(sheet.name) && !isHistorySheetName(sheet.name)) && (
               <div className="grid gap-2">
                 <Label>Outras abas</Label>
-                <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  {sheetNames.filter((sheet) => !isDreSheetName(sheet.name)).map((sheet) => sheet.name).join(", ")}
+                <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  {sheetNames.filter((sheet) => !isOperationalDreSheetName(sheet.name) && !isHistorySheetName(sheet.name)).map((sheet) => (
+                    <label key={sheet.name} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedSheetNames.includes(sheet.name)}
+                        disabled={importMode !== "history"}
+                        onChange={(event) => {
+                          setSelectedSheetNames((current) =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, sheet.name]))
+                              : current.filter((name) => name !== sheet.name)
+                          )
+                        }}
+                      />
+                      <span>{sheet.name}</span>
+                    </label>
+                  ))}
+                  <p className="text-xs">Outras abas so podem ser arquivadas no modo Historico.</p>
                 </div>
               </div>
             )}
@@ -1335,7 +1530,8 @@ export function DREContent() {
                 <p><strong>Abas:</strong> {importPreviews.map((preview) => preview.sheetName).join(", ")}</p>
                 <p><strong>Linhas lidas:</strong> {totalImportRowsRead}</p>
                 <p><strong>Linhas que serao importadas:</strong> {totalImportRows}</p>
-                <p><strong>Meses identificados:</strong> {Array.from(new Set(importPreviews.flatMap((preview) => preview.monthNumbers))).map((month) => months[month - 1] ?? month).join(", ")}</p>
+                <p><strong>Modo:</strong> {importMode === "operational" ? "DRE operacional atual" : "Historico"}</p>
+                <p><strong>Meses identificados:</strong> {Array.from(new Set(importPreviews.flatMap((preview) => preview.monthNumbers))).map((month) => months[month - 1] ?? month).join(", ") || "Tabela historica generica"}</p>
                 <p><strong>Linhas ignoradas:</strong> {totalIgnoredRows}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
@@ -1370,8 +1566,8 @@ export function DREContent() {
                           <td className="px-3 py-2">{row.groupName}</td>
                           <td className="px-3 py-2">{row.type === "receita" ? "Receita" : row.type === "despesa" ? "Despesa" : "Neutro"}</td>
                           <td className="px-3 py-2">{dreImportRowTypeLabel(row.rowType)}</td>
-                          <td className="px-3 py-2">{months[row.month - 1] ?? row.month}</td>
-                          <td className="px-3 py-2 text-right font-semibold">{formatCurrency(row.value)}</td>
+                          <td className="px-3 py-2">{row.month ? months[row.month - 1] ?? row.month : "-"}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{row.month ? formatCurrency(row.value) : "-"}</td>
                         </tr>
                       ))}
                   </tbody>
@@ -1402,11 +1598,13 @@ export function DREContent() {
       <Dialog open={!!cleanupMode} onOpenChange={(open) => !open && setCleanupMode(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{cleanupMode === "manual" ? "Zerar DRE manual" : "Limpar importacao da DRE"}</DialogTitle>
+            <DialogTitle>{cleanupMode === "manual" ? "Zerar DRE manual" : cleanupMode === "imported-all" ? "Limpar todos os historicos da DRE" : "Limpar historico selecionado da DRE"}</DialogTitle>
             <DialogDescription>
               {cleanupMode === "manual"
                 ? "Esta acao apaga todos os registros de dre_manual_adjustments. Contratos, clientes, financeiro, categorias e fechamentos mensais serao preservados."
-                : "Esta acao apaga somente ajustes importados com reason IMPORTACAO_DRE:. Ajustes manuais, contratos, clientes, financeiro, categorias e fechamentos serao preservados."}
+                : cleanupMode === "imported-all"
+                  ? "Esta acao apaga todos os snapshots importados da DRE. Operacao, contratos, clientes, financeiro e ajustes manuais serao preservados."
+                  : "Esta acao apaga somente o historico importado selecionado. Operacao, contratos, clientes, financeiro e ajustes manuais serao preservados."}
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

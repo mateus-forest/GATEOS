@@ -138,44 +138,114 @@ export async function getLatestDreImportSnapshot(year?: string) {
   return { missingStructure: false as const, snapshot: { import: dreImport, rows: rows ?? [] } }
 }
 
+export async function getDreImportSnapshots(year?: string) {
+  const supabase = getDreSupabaseClient()
+  let query = supabase
+    .from("dre_imports")
+    .select("*")
+    .order("created_at", { ascending: false })
+
+  if (year) query = query.eq("year", Number(year))
+
+  const { data, error } = await query
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_imports")) {
+      return { missingStructure: true as const, imports: [] as SupabaseRow[] }
+    }
+    throw new Error(`dre_imports: falha ao listar importacoes. ${error.message}`)
+  }
+
+  return { missingStructure: false as const, imports: data ?? [] }
+}
+
+export async function getDreImportSnapshotById(importId: string) {
+  const supabase = getDreSupabaseClient()
+  const { data: dreImport, error } = await supabase
+    .from("dre_imports")
+    .select("*")
+    .eq("id", importId)
+    .maybeSingle()
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_imports")) {
+      return { missingStructure: true as const, snapshot: null }
+    }
+    throw new Error(`dre_imports: falha ao consultar importacao. ${error.message}`)
+  }
+
+  if (!dreImport?.id) return { missingStructure: false as const, snapshot: null }
+
+  const { data: rows, error: rowsError } = await supabase
+    .from("dre_import_rows")
+    .select("*")
+    .eq("import_id", dreImport.id)
+    .order("row_index", { ascending: true })
+
+  if (rowsError) {
+    if (rowsError.code === "42P01" || rowsError.code === "PGRST205" || rowsError.message.toLowerCase().includes("dre_import_rows")) {
+      return { missingStructure: true as const, snapshot: null }
+    }
+    throw new Error(`dre_import_rows: falha ao consultar linhas importadas. ${rowsError.message}`)
+  }
+
+  return { missingStructure: false as const, snapshot: { import: dreImport, rows: rows ?? [] } }
+}
+
 export async function createDreImportSnapshot(payload: {
   fileName: string
   sheetName: string
   year: number
   importedBy: string
+  importKind?: string
   rows: SupabaseRow[]
 }) {
   const supabase = getDreSupabaseClient()
-  const { data: dreImport, error } = await supabase
-    .from("dre_imports")
-    .insert({
+  let insertPayload: SupabaseRow = {
+    file_name: payload.fileName,
+    sheet_name: payload.sheetName,
+    year: payload.year,
+    imported_by: payload.importedBy,
+    import_kind: payload.importKind ?? "historico",
+  }
+  let result = await supabase.from("dre_imports").insert(insertPayload).select("*").single()
+
+  if (result.error && (result.error.code === "PGRST204" || result.error.message.toLowerCase().includes("import_kind"))) {
+    insertPayload = {
       file_name: payload.fileName,
       sheet_name: payload.sheetName,
       year: payload.year,
       imported_by: payload.importedBy,
-    })
-    .select("*")
-    .single()
+    }
+    result = await supabase.from("dre_imports").insert(insertPayload).select("*").single()
+  }
 
-  if (error) {
-    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_imports")) {
+  const dreImport = result.data
+  if (result.error) {
+    if (result.error.code === "42P01" || result.error.code === "PGRST205" || result.error.message.toLowerCase().includes("dre_imports")) {
       throw new Error("Estrutura de importacao integral da DRE ainda nao foi criada. Execute o SQL indicado.")
     }
-    throw new Error(`dre_imports: falha ao salvar importacao. ${error.message}`)
+    throw new Error(`dre_imports: falha ao salvar importacao. ${result.error.message}`)
   }
 
   const importId = dreImport.id
   const rows = payload.rows.map((row) => ({ ...row, import_id: importId }))
-  const { data, error: rowsError } = await supabase
+  let rowsResult = await supabase
     .from("dre_import_rows")
     .insert(rows)
     .select("*")
 
-  if (rowsError) {
-    throw new Error(`dre_import_rows: falha ao salvar linhas importadas. ${rowsError.message}`)
+  if (rowsResult.error && (rowsResult.error.code === "PGRST204" || rowsResult.error.message.toLowerCase().includes("raw_data"))) {
+    rowsResult = await supabase
+      .from("dre_import_rows")
+      .insert(rows.map(({ raw_data, ...row }) => row))
+      .select("*")
   }
 
-  return { import: dreImport, rows: data ?? [] }
+  if (rowsResult.error) {
+    throw new Error(`dre_import_rows: falha ao salvar linhas importadas. ${rowsResult.error.message}`)
+  }
+
+  return { import: dreImport, rows: rowsResult.data ?? [] }
 }
 
 export async function deleteDreImportSnapshots() {
@@ -200,6 +270,24 @@ export async function deleteDreImportSnapshots() {
 
   if (error) {
     throw new Error(`dre_imports: falha ao excluir importacoes. ${error.message}`)
+  }
+
+  return data ?? []
+}
+
+export async function deleteDreImportSnapshot(importId: string) {
+  const supabase = getDreSupabaseClient()
+  const { data, error } = await supabase
+    .from("dre_imports")
+    .delete()
+    .eq("id", importId)
+    .select("*")
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_imports")) {
+      return []
+    }
+    throw new Error(`dre_imports: falha ao excluir importacao. ${error.message}`)
   }
 
   return data ?? []

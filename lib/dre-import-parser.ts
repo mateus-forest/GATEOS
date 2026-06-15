@@ -7,15 +7,20 @@ export type DreImportRow = {
   values: Record<number, number>
   total: number | null
   rawLabel: string
+  rawData?: unknown[]
 }
+
+export type DreImportMode = "operational" | "history"
 
 export type DreImportPreview = {
   fileName: string
   sheetName: string
+  importMode: DreImportMode
   rows: DreImportRow[]
   ignoredRows: Array<{ rowIndex: number; reason: string }>
   monthNumbers: number[]
   totalRowsRead: number
+  genericHistory: boolean
 }
 
 export type DreWorkbookSheet = {
@@ -94,6 +99,10 @@ function parseCsv(text: string) {
     .split(/\r?\n/)
     .filter((line) => line.trim())
     .map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, "")))
+}
+
+function hasRowContent(row: unknown[]) {
+  return row.some((cell) => normalizeText(cell) !== "")
 }
 
 async function readWorkbook(file: File) {
@@ -210,7 +219,8 @@ function rowTypeForLabel(account: string, hasValues: boolean): DreImportRow["row
   return "account"
 }
 
-export async function parseDreImportFile(file: File, sheetName?: string): Promise<DreImportPreview> {
+export async function parseDreImportFile(file: File, sheetName?: string, options: { mode?: DreImportMode } = {}): Promise<DreImportPreview> {
+  const importMode = options.mode ?? "operational"
   const extension = file.name.split(".").pop()?.toLowerCase()
   const matrix = extension === "csv"
     ? parseCsv(await file.text())
@@ -218,6 +228,41 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
 
   const header = detectHeader(matrix)
   if (!header) {
+    if (importMode === "history") {
+      const rows = matrix
+        .map((row, index) => ({ row, rowIndex: index + 1 }))
+        .filter(({ row }) => hasRowContent(row))
+        .map(({ row, rowIndex }) => {
+          const firstText = row.map((cell) => normalizeText(cell)).find(Boolean) ?? "Linha sem descricao"
+          return {
+            account: firstText,
+            groupName: "Historico importado",
+            rowIndex,
+            rowType: "account" as const,
+            type: "neutro" as const,
+            values: {},
+            total: null,
+            rawLabel: firstText,
+            rawData: row,
+          }
+        })
+
+      if (!rows.length) {
+        throw new Error("Nenhuma linha com conteudo foi encontrada para arquivar como historico.")
+      }
+
+      return {
+        fileName: file.name,
+        sheetName: sheetName ?? (extension === "csv" ? "CSV" : "Primeira aba"),
+        importMode,
+        rows,
+        ignoredRows: [],
+        monthNumbers: [],
+        totalRowsRead: matrix.length,
+        genericHistory: true,
+      }
+    }
+
     throw new Error(sheetName
       ? "Essa aba nao parece ser uma DRE mensal. Escolha a aba correta."
       : "Nao foi possivel identificar os meses da DRE na planilha. Confirme se ha colunas jan-26, fev-26..."
@@ -262,6 +307,7 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
           values: {},
           total: null,
           rawLabel: "",
+          rawData: row,
         })
         return
       }
@@ -282,6 +328,7 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
       values,
       total,
       rawLabel: account,
+      rawData: row,
     })
   })
 
@@ -292,9 +339,11 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
   return {
     fileName: file.name,
     sheetName: sheetName ?? (extension === "csv" ? "CSV" : "Primeira aba"),
+    importMode,
     rows,
     ignoredRows,
     monthNumbers: header.monthColumns.map((column) => column.month),
     totalRowsRead: Math.max(0, matrix.length - header.index - 1),
+    genericHistory: false,
   }
 }
