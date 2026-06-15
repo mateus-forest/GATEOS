@@ -251,6 +251,40 @@ function templateRowsToDreRows(rows: SupabaseRow[]) {
     .filter((row) => row.label)
 }
 
+function templateRowGroup(row: { label: string; groupName: string; rowType: string }) {
+  const label = normalizeTextKey(row.label)
+  const group = categoryGroupKey(row.groupName)
+  if (label.includes("aporte")) return "revenue"
+  if (label.includes("cpv") || label.includes("custo do produto")) return "cpv"
+  if (label.includes("salario") || label.includes("ferias") || label.includes("fgts") || label.includes("inss") || label.includes("pessoal")) return "people"
+  if (label.includes("tarifa") || label.includes("juros") || label.includes("emprestimo") || label.includes("financeira")) return "financial"
+  if (label.includes("investimento") || label.includes("distribuicao") || label.includes("devolucao")) return "non-operational"
+  if (group === "receita") return "revenue"
+  if (group === "cpv") return "cpv"
+  if (group === "pessoal") return "people"
+  if (group === "financeiro") return "financial"
+  if (group === "nao-operacional") return "non-operational"
+  if (row.rowType === "account") return "operational"
+  return ""
+}
+
+function shouldCreateTemplateOperationalRow(row: { label: string; groupName: string; rowType: string }) {
+  const label = normalizeTextKey(row.label)
+  if (!row.label || ["total", "percent", "result", "balance", "section", "structural_blank"].includes(row.rowType)) return false
+  return ![
+    "receita total",
+    "receita liquida total",
+    "custo do produto vendido",
+    "total despesas",
+    "lucro operacional",
+    "resultado operacional",
+    "saldo anterior",
+    "saldo operacao",
+    "saldo banco",
+    "diferenca",
+  ].some((fixedLabel) => label.includes(fixedLabel))
+}
+
 function buildRows({
   year,
   categories,
@@ -315,6 +349,18 @@ function buildRows({
       values,
     })
   })
+
+  templateRows
+    .filter(shouldCreateTemplateOperationalRow)
+    .forEach((templateRow) => {
+      const group = templateRowGroup(templateRow)
+      if (!group) return
+      ensureRow(`template-${normalizeTextKey(templateRow.label)}`, {
+        label: templateRow.label,
+        group,
+        groupName: templateRow.groupName || "Template operacional",
+      })
+    })
 
   categories
     .filter((category) => isCategoryActive(category) && isRevenueType(category.type))
@@ -881,44 +927,7 @@ export function DREContent() {
     try {
       let latestSnapshot: Awaited<ReturnType<typeof createDreImportSnapshot>> | null = null
       for (const preview of importPreviews) {
-        latestSnapshot = await createDreImportSnapshot({
-          fileName: preview.fileName,
-          sheetName: preview.sheetName,
-          year: yearFromSheetName(preview.sheetName, year),
-          importedBy: responsible || "Sistema",
-          importKind: importMode === "operational" ? "operacional" : "historico",
-          rows: preview.rows.map((row) => ({
-            row_index: row.rowIndex,
-            group_name: row.groupName,
-            account_name: row.account,
-            row_type: row.rowType,
-            jan: row.values[1] ?? null,
-            fev: row.values[2] ?? null,
-            mar: row.values[3] ?? null,
-            abr: row.values[4] ?? null,
-            mai: row.values[5] ?? null,
-            jun: row.values[6] ?? null,
-            jul: row.values[7] ?? null,
-            ago: row.values[8] ?? null,
-            set: row.values[9] ?? null,
-            out: row.values[10] ?? null,
-            nov: row.values[11] ?? null,
-            dez: row.values[12] ?? null,
-            total: row.total,
-            raw_label: row.rawLabel,
-            raw_data: row.rawData ?? null,
-          })),
-        })
-
         const savedMonths = new Set(preview.rows.flatMap((row) => Object.keys(row.values))).size
-        console.info("[dre-import] Snapshot salvo", {
-          importId: latestSnapshot.import.id,
-          sheetName: preview.sheetName,
-          rowsSaved: latestSnapshot.rows.length,
-          monthsIdentified: preview.monthNumbers.length,
-          monthsSaved: savedMonths,
-          ignoredRows: preview.ignoredRows.length,
-        })
 
         if (importMode === "operational") {
           const templateResult = await replaceDreOperationalTemplateRows(yearFromSheetName(preview.sheetName, year), preview.rows.map((row) => ({
@@ -931,14 +940,64 @@ export function DREContent() {
           })))
 
           if (templateResult.missingStructure) {
-            console.warn("[dre-template] Estrutura dre_operational_template_rows ausente. Execute supabase/gate-os-dre-operational-template.sql para usar a DRE 2026 como modelo operacional.")
-          } else {
-            setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
+            throw new Error("Estrutura de template operacional da DRE incompleta. Execute o SQL de suporte.")
           }
+
+          console.info("[dre-template] Template operacional salvo", {
+            sheetName: preview.sheetName,
+            rowsSaved: templateResult.rows.length,
+            monthsIdentified: preview.monthNumbers.length,
+            monthsSaved: savedMonths,
+            ignoredRows: preview.ignoredRows.length,
+          })
+          setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
+        } else {
+          latestSnapshot = await createDreImportSnapshot({
+            fileName: preview.fileName,
+            sheetName: preview.sheetName,
+            year: yearFromSheetName(preview.sheetName, year),
+            importedBy: responsible || "Sistema",
+            importKind: "historico",
+            rows: preview.rows.map((row) => ({
+              row_index: row.rowIndex,
+              group_name: row.groupName,
+              account_name: row.account,
+              row_type: row.rowType,
+              jan: row.values[1] ?? null,
+              fev: row.values[2] ?? null,
+              mar: row.values[3] ?? null,
+              abr: row.values[4] ?? null,
+              mai: row.values[5] ?? null,
+              jun: row.values[6] ?? null,
+              jul: row.values[7] ?? null,
+              ago: row.values[8] ?? null,
+              set: row.values[9] ?? null,
+              out: row.values[10] ?? null,
+              nov: row.values[11] ?? null,
+              dez: row.values[12] ?? null,
+              total: row.total,
+              raw_label: row.rawLabel,
+              raw_data: row.rawData ?? null,
+            })),
+          })
+
+          console.info("[dre-import] Snapshot historico salvo", {
+            importId: latestSnapshot.import.id,
+            sheetName: preview.sheetName,
+            rowsSaved: latestSnapshot.rows.length,
+            monthsIdentified: preview.monthNumbers.length,
+            monthsSaved: savedMonths,
+            ignoredRows: preview.ignoredRows.length,
+          })
         }
       }
 
-      if (latestSnapshot) {
+      if (importMode === "operational") {
+        setDreView("operational")
+        setImportOpen(false)
+        setImportPreviews([])
+        toast.success("Estrutura da DRE operacional atualizada. Os valores continuam vindo do sistema.")
+      } else if (latestSnapshot) {
         const snapshotImport = latestSnapshot.import as SupabaseRow
         const snapshotYear = String(snapshotImport.year ?? year)
         const refreshedImports = await getDreImportSnapshots(snapshotYear)
@@ -947,17 +1006,17 @@ export function DREContent() {
         setSelectedImportId(String(snapshotImport.id ?? ""))
         setImportHistory(refreshedImports.imports.length ? refreshedImports.imports : [snapshotImport])
         if (snapshotYear !== year) setYear(snapshotYear)
+        setDreView("imported")
+        setImportOpen(false)
+        setImportPreviews([])
+        toast.success("Importacao salva no Historico importado. A DRE operacional nao foi alterada.", {
+          action: {
+            label: "Ver historico importado",
+            onClick: () => setDreView("imported"),
+          },
+        })
       }
       setImportStructureMissing(false)
-      setDreView("imported")
-      setImportOpen(false)
-      setImportPreviews([])
-      toast.success("Importacao salva no Historico importado. A DRE operacional nao foi alterada.", {
-        action: {
-          label: "Ver historico importado",
-          onClick: () => setDreView("imported"),
-        },
-      })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {

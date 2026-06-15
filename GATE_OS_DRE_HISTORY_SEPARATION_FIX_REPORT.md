@@ -6,11 +6,11 @@ Data: 2026-06-15
 
 A tela ja salvava snapshots em `dre_imports` e `dre_import_rows`, mas ainda havia fluxo generico para limpar/listar importacoes como um bloco. Isso deixava confusa a separacao entre snapshot historico e referencia operacional, especialmente quando DRE 2026 e planilhas antigas eram importadas no mesmo ambiente.
 
-## Snapshots isolados
+## Snapshots historicos isolados
 
 - A leitura de historico selecionado usa somente `dre_import_rows.import_id = selectedImportId`.
 - O seletor mostra `sheet_name`, `file_name`, `year` e `import_kind`.
-- Cada importacao fica isolada por `dre_imports.id`.
+- Cada importacao historica fica isolada por `dre_imports.id`.
 - `Limpar historico` remove somente o snapshot selecionado.
 - `Limpar todos` remove apenas snapshots historicos, preservando referencias operacionais importadas.
 
@@ -30,7 +30,7 @@ Ela nao soma `dre_import_rows`, nao usa snapshots historicos e nao alimenta Dash
 
 ## DRE 2026 como modelo
 
-Ao importar `DRE 2026` no modo `DRE operacional atual`, o sistema tenta salvar a estrutura visual em `dre_operational_template_rows`:
+Ao importar `DRE 2026` no modo `DRE operacional atual`, o sistema salva a estrutura visual em `dre_operational_template_rows`:
 
 - ordem das linhas
 - grupos
@@ -38,7 +38,9 @@ Ao importar `DRE 2026` no modo `DRE operacional atual`, o sistema tenta salvar a
 - tipo da linha
 - aba de origem
 
-Esse template serve apenas para ordenar a estrutura operacional. Os valores continuam vindo do sistema.
+Esse template serve para montar/ordenar a estrutura operacional. Os valores continuam vindo do sistema e ficam zerados quando nao ha dados reais.
+
+O modo operacional nao troca a tela para `Historico importado` e nao cria snapshot historico obrigatorio em `dre_imports/dre_import_rows`.
 
 ## Historicos 2024/2025 arquivados
 
@@ -64,7 +66,8 @@ Nao foi executado automaticamente. Sem esse SQL, a DRE operacional continua calc
 - Limpar todos os historicos.
 - Confirmar que a DRE operacional permanece calculada pelo sistema.
 - Importar `DRE 2026` como `DRE operacional atual`.
-- Confirmar que o historico aparece isolado por aba/arquivo/ano.
+- Confirmar que a tela permanece em `DRE operacional`.
+- Confirmar que `dre_operational_template_rows` recebeu linhas.
 - Confirmar que a DRE operacional nao usa valores importados.
 - Importar `DRE 22-23-24-25` como `Historico`.
 - Alternar entre os snapshots e confirmar que os valores nao se misturam.
