@@ -249,6 +249,7 @@ export async function createDreImportSnapshot(payload: {
   year: number
   importedBy: string
   importKind?: string
+  requireRawData?: boolean
   rows: SupabaseRow[]
 }) {
   const supabase = getDreSupabaseClient()
@@ -288,6 +289,10 @@ export async function createDreImportSnapshot(payload: {
     .select("*")
 
   if (rowsResult.error && (rowsResult.error.code === "PGRST204" || rowsResult.error.message.toLowerCase().includes("raw_data"))) {
+    if (payload.requireRawData) {
+      await supabase.from("dre_imports").delete().eq("id", importId)
+      throw new Error("Para importar historico com multiplos anos, execute o SQL de suporte com raw_data.")
+    }
     console.warn("[dre-import] Coluna dre_import_rows.raw_data ausente. Execute supabase/gate-os-dre-history-import-support.sql para preservar historicos genericos completos.")
     rowsResult = await supabase
       .from("dre_import_rows")

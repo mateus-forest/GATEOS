@@ -7,7 +7,7 @@ export type DreImportRow = {
   values: Record<number, number>
   total: number | null
   rawLabel: string
-  rawData?: unknown[]
+  rawData?: unknown
 }
 
 export type DreImportMode = "operational" | "history"
@@ -103,6 +103,22 @@ function parseCsv(text: string) {
 
 function hasRowContent(row: unknown[]) {
   return row.some((cell) => normalizeText(cell) !== "")
+}
+
+function rawCellValue(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString()
+  return value ?? ""
+}
+
+function buildRawData(row: unknown[], rowIndex: number, header?: unknown[]) {
+  return {
+    rowIndex,
+    cells: row.map((cell, columnIndex) => ({
+      columnIndex,
+      header: normalizeText(header?.[columnIndex] ?? (columnIndex === 0 ? "Conta" : `Coluna ${columnIndex + 1}`)),
+      value: rawCellValue(cell),
+    })),
+  }
 }
 
 async function readWorkbook(file: File) {
@@ -243,7 +259,7 @@ export async function parseDreImportFile(file: File, sheetName?: string, options
             values: {},
             total: null,
             rawLabel: firstText,
-            rawData: row,
+            rawData: buildRawData(row, rowIndex),
           }
         })
 
@@ -307,7 +323,7 @@ export async function parseDreImportFile(file: File, sheetName?: string, options
           values: {},
           total: null,
           rawLabel: "",
-          rawData: row,
+          rawData: buildRawData(row, rowIndex, headerRow),
         })
         return
       }
@@ -328,7 +344,7 @@ export async function parseDreImportFile(file: File, sheetName?: string, options
       values,
       total,
       rawLabel: account,
-      rawData: row,
+      rawData: buildRawData(row, rowIndex, headerRow),
     })
   })
 

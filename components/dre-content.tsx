@@ -78,6 +78,17 @@ type DreRow = {
   groupName?: string
 }
 
+type RawHistoryCell = {
+  columnIndex: number
+  header: string
+  value: unknown
+}
+
+type RawHistoryRow = {
+  rowIndex: number
+  cells: RawHistoryCell[]
+}
+
 type ManualAdjustment = {
   id: string
   categoryId: string
@@ -689,6 +700,51 @@ function snapshotRowsToDreRows(rows: SupabaseRow[]) {
   })) satisfies DreRow[]
 }
 
+function parseRawHistoryRow(value: unknown): RawHistoryRow | null {
+  if (!value || typeof value !== "object") return null
+  const raw = value as { rowIndex?: unknown; cells?: unknown }
+  if (!Array.isArray(raw.cells)) return null
+  const cells = raw.cells
+    .map((cell) => {
+      if (!cell || typeof cell !== "object") return null
+      const item = cell as { columnIndex?: unknown; header?: unknown; value?: unknown }
+      return {
+        columnIndex: Number(item.columnIndex ?? 0),
+        header: String(item.header ?? ""),
+        value: item.value ?? "",
+      }
+    })
+    .filter(Boolean) as RawHistoryCell[]
+  if (!cells.length) return null
+  return {
+    rowIndex: Number(raw.rowIndex ?? 0),
+    cells,
+  }
+}
+
+function buildRawHistoryTable(rows: SupabaseRow[]) {
+  const parsedRows = rows
+    .map((row) => parseRawHistoryRow(row.raw_data))
+    .filter(Boolean) as RawHistoryRow[]
+
+  if (!parsedRows.length) return null
+
+  const columnMap = new Map<number, string>()
+  parsedRows.forEach((row) => {
+    row.cells.forEach((cell) => {
+      if (!columnMap.has(cell.columnIndex)) {
+        columnMap.set(cell.columnIndex, cell.header || (cell.columnIndex === 0 ? "Conta" : `Coluna ${cell.columnIndex + 1}`))
+      }
+    })
+  })
+
+  const columns = Array.from(columnMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([index, header]) => ({ index, header }))
+
+  return { columns, rows: parsedRows }
+}
+
 function findRowValues(rows: DreRow[], labelIncludes: string) {
   const key = normalizeTextKey(labelIncludes)
   return rows.find((row) => normalizeTextKey(row.label).includes(key))?.values ?? [...empty]
@@ -722,6 +778,7 @@ export function DREContent() {
   const [cleanupMode, setCleanupMode] = useState<"imported-selected" | "imported-all" | "manual" | null>(null)
   const [cleaning, setCleaning] = useState(false)
   const [importedRows, setImportedRows] = useState<DreRow[]>([])
+  const [importedRawRows, setImportedRawRows] = useState<SupabaseRow[]>([])
   const [importedSnapshotInfo, setImportedSnapshotInfo] = useState<SupabaseRow | null>(null)
   const [importHistory, setImportHistory] = useState<SupabaseRow[]>([])
   const [selectedImportId, setSelectedImportId] = useState("")
@@ -754,6 +811,7 @@ export function DREContent() {
       setClosings(closingRows as SupabaseRow[])
       setImportStructureMissing(importResult.missingStructure)
       setImportedSnapshotInfo(importResult.snapshot?.import ?? null)
+      setImportedRawRows((importResult.snapshot?.rows as SupabaseRow[]) ?? [])
       setImportedRows(importResult.snapshot?.rows ? snapshotRowsToDreRows(importResult.snapshot.rows as SupabaseRow[]) : [])
       setImportHistory(importListResult.imports)
       setSelectedImportId(String(importResult.snapshot?.import?.id ?? importListResult.imports[0]?.id ?? ""))
@@ -773,6 +831,7 @@ export function DREContent() {
         if (!active || !result.snapshot) return
         setImportStructureMissing(result.missingStructure)
         setImportedSnapshotInfo(result.snapshot.import as SupabaseRow)
+        setImportedRawRows(result.snapshot.rows as SupabaseRow[])
         setImportedRows(snapshotRowsToDreRows(result.snapshot.rows as SupabaseRow[]))
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Nao foi possivel carregar o historico importado."))
@@ -809,6 +868,7 @@ export function DREContent() {
   )
 
   const usingImportedDre = dreView === "imported" && importedRows.length > 0
+  const rawHistoryTable = usingImportedDre ? buildRawHistoryTable(importedRawRows) : null
   const activeRows = usingImportedDre ? importedRows : rows
   const activeHasRealData = usingImportedDre || hasRealData
   const activeReceitaTotal = usingImportedDre ? findRowValues(importedRows, "RECEITA TOTAL") : receitaTotal
@@ -997,6 +1057,9 @@ export function DREContent() {
           if (templateResult.missingStructure) {
             throw new Error("Estrutura de template operacional da DRE incompleta. Execute o SQL de suporte.")
           }
+          if (!templateResult.rows.length) {
+            throw new Error("O modelo foi salvo, mas nao foi possivel carregar a estrutura na tela.")
+          }
 
           console.info("[dre-template] Template operacional salvo", {
             sheetName: preview.sheetName,
@@ -1010,12 +1073,14 @@ export function DREContent() {
           console.log("[DRE Template] primeira linha", templateResult.rows[0] ?? null)
           setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
         } else {
+          const requiresRawData = preview.genericHistory || preview.monthNumbers.length > 12 || /2\s*-?\s*23|23\s*-?\s*24|24\s*-?\s*25|22\s*-?\s*23/i.test(preview.sheetName)
           latestSnapshot = await createDreImportSnapshot({
             fileName: preview.fileName,
             sheetName: preview.sheetName,
             year: yearFromSheetName(preview.sheetName, year),
             importedBy: responsible || "Sistema",
             importKind: "historico",
+            requireRawData: requiresRawData,
             rows: preview.rows.map((row) => ({
               row_index: row.rowIndex,
               group_name: row.groupName,
@@ -1054,12 +1119,13 @@ export function DREContent() {
         setDreView("operational")
         setImportOpen(false)
         setImportPreviews([])
-        toast.success("Estrutura da DRE operacional atualizada. Os valores continuam vindo do sistema.")
+        toast.success("Modelo operacional 2026 atualizado. A estrutura foi carregada na DRE do sistema.")
       } else if (latestSnapshot) {
         const snapshotImport = latestSnapshot.import as SupabaseRow
         const snapshotYear = String(snapshotImport.year ?? year)
         const refreshedImports = await getDreImportSnapshots(snapshotYear)
         setImportedSnapshotInfo(latestSnapshot.import as SupabaseRow)
+        setImportedRawRows(latestSnapshot.rows as SupabaseRow[])
         setImportedRows(snapshotRowsToDreRows(latestSnapshot.rows as SupabaseRow[]))
         setSelectedImportId(String(snapshotImport.id ?? ""))
         setImportHistory(refreshedImports.imports.length ? refreshedImports.imports : [snapshotImport])
@@ -1094,6 +1160,7 @@ export function DREContent() {
         const deletedSnapshots = await deleteDreImportSnapshot(selectedImportId)
         setImportHistory((current) => current.filter((item) => String(item.id ?? "") !== selectedImportId))
         setImportedRows([])
+        setImportedRawRows([])
         setImportedSnapshotInfo(null)
         setSelectedImportId("")
         setDreView("operational")
@@ -1112,6 +1179,7 @@ export function DREContent() {
           return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÇÃO EXCEL -")
         }))
         setImportedRows([])
+        setImportedRawRows([])
         setImportedSnapshotInfo(null)
         setImportHistory(refreshedImports.imports)
         setSelectedImportId(nextImportId)
@@ -1153,7 +1221,20 @@ export function DREContent() {
   }
 
   const exportDreRows = (filename: string) =>
-    exportExcelTable({
+    rawHistoryTable ? exportExcelTable({
+      filename: filename.replace(/\.csv$/i, ".xls"),
+      title: "Historico DRE importado",
+      metadata: [
+        ["Arquivo", String(importedSnapshotInfo?.file_name ?? "")],
+        ["Aba", String(importedSnapshotInfo?.sheet_name ?? "")],
+        ["Data de emissao", new Date().toLocaleDateString("pt-BR")],
+      ],
+      columns: rawHistoryTable.columns.map((column) => column.header || `Coluna ${column.index + 1}`),
+      rows: rawHistoryTable.rows.map((row) => {
+        const cellMap = new Map(row.cells.map((cell) => [cell.columnIndex, cell.value]))
+        return rawHistoryTable.columns.map((column) => String(cellMap.get(column.index) ?? ""))
+      }),
+    }) : exportExcelTable({
       filename: filename.replace(/\.csv$/i, ".xls"),
       title: "DRE Gerencial",
       metadata: [
@@ -1191,23 +1272,36 @@ export function DREContent() {
     }))
 
   const exportDrePdf = () =>
-    exportPdfReport(buildDreReport(
-      activeRows.length
-        ? activeRows.map((row) => ({
-            name: row.label,
-            jan: renderValue(row, 0),
-            fev: renderValue(row, 1),
-            mar: renderValue(row, 2),
-            total: renderTotal(row),
-          }))
-        : [{
-            name: "Sem dados financeiros para o periodo selecionado.",
-            jan: "-",
-            fev: "-",
-            mar: "-",
-            total: formatCurrency(0),
-          }]
-    ))
+    rawHistoryTable
+      ? exportPdfReport(buildGenericReport({
+          title: "Historico DRE importado",
+          subtitle: String(importedSnapshotInfo?.sheet_name ?? "Snapshot historico"),
+          description: "Snapshot preservado da planilha importada, sem recálculo ou remapeamento de meses.",
+          rows: rawHistoryTable.rows.map((row) => {
+            const cellMap = new Map(row.cells.map((cell) => [cell.columnIndex, cell.value]))
+            return Object.fromEntries(rawHistoryTable.columns.map((column) => [
+              column.header || `Coluna ${column.index + 1}`,
+              String(cellMap.get(column.index) ?? ""),
+            ]))
+          }),
+        }))
+      : exportPdfReport(buildDreReport(
+          activeRows.length
+            ? activeRows.map((row) => ({
+                name: row.label,
+                jan: renderValue(row, 0),
+                fev: renderValue(row, 1),
+                mar: renderValue(row, 2),
+                total: renderTotal(row),
+              }))
+            : [{
+                name: "Sem dados financeiros para o periodo selecionado.",
+                jan: "-",
+                fev: "-",
+                mar: "-",
+                total: formatCurrency(0),
+              }]
+        ))
 
   const totalImportRowsRead = importPreviews.reduce((total, preview) => total + preview.totalRowsRead, 0)
   const totalImportRows = importPreviews.reduce((total, preview) => total + preview.rows.length, 0)
@@ -1271,6 +1365,9 @@ export function DREContent() {
           <Badge variant={usingImportedDre ? "default" : "outline"}>
             {usingImportedDre ? "DRE importada" : "DRE do sistema"}
           </Badge>
+          {rawHistoryTable && (
+            <Badge variant="outline">Historico multi-ano</Badge>
+          )}
           <Select value={dreView} onValueChange={(value) => setDreView(value as "operational" | "imported")}>
             <SelectTrigger className="w-44">
               <SelectValue />
@@ -1447,6 +1544,48 @@ export function DREContent() {
               {dreCategories.length === 0
                 ? "Cadastre categorias DRE ou execute o seed base para iniciar."
                 : "Sem dados financeiros para o período selecionado."}
+            </div>
+          ) : rawHistoryTable ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1600px] border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-200">
+                    {rawHistoryTable.columns.map((column, columnIndex) => (
+                      <th
+                        key={`${column.index}-${column.header}`}
+                        className={`border px-3 py-2 text-left ${columnIndex === 0 ? "sticky left-0 z-20 bg-slate-200" : ""}`}
+                      >
+                        {column.header || `Coluna ${column.index + 1}`}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rawHistoryTable.rows.map((row) => {
+                    const cellMap = new Map(row.cells.map((cell) => [cell.columnIndex, cell.value]))
+                    const firstCell = String(cellMap.get(rawHistoryTable.columns[0]?.index ?? 0) ?? "")
+                    const rowKindValue = kindFromImportedRow(
+                      firstCell.includes("%") ? "percent" :
+                      normalizeTextKey(firstCell).includes("total") ? "total" :
+                      normalizeTextKey(firstCell).includes("resultado") ? "result" :
+                      normalizeTextKey(firstCell).includes("saldo") ? "balance" :
+                      ""
+                    )
+                    return (
+                      <tr key={`raw-${row.rowIndex}`} className={rowClass(rowKindValue)}>
+                        {rawHistoryTable.columns.map((column, columnIndex) => (
+                          <td
+                            key={`raw-${row.rowIndex}-${column.index}`}
+                            className={`border px-3 py-1.5 ${columnIndex === 0 ? `sticky left-0 z-10 ${rowClass(rowKindValue)}` : "text-right"}`}
+                          >
+                            {String(cellMap.get(column.index) ?? "") || "-"}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="overflow-x-auto">
