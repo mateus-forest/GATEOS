@@ -2,6 +2,36 @@
 
 Data: 2026-06-15
 
+## Correcao da leitura historica na interface
+
+### Causa do problema
+
+A leitura de `dre_historical_values` ainda usava uma consulta simples do Supabase. Para anos com mais de 1.000 registros, a resposta podia ficar truncada pelo limite padrao de pagina do PostgREST. Alem disso, a tela nao usava `row_type` para classificar as linhas historicas e dependia de linhas estruturais que nao existem no historico long.
+
+### Arquivos corrigidos
+
+- `lib/data/dre.ts`
+- `components/dre-content.tsx`
+
+### Como a DRE historica agora e lida
+
+Para `2022`, `2023`, `2024` e `2025`, a tela consulta somente `dre_historical_values`, filtrando por `year`, ordenando por `line_order` e `month`, e paginando ate carregar todos os registros do ano.
+
+A montagem da tabela agrupa as linhas por ordem/secao/nome, preenche sempre 12 meses com `0`, aplica os valores encontrados por `month`, respeita `row_type` para totais/percentuais/secoes e reconstrui visualmente os headers a partir de `section`.
+
+`2026` continua usando a DRE operacional do sistema.
+
+### Validacoes executadas nesta correcao
+
+- Validacao local da estrutura historica a partir do seed aplicado:
+  - `2022`: `440` registros, `88` linhas, `12` meses.
+  - `2023`: `1056` registros, `88` linhas, `12` meses.
+  - `2024`: `1056` registros, `88` linhas, `12` meses.
+  - `2025`: `1056` registros, `88` linhas, `12` meses.
+- `npm run lint`
+- `npm run build`
+- Dev server iniciado em `http://localhost:3000`; `/dre` redirecionou para `/login?next=%2Fdre`, confirmando que a validacao visual final exige sessao autenticada no Supabase.
+
 ## O que foi alterado
 
 - A tela DRE agora separa anos operacionais e historicos pelo filtro de ano.

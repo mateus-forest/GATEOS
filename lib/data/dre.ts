@@ -181,23 +181,32 @@ export async function getDreOperationalTemplateRows(year?: string) {
 
 export async function getDreHistoricalValues(year?: string) {
   const supabase = getDreSupabaseClient()
-  let query = supabase
-    .from("dre_historical_values")
-    .select("id,year,month,competency,section,line_name,line_order,value,source_sheet,created_at")
-    .order("line_order", { ascending: true })
-    .order("month", { ascending: true })
+  const pageSize = 1000
+  const rows: SupabaseRow[] = []
 
-  if (year) query = query.eq("year", Number(year))
+  for (let from = 0; ; from += pageSize) {
+    let query = supabase
+      .from("dre_historical_values")
+      .select("source_sheet,excel_row,line_order,section,row_type,line_name,year,month,competency,value,excel_col,formula")
+      .order("line_order", { ascending: true })
+      .order("month", { ascending: true })
+      .range(from, from + pageSize - 1)
 
-  const { data, error } = await query
-  if (error) {
-    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_historical_values")) {
-      return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+    if (year) query = query.eq("year", Number(year))
+
+    const { data, error } = await query
+    if (error) {
+      if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_historical_values")) {
+        return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+      }
+      throw new Error(`dre_historical_values: falha ao consultar historico. ${error.message}`)
     }
-    throw new Error(`dre_historical_values: falha ao consultar historico. ${error.message}`)
+
+    rows.push(...((data ?? []) as SupabaseRow[]))
+    if (!data || data.length < pageSize) break
   }
 
-  return { missingStructure: false as const, rows: data ?? [] }
+  return { missingStructure: false as const, rows }
 }
 
 export async function replaceDreOperationalTemplateRows(year: number, rows: SupabaseRow[]) {

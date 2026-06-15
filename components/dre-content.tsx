@@ -753,9 +753,13 @@ function buildRawHistoryTable(rows: SupabaseRow[]) {
   return { columns, rows: parsedRows }
 }
 
-function historicalRowKind(lineName: string, section: string): RowKind {
+function historicalRowKind(lineName: string, section: string, rowType?: string): RowKind {
   const label = normalizeTextKey(lineName)
   const sectionKey = normalizeTextKey(section)
+  const type = normalizeTextKey(rowType)
+  if (type.includes("header") || type.includes("section")) return "section"
+  if (type.includes("percent")) return "percent"
+  if (type.includes("total") || type.includes("kpi")) return "total"
   if (label.includes("%")) return "percent"
   if (label.includes("total") || label.includes("receita liquida") || label.includes("lucro operacional") || label.includes("resultado operacional")) return "total"
   if (label.includes("saldo") || label.includes("diferenca")) return "highlight"
@@ -773,16 +777,31 @@ function historicalRowGroup(section: string): DreRow["group"] {
 
 function buildHistoricalRows(rows: SupabaseRow[]) {
   const rowMap = new Map<string, DreRow & { order: number }>()
+  const sectionRows = new Map<string, DreRow & { order: number }>()
 
   rows.forEach((item) => {
     const lineName = String(item.line_name ?? "Linha sem nome")
     const section = String(item.section ?? "Historico")
     const order = Number(item.line_order ?? 0)
+    const rowType = String(item.row_type ?? "")
+    const sectionKey = normalizeTextKey(section)
+    if (sectionKey && !sectionRows.has(sectionKey)) {
+      sectionRows.set(sectionKey, {
+        id: `section-${sectionKey}`,
+        label: section,
+        kind: "section",
+        group: historicalRowGroup(section),
+        groupName: section,
+        values: [...empty],
+        order: order - 0.1,
+      })
+    }
+
     const key = `${order}-${normalizeTextKey(section)}-${normalizeTextKey(lineName)}`
     const current = rowMap.get(key) ?? {
       id: key,
       label: lineName,
-      kind: historicalRowKind(lineName, section),
+      kind: historicalRowKind(lineName, section, rowType),
       group: historicalRowGroup(section),
       groupName: section,
       values: [...empty],
@@ -793,7 +812,7 @@ function buildHistoricalRows(rows: SupabaseRow[]) {
     rowMap.set(key, current)
   })
 
-  return Array.from(rowMap.values())
+  return [...sectionRows.values(), ...rowMap.values()]
     .sort((a, b) => a.order - b.order)
     .map(({ order, ...row }) => row)
 }
@@ -871,9 +890,6 @@ export function DREContent() {
       setImportedRows(importResult.snapshot?.rows ? snapshotRowsToDreRows(importResult.snapshot.rows as SupabaseRow[]) : [])
       setImportHistory(importListResult.imports)
       setSelectedImportId(String(importResult.snapshot?.import?.id ?? importListResult.imports[0]?.id ?? ""))
-      console.log("[DRE Template] linhas carregadas", templateResult.rows.length)
-      console.log("[DRE Template] ano selecionado", year)
-      console.log("[DRE Template] primeira linha", templateResult.rows[0] ?? null)
       setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
       setHistoricalStructureMissing(historicalResult.missingStructure)
       setHistoricalRows(buildHistoricalRows(historicalResult.rows))
@@ -1102,8 +1118,6 @@ export function DREContent() {
     try {
       let latestSnapshot: Awaited<ReturnType<typeof createDreImportSnapshot>> | null = null
       for (const preview of importPreviews) {
-        const savedMonths = new Set(preview.rows.flatMap((row) => Object.keys(row.values))).size
-
         if (importMode === "operational") {
           const templateResult = await replaceDreOperationalTemplateRows(yearFromSheetName(preview.sheetName, year), preview.rows.map((row) => ({
             row_index: row.rowIndex,
@@ -1121,16 +1135,6 @@ export function DREContent() {
             throw new Error("O modelo foi salvo, mas nao foi possivel carregar a estrutura na tela.")
           }
 
-          console.info("[dre-template] Template operacional salvo", {
-            sheetName: preview.sheetName,
-            rowsSaved: templateResult.rows.length,
-            monthsIdentified: preview.monthNumbers.length,
-            monthsSaved: savedMonths,
-            ignoredRows: preview.ignoredRows.length,
-          })
-          console.log("[DRE Template] linhas carregadas", templateResult.rows.length)
-          console.log("[DRE Template] ano selecionado", yearFromSheetName(preview.sheetName, year))
-          console.log("[DRE Template] primeira linha", templateResult.rows[0] ?? null)
           setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
         } else {
           const requiresRawData = preview.genericHistory || preview.monthNumbers.length > 12 || /2\s*-?\s*23|23\s*-?\s*24|24\s*-?\s*25|22\s*-?\s*23/i.test(preview.sheetName)
@@ -1164,14 +1168,6 @@ export function DREContent() {
             })),
           })
 
-          console.info("[dre-import] Snapshot historico salvo", {
-            importId: latestSnapshot.import.id,
-            sheetName: preview.sheetName,
-            rowsSaved: latestSnapshot.rows.length,
-            monthsIdentified: preview.monthNumbers.length,
-            monthsSaved: savedMonths,
-            ignoredRows: preview.ignoredRows.length,
-          })
         }
       }
 
@@ -1267,15 +1263,18 @@ export function DREContent() {
   const renderValue = (row: DreRow, month: number) => {
     const value = row.values?.[month] ?? 0
     if (row.displayAsPercent) return value ? `${value.toFixed(2)}%` : "-"
+    if (row.kind === "section") return ""
     if (row.kind === "percent" && row.percentOf) {
       const percentValue = activeRows.find((item) => item.label === row.percentOf)?.values?.[month] ?? 0
       const revenue = activeReceitaTotal[month]
       return revenue ? `${((percentValue / revenue) * 100).toFixed(2)}%` : "-"
     }
+    if (usingStructuredHistory) return formatCurrency(value)
     return value ? formatCurrency(value) : "-"
   }
 
   const renderTotal = (row: DreRow) => {
+    if (row.kind === "section") return ""
     if (row.kind === "percent" || row.displayAsPercent) return row.totalValue ? `${row.totalValue.toFixed(2)}%` : ""
     return formatCurrency(row.totalValue ?? sum(row.values))
   }
