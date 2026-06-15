@@ -31,11 +31,11 @@ normalized_categories as (
     name,
     group_name,
     case
-      when lower(name) like '%cpv%' then 'despesa'
-      when lower(name) like '%custo do produto%' then 'despesa'
-      when lower(group_name) like '%receita%' then 'receita'
-      when lower(group_name) like '%aporte%' then 'receita'
-      else 'despesa'
+      when lower(name) like '%cpv%' then 'despesa'::financial_type
+      when lower(name) like '%custo do produto%' then 'despesa'::financial_type
+      when lower(group_name) like '%receita%' then 'receita'::financial_type
+      when lower(group_name) like '%aporte%' then 'receita'::financial_type
+      else 'despesa'::financial_type
     end as type,
     sort_order
   from eligible_template_rows
