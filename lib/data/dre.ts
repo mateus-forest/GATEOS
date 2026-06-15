@@ -191,6 +191,27 @@ export async function getDreOperationalTemplateRows(year?: string) {
   return { missingStructure: false as const, rows: data ?? [] }
 }
 
+export async function getDreOperationalBaselineValues(year?: string) {
+  const supabase = getDreSupabaseClient()
+  let query = supabase
+    .from("dre_operational_baseline_values")
+    .select("year,row_index,month,value,source_label")
+    .order("row_index", { ascending: true })
+    .order("month", { ascending: true })
+
+  if (year) query = query.eq("year", Number(year))
+
+  const { data, error } = await query
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_operational_baseline_values")) {
+      return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+    }
+    throw new Error(`dre_operational_baseline_values: falha ao consultar valores-base. ${error.message}`)
+  }
+
+  return { missingStructure: false as const, rows: data ?? [] }
+}
+
 export async function getDreHistoricalValues(year?: string) {
   const supabase = getDreSupabaseClient()
   const pageSize = 1000

@@ -40,6 +40,7 @@ import {
   getDreImportSnapshotById,
   getDreImportSnapshots,
   getLatestDreImportSnapshot,
+  getDreOperationalBaselineValues,
   getDreOperationalTemplateRows,
   replaceDreOperationalTemplateRows,
   getDreManualAdjustments,
@@ -365,6 +366,7 @@ function buildRows({
   bankAccounts,
   closings,
   templateRows,
+  baselineRows,
 }: {
   year: string
   categories: SupabaseRow[]
@@ -375,8 +377,24 @@ function buildRows({
   bankAccounts: SupabaseRow[]
   closings: SupabaseRow[]
   templateRows: OperationalTemplateRow[]
+  baselineRows: SupabaseRow[]
 }) {
   const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
+  const baselineByRowOrder = new Map<number, number[]>()
+  baselineRows.forEach((row) => {
+    if (Number(row.year) !== Number(year)) return
+    const rowIndex = Number(row.row_index ?? 0)
+    const monthIndex = Number(row.month ?? 0) - 1
+    if (rowIndex <= 0 || monthIndex < 0 || monthIndex > 11) return
+    const values = baselineByRowOrder.get(rowIndex) ?? [...empty]
+    values[monthIndex] += Number(row.value ?? 0)
+    baselineByRowOrder.set(rowIndex, values)
+  })
+  const baselineValuesForTemplateRow = (row: OperationalTemplateRow) => baselineByRowOrder.get(row.order) ?? [...empty]
+  const baselineValuesForLabel = (label: string) => {
+    const templateRow = templateRows.find((row) => normalizeTextKey(row.label).includes(normalizeTextKey(label)))
+    return templateRow ? baselineValuesForTemplateRow(templateRow) : [...empty]
+  }
   const categoryBySortOrder = new Map(
     categories
       .filter((category) => isCategoryActive(category))
@@ -448,6 +466,7 @@ function buildRows({
         group,
         groupName: templateRow.groupName || "Template operacional",
         categoryId: categoryId || undefined,
+        values: baselineValuesForTemplateRow(templateRow),
       })
     })
 
@@ -596,19 +615,23 @@ function buildRows({
   const manualSaldoBancoValues = closingRows
     .filter((row) => normalizeTextKey(row.label).includes("saldo banco"))
     .reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const baselineSaldoAnteriorValues = baselineValuesForLabel("SALDO ANTERIOR")
+  const baselineSaldoBancoValues = baselineValuesForLabel("SALDO BANCO")
   const saldoAnteriorValues = closings.reduce((values, closing) => {
     const closingYear = Number(closing.year)
     const closingMonth = Number(closing.month)
     if (closingYear !== Number(year) || closingMonth < 1 || closingMonth > 11) return values
     values[closingMonth] = Number(closing.operation_balance ?? closing.bank_balance ?? 0)
     return values
-  }, closingSaldoAnteriorValues)
+  }, closingSaldoAnteriorValues.some((value) => value !== 0) ? closingSaldoAnteriorValues : baselineSaldoAnteriorValues)
   const currentBankBalance = bankAccounts.reduce((total, account) => total + Number(account.current_balance ?? 0), 0)
   const saldoBancoValues = manualSaldoBancoValues.some((value) => value !== 0)
     ? manualSaldoBancoValues
+    : baselineSaldoBancoValues.some((value) => value !== 0)
+      ? baselineSaldoBancoValues
     : empty.map(() => currentBankBalance)
   const saldoOperacaoValues = addValues(resultado, saldoAnteriorValues)
-  const diferencaValues = subtractValues(saldoOperacaoValues, saldoBancoValues)
+  const diferencaValues = subtractValues(saldoBancoValues, saldoOperacaoValues)
 
   const defaultRows = [
     rowMap.get("section-revenue"),
@@ -899,6 +922,7 @@ export function DREContent() {
   const [historicalRows, setHistoricalRows] = useState<DreRow[]>([])
   const [historicalStructureMissing, setHistoricalStructureMissing] = useState(false)
   const [operationalTemplateRows, setOperationalTemplateRows] = useState<OperationalTemplateRow[]>([])
+  const [operationalBaselineRows, setOperationalBaselineRows] = useState<SupabaseRow[]>([])
   const [importPreviews, setImportPreviews] = useState<DreImportPreview[]>([])
   const [importMode, setImportMode] = useState<DreImportMode>("operational")
   const [importOpen, setImportOpen] = useState(false)
@@ -933,8 +957,9 @@ export function DREContent() {
       getLatestDreImportSnapshot(year),
       getDreImportSnapshots(year),
       getDreOperationalTemplateRows(year),
+      getDreOperationalBaselineValues(year),
       getDreHistoricalValues(year),
-    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult, templateResult, historicalResult]) => {
+    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult, templateResult, baselineResult, historicalResult]) => {
       if (!active) return
       setLoadError("")
       const categories = categoryRows as SupabaseRow[]
@@ -954,6 +979,7 @@ export function DREContent() {
       setImportHistory(importListResult.imports)
       setSelectedImportId(String(importResult.snapshot?.import?.id ?? importListResult.imports[0]?.id ?? ""))
       setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
+      setOperationalBaselineRows(baselineResult.rows as SupabaseRow[])
       setHistoricalStructureMissing(historicalResult.missingStructure)
       setHistoricalRows(buildHistoricalRows(historicalResult.rows))
     }).catch((error) => {
@@ -1009,8 +1035,9 @@ export function DREContent() {
       bankAccounts,
       closings,
       templateRows: operationalTemplateRows,
+      baselineRows: operationalBaselineRows,
     }),
-    [adjustments, bankAccounts, clients, closings, dreCategories, financialEntries, operationalTemplateRows, partnerEntries, year]
+    [adjustments, bankAccounts, clients, closings, dreCategories, financialEntries, operationalBaselineRows, operationalTemplateRows, partnerEntries, year]
   )
 
   const usingStructuredHistory = historicalYears.has(year) && dreView === "operational"

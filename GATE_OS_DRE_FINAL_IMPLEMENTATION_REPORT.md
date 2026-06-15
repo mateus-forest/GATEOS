@@ -138,6 +138,67 @@ O lookup final tambem passa a preferir, em caso de duplicidade de nome, a linha 
 - `npm run lint`
 - `npm run build`
 
+## Carga definitiva dos valores-base da planilha DRE 2026
+
+### Decisao aplicada
+
+A DRE 2026 passou a ter uma fonte operacional explicita de valores-base extraidos dos prints da planilha, sem tentar reconstruir esses numeros por contratos, financeiro ou snapshots antigos.
+
+Foi criada a tabela de suporte:
+
+- `dre_operational_baseline_values`
+
+Ela armazena valores por:
+
+- `year`
+- `row_index`
+- `month`
+- `value`
+- `source_label`
+
+### SQL criado
+
+- `supabase/gate-os-dre-2026-operational-baseline-values.sql`
+
+O SQL e idempotente por `year + row_index + month`, cria indices, habilita RLS e libera acesso apenas para usuarios autenticados.
+
+Foram transcritas `124` celulas nao zeradas dos prints para `2026`, cobrindo receitas, despesas com pessoal, despesas operacionais, despesas financeiras, despesas nao operacionais, `SALDO ANTERIOR` e `SALDO BANCO`.
+
+### Como a DRE usa os valores-base
+
+A tela carrega `dre_operational_baseline_values` junto com o template operacional. Para linhas de detalhe, o valor exibido passa a ser:
+
+- valor-base da planilha
+- mais lancamentos reais em `financial_entries`
+- mais ajustes manuais quando existirem
+
+Totais, subtotais, lucro, resultado e percentuais continuam sendo calculados pela interface. A carga nao insere totais fixos, para manter a DRE editavel e recalculavel.
+
+Para fechamento, `SALDO ANTERIOR` e `SALDO BANCO` usam os valores-base da planilha quando nao houver fechamento manual salvo em `dre_monthly_closings`.
+
+### Ajuste de formula de fechamento
+
+A linha `DIFERENCA` foi ajustada para seguir a planilha:
+
+- `SALDO BANCO - SALDO OPERACAO`
+
+Antes a interface usava a ordem inversa.
+
+### Validacoes executadas nesta correcao
+
+- Validacao aritmetica local das `124` celulas extraidas:
+  - `RECEITA TOTAL`: jan `37.425,21`, fev `41.910,02`, mar `33.287,96`, abr `32.700,26`, mai `69.613,95`.
+  - `TOTAL DESPESAS COM PESSOAL`: jan `6.100,00`, fev `4.000,00`, mar `6.300,00`, abr `4.000,00`, mai `6.959,20`.
+  - `TOTAL DESPESAS GERAIS`: jan `3.453,70`, fev `4.757,11`, mar `4.577,75`, abr `5.776,76`, mai `3.611,07`.
+  - `Total de despesas financeiras`: jan `2.608,58`, fev `3.217,46`, mar `3.551,26`, abr `2.736,79`, mai `2.591,79`.
+  - `LUCRO OPERACIONAL`: jan `25.262,93`, fev `29.935,45`, mar `18.858,95`, abr `20.186,71`, mai `56.451,89`.
+  - `RESULTADO OPERACIONAL`: jan `-2.079,03`, fev `5.774,54`, mar `-6.216,10`, abr `-178,59`, mai `15.431,92`, jun `-4.516,15`.
+  - `SALDO OPERACAO`: jan `9.511,93`, fev `15.286,47`, mar `9.071,36`, abr `8.891,85`, mai `24.323,13`, jun `18.987,14`.
+  - `DIFERENCA`: jan `0,00`, fev `0,99`, mar `-0,92`, abr `-0,64`, mai `-819,84`, jun `-18.987,14`.
+- Lint e build executados com sucesso.
+- O historico `2022`-`2025` nao foi alterado.
+- Lancamentos reais continuam somando sobre a linha vinculada por categoria.
+
 ### SQL criado
 
 Foi criado o SQL idempotente:
