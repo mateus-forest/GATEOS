@@ -285,6 +285,28 @@ function shouldCreateTemplateOperationalRow(row: { label: string; groupName: str
   ].some((fixedLabel) => label.includes(fixedLabel))
 }
 
+function templateRowKind(row: { label: string; groupName: string; rowType: string }): RowKind {
+  const label = normalizeTextKey(row.label)
+  if (row.rowType === "group" || label.startsWith("receitas ") || label.includes("despesas operacionais") || label.includes("despesas com pessoal") || label.includes("outras despesas")) {
+    return "section"
+  }
+  if (row.rowType === "percent" || label.includes("%")) return "percent"
+  if (row.rowType === "total" || row.rowType === "result" || label.includes("total") || label.includes("lucro operacional") || label.includes("resultado operacional") || label.includes("receita liquida")) {
+    return "total"
+  }
+  if (row.rowType === "balance" || label.includes("saldo") || label.includes("diferenca")) return "highlight"
+  return "normal"
+}
+
+function makeRowLookup(rows: DreRow[]) {
+  const lookup = new Map<string, DreRow>()
+  rows.forEach((row) => {
+    const key = normalizeTextKey(row.label)
+    if (key && !lookup.has(key)) lookup.set(key, row)
+  })
+  return lookup
+}
+
 function buildRows({
   year,
   categories,
@@ -513,6 +535,74 @@ function buildRows({
   const saldoOperacaoValues = addValues(resultado, saldoAnteriorValues)
   const diferencaValues = subtractValues(saldoOperacaoValues, saldoBancoValues)
 
+  const defaultRows = [
+    rowMap.get("section-revenue"),
+    ...sortByTemplate(ordinaryRevenueRows),
+    { label: "RECEITA TOTAL", kind: "total", group: "result", values: receitaTotal },
+    { label: "CUSTO DO PRODUTO VENDIDO (CPV)", kind: "highlight", group: "result", values: cpvTotal },
+    ...sortByTemplate(cpvRows),
+    { label: "RECEITA LIQUIDA TOTAL", kind: "total", group: "result", values: receitaLiquida },
+    rowMap.get("section-expenses-people"),
+    ...sortByTemplate(peopleRows),
+    { label: "TOTAL DESPESAS COM PESSOAL", kind: "total", group: "result", values: peopleTotal },
+    { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS COM PESSOAL", values: peopleTotal },
+    rowMap.get("section-expenses-operational"),
+    ...sortByTemplate(operationalRows),
+    { label: "TOTAL DESPESAS GERAIS", kind: "total", group: "result", values: generalTotal },
+    { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS GERAIS", values: generalTotal },
+    ...sortByTemplate(financialRows),
+    { label: "Total de despesas financeiras", kind: "total", group: "result", values: financialTotal },
+    { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "Total de despesas financeiras", values: financialTotal },
+    { label: "Total de Despesas Operacionais", kind: "highlight", group: "result", values: despesasOperacionais },
+    {
+      label: "% Despesas s/Receita",
+      kind: "percent",
+      group: "result",
+      percentOf: "Total de Despesas Operacionais",
+      values: despesasOperacionais,
+    },
+    { label: "LUCRO OPERACIONAL", kind: "total", group: "result", values: lucroOperacional },
+    { label: "Lucro operacional %", kind: "percent", group: "result", percentOf: "LUCRO OPERACIONAL", values: lucroOperacional },
+    rowMap.get("section-expenses-non-operational"),
+    ...sortByTemplate(nonOperationalRows),
+    { label: "Total de despesas nao operacionais", kind: "highlight", group: "result", values: nonOperationalTotal },
+    { label: "RESULTADO OPERACIONAL", kind: "total", group: "result", values: resultado },
+    ...sortByTemplate(aporteRows),
+    { label: "TOTAL APORTES TERCEIROS", kind: "highlight", group: "result", values: aporteRows.reduce((acc, row) => addValues(acc, row.values), [...empty]) },
+    { label: "SALDO ANTERIOR", group: "balance", values: saldoAnteriorValues },
+    { label: "SALDO OPERACAO - (RO+SALDO ANT)", kind: "total", group: "balance", values: saldoOperacaoValues },
+    { label: "SALDO BANCO", group: "balance", values: saldoBancoValues },
+    { label: "DIFERENCA", kind: "highlight", group: "balance", values: diferencaValues },
+  ].filter(Boolean) as DreRow[]
+
+  if (templateRows.length > 0) {
+    const rowLookup = makeRowLookup(defaultRows)
+    const templateRenderedRows = templateRows.map((templateRow) => {
+      const matchedRow = rowLookup.get(normalizeTextKey(templateRow.label))
+      return {
+        label: templateRow.label,
+        kind: matchedRow?.kind ?? templateRowKind(templateRow),
+        group: matchedRow?.group ?? (templateRowGroup(templateRow) || "template"),
+        groupName: templateRow.groupName,
+        values: matchedRow?.values ?? [...empty],
+        percentOf: matchedRow?.percentOf,
+      } as DreRow
+    })
+
+    return {
+      rows: templateRenderedRows,
+      receitaTotal,
+      despesasTotal: despesasOperacionais,
+      resultado,
+      lucroOperacional,
+      saldoAnteriorValues,
+      saldoOperacaoValues,
+      saldoBancoValues,
+      diferencaValues,
+      hasRealData: true,
+    }
+  }
+
   if (clients.length === 0 && categories.length === 0 && detailRows.every((row) => sum(row.values) === 0)) {
     return {
       rows: [] as DreRow[],
@@ -529,45 +619,7 @@ function buildRows({
   }
 
   return {
-    rows: [
-      rowMap.get("section-revenue"),
-      ...sortByTemplate(ordinaryRevenueRows),
-      { label: "RECEITA TOTAL", kind: "total", group: "result", values: receitaTotal },
-      { label: "CUSTO DO PRODUTO VENDIDO (CPV)", kind: "highlight", group: "result", values: cpvTotal },
-      ...sortByTemplate(cpvRows),
-      { label: "RECEITA LIQUIDA TOTAL", kind: "total", group: "result", values: receitaLiquida },
-      rowMap.get("section-expenses-people"),
-      ...sortByTemplate(peopleRows),
-      { label: "TOTAL DESPESAS COM PESSOAL", kind: "total", group: "result", values: peopleTotal },
-      { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS COM PESSOAL", values: peopleTotal },
-      rowMap.get("section-expenses-operational"),
-      ...sortByTemplate(operationalRows),
-      { label: "TOTAL DESPESAS GERAIS", kind: "total", group: "result", values: generalTotal },
-      { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS GERAIS", values: generalTotal },
-      ...sortByTemplate(financialRows),
-      { label: "Total de despesas financeiras", kind: "total", group: "result", values: financialTotal },
-      { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "Total de despesas financeiras", values: financialTotal },
-      { label: "Total de Despesas Operacionais", kind: "highlight", group: "result", values: despesasOperacionais },
-      {
-        label: "% Despesas s/Receita",
-        kind: "percent",
-        group: "result",
-        percentOf: "Total de Despesas Operacionais",
-        values: despesasOperacionais,
-      },
-      { label: "LUCRO OPERACIONAL", kind: "total", group: "result", values: lucroOperacional },
-      { label: "Lucro operacional %", kind: "percent", group: "result", percentOf: "LUCRO OPERACIONAL", values: lucroOperacional },
-      rowMap.get("section-expenses-non-operational"),
-      ...sortByTemplate(nonOperationalRows),
-      { label: "Total de despesas nao operacionais", kind: "highlight", group: "result", values: nonOperationalTotal },
-      { label: "RESULTADO OPERACIONAL", kind: "total", group: "result", values: resultado },
-      ...sortByTemplate(aporteRows),
-      { label: "TOTAL APORTES TERCEIROS", kind: "highlight", group: "result", values: aporteRows.reduce((acc, row) => addValues(acc, row.values), [...empty]) },
-      { label: "SALDO ANTERIOR", group: "balance", values: saldoAnteriorValues },
-      { label: "SALDO OPERACAO - (RO+SALDO ANT)", kind: "total", group: "balance", values: saldoOperacaoValues },
-      { label: "SALDO BANCO", group: "balance", values: saldoBancoValues },
-      { label: "DIFERENCA", kind: "highlight", group: "balance", values: diferencaValues },
-    ].filter(Boolean) as DreRow[],
+    rows: defaultRows,
     receitaTotal,
     despesasTotal: despesasOperacionais,
     resultado,
@@ -705,6 +757,9 @@ export function DREContent() {
       setImportedRows(importResult.snapshot?.rows ? snapshotRowsToDreRows(importResult.snapshot.rows as SupabaseRow[]) : [])
       setImportHistory(importListResult.imports)
       setSelectedImportId(String(importResult.snapshot?.import?.id ?? importListResult.imports[0]?.id ?? ""))
+      console.log("[DRE Template] linhas carregadas", templateResult.rows.length)
+      console.log("[DRE Template] ano selecionado", year)
+      console.log("[DRE Template] primeira linha", templateResult.rows[0] ?? null)
       setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
     })
   }, [year])
@@ -950,6 +1005,9 @@ export function DREContent() {
             monthsSaved: savedMonths,
             ignoredRows: preview.ignoredRows.length,
           })
+          console.log("[DRE Template] linhas carregadas", templateResult.rows.length)
+          console.log("[DRE Template] ano selecionado", yearFromSheetName(preview.sheetName, year))
+          console.log("[DRE Template] primeira linha", templateResult.rows[0] ?? null)
           setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
         } else {
           latestSnapshot = await createDreImportSnapshot({
