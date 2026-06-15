@@ -22,11 +22,64 @@ export async function getContracts() {
 }
 
 export async function createContract(payload: SupabaseRow) {
-  return insertRow("contracts", payload, { ...payload, id: crypto.randomUUID() })
+  const firstPayload = {
+    ...payload,
+    contract_number: await getNextContractNumber(String(payload.contract_number ?? "")),
+  }
+
+  try {
+    return await insertRow("contracts", firstPayload, { ...firstPayload, id: crypto.randomUUID() })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes("23505") && !message.toLowerCase().includes("duplicate key")) throw error
+
+    console.warn("[contracts] Numero de contrato duplicado. Gerando novo identificador e tentando novamente.", error)
+    const retryPayload = {
+      ...payload,
+      contract_number: await getNextContractNumber(String(firstPayload.contract_number ?? "")),
+    }
+    return insertRow("contracts", retryPayload, { ...retryPayload, id: crypto.randomUUID() })
+  }
+}
+
+function splitContractNumber(value: string) {
+  const clean = value.trim().toUpperCase()
+  const match = clean.match(/^(.*)-(\d{3})$/)
+  return {
+    prefix: match?.[1] || clean || `GATE-CONTRATO-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}`,
+    sequence: match ? Number(match[2]) : 0,
+  }
+}
+
+async function getNextContractNumber(requestedNumber: string) {
+  const { prefix, sequence } = splitContractNumber(requestedNumber)
+  const contracts = await selectRows<SupabaseRow>("contracts", [])
+  const usedNumbers = new Set(contracts.map((contract) => String(contract.contract_number ?? "").trim().toUpperCase()))
+
+  if (sequence > 0 && !usedNumbers.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
+    return `${prefix}-${String(sequence).padStart(3, "0")}`
+  }
+
+  const maxSequence = contracts.reduce((max, contract) => {
+    const current = String(contract.contract_number ?? "").trim().toUpperCase()
+    const match = current.match(new RegExp(`^${escapeRegExp(prefix)}-(\\d{3})$`))
+    if (!match) return max
+    return Math.max(max, Number(match[1]))
+  }, sequence)
+
+  return `${prefix}-${String(maxSequence + 1).padStart(3, "0")}`
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 export async function updateContract(id: string, payload: SupabaseRow) {
   return updateRows("contracts", payload, { id }, [{ ...payload, id }])
+}
+
+export async function deleteContract(id: string) {
+  return deleteRows("contracts", { id }, [])
 }
 
 export async function prepareInstallmentsForContract(contractId: string) {

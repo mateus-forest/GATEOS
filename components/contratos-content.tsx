@@ -61,7 +61,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ContractView } from "@/lib/mock-data"
 import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
-import { createContract, createContractEquipment, getContracts, recalculateEquipmentInventory } from "@/lib/data/contracts"
+import { createContract, createContractEquipment, deleteContract, getContracts, recalculateEquipmentInventory } from "@/lib/data/contracts"
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { createInstallment } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
@@ -113,6 +113,10 @@ function toNumber(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim())
+}
+
 function isEquipmentAvailable(status: string, availableQuantity: number) {
   return ["available", "active", "ativo", "disponivel"].includes(status.toLowerCase()) && availableQuantity > 0
 }
@@ -139,9 +143,29 @@ function buildContractInstallmentDates(startDate: string, endDate: string | null
   return dates
 }
 
-function normalizeContract(item: Record<string, unknown>): ContractWithPublicLink {
+function friendlyContractSaveError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error("[contratos] Falha ao salvar contrato", error)
+
+  if (message.includes("23505") || message.toLowerCase().includes("duplicate key")) {
+    return "Ja existe um contrato com esse numero. Gere novamente ou tente salvar outra vez."
+  }
+
+  if (message.toLowerCase().includes("row-level security") || message.toLowerCase().includes("permission") || message.toLowerCase().includes("policy")) {
+    return "Nao foi possivel salvar por restricao de permissao no Supabase."
+  }
+
+  return message || "Nao foi possivel salvar o contrato."
+}
+
+function normalizeContract(item: Record<string, unknown>, clients: SupabaseRow[] = []): ContractWithPublicLink {
   const number = String(item.number ?? item.contract_number ?? item.numero ?? "")
-  const clientName = String(item.clientName ?? item.client_name ?? item.client ?? item.nome_fantasia ?? "")
+  const clientId = String(item.clienteId ?? item.client_id ?? "")
+  const rawClientName = String(item.clientName ?? item.client_name ?? item.client ?? item.nome_fantasia ?? "")
+  const linkedClient = clients.find((client) => String(client.id ?? "") === clientId)
+  const clientName = rawClientName && !isUuidLike(rawClientName)
+    ? rawClientName
+    : linkedClient ? clientLabel(linkedClient) : "Cliente nao encontrado"
   const startDate = String(item.startDate ?? item.start_date ?? item.data_inicio ?? "")
   const endDate = String(item.endDate ?? item.end_date ?? item.data_fim ?? startDate)
   const monthlyValue = Number(item.monthlyValue ?? item.monthly_value ?? item.valor_mensal ?? 0)
@@ -150,7 +174,7 @@ function normalizeContract(item: Record<string, unknown>): ContractWithPublicLin
   return {
     id: String(item.id ?? ""),
     numero: number,
-    clienteId: String(item.clienteId ?? item.client_id ?? ""),
+    clienteId: clientId,
     tipo: String(item.type ?? item.tipo ?? "locacao") as Contrato["tipo"],
     dataInicio: startDate,
     dataFim: endDate,
@@ -238,7 +262,7 @@ function NewContractDialog({
       if (!equipment) return "Equipamento selecionado nao foi encontrado."
       if (!Number.isFinite(quantity) || quantity <= 0) return "Informe uma quantidade valida para o equipamento."
       if (quantity > equipment.availableQuantity) {
-        return `Estoque insuficiente. Disponivel: ${equipment.availableQuantity}.`
+        return `Estoque insuficiente. Disponivel: ${equipment.availableQuantity} unidades.`
       }
     }
 
@@ -269,6 +293,7 @@ function NewContractDialog({
 
     setSaving(true)
     setErrorMessage("")
+    let createdContractId = ""
     try {
       const publicToken = crypto.randomUUID()
       const contractNumber = generateContractNumber(values.client_id, values.start_date)
@@ -289,6 +314,7 @@ function NewContractDialog({
       })
 
       const contractId = String((created as SupabaseRow).id ?? "")
+      createdContractId = contractId
       const monthlyValue = toNumber(values.monthly_value) ?? 0
       const installmentDates = buildContractInstallmentDates(values.start_date, values.end_date || null, dueDate.getDate())
       for (const [index, installmentDate] of installmentDates.entries()) {
@@ -318,6 +344,8 @@ function NewContractDialog({
         await recalculateEquipmentInventory(equipmentId)
       }
 
+      createdContractId = ""
+
       if (contractFile) {
         await uploadDocumentFile({
           bucket: "gate-contracts",
@@ -330,12 +358,23 @@ function NewContractDialog({
         })
       }
 
-      await onCreated(normalizeContract(created as Record<string, unknown>))
+      const selectedClientLabel = clientOptions.find((client) => client.value === values.client_id)?.label
+      await onCreated(normalizeContract({
+        ...(created as Record<string, unknown>),
+        client_name: selectedClientLabel,
+      }))
       toast.success("Contrato salvo e estoque atualizado.")
       reset()
       setOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Nao foi possivel salvar o contrato."
+      if (createdContractId) {
+        try {
+          await deleteContract(createdContractId)
+        } catch (rollbackError) {
+          console.error("[contratos] Falha no rollback logico do contrato", rollbackError)
+        }
+      }
+      const message = friendlyContractSaveError(error)
       setErrorMessage(message)
       toast.error(message)
     } finally {
@@ -545,10 +584,11 @@ export function ContratosContent() {
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([])
 
   useEffect(() => {
-    getContracts().then((items) => setContracts(items.map((item) => normalizeContract(item as Record<string, unknown>))))
-    getClients().then((items) =>
+    Promise.all([getContracts(), getClients()]).then(([contractRows, clientRows]) => {
+      const clients = clientRows as SupabaseRow[]
+      setContracts(contractRows.map((item) => normalizeContract(item as Record<string, unknown>, clients)))
       setClientOptions(
-        items.map((item) => {
+        clients.map((item) => {
           const record = item as Record<string, unknown>
           return {
             label: clientLabel(record),
@@ -556,7 +596,7 @@ export function ContratosContent() {
           }
         }).filter((item) => item.value)
       )
-    )
+    })
     getEquipment().then((items) =>
       setEquipmentOptions(
         items
@@ -607,9 +647,9 @@ export function ContratosContent() {
       .replace(/[^a-zA-Z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .toUpperCase()
-      .slice(0, 28) || "CLIENTE"
+      .slice(0, 16) || "CLIENTE"
     const safeDate = (startDate || new Date().toISOString().slice(0, 10)).replaceAll("-", "")
-    return `GATE-${safeClient}-${safeDate}`
+    return `GATE-${safeClient}-${safeDate}-001`
   }
 
   const handleCopyClientLink = async (contract: ContractWithPublicLink) => {
@@ -724,11 +764,12 @@ export function ContratosContent() {
             equipmentOptions={equipmentOptions}
             generateContractNumber={generateContractNumber}
             onCreated={async (createdContract) => {
-              const [refreshedContracts, refreshedEquipment] = await Promise.all([
+              const [refreshedContracts, refreshedEquipment, refreshedClients] = await Promise.all([
                 getContracts(),
                 getEquipment(),
+                getClients(),
               ])
-              const normalizedContracts = refreshedContracts.map((item) => normalizeContract(item as Record<string, unknown>))
+              const normalizedContracts = refreshedContracts.map((item) => normalizeContract(item as Record<string, unknown>, refreshedClients as SupabaseRow[]))
               const hasCreatedContract = normalizedContracts.some((contract) => contract.id === createdContract.id)
               setContracts(hasCreatedContract ? normalizedContracts : [createdContract, ...normalizedContracts])
               setEquipmentOptions(

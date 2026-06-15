@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
+import { clientLabel } from "@/lib/data/display-labels"
 import Link from "next/link"
 
 type Row = Record<string, unknown>
@@ -14,6 +15,10 @@ function text(row: Row | null, keys: string[], fallback = "-") {
     if (value !== null && value !== undefined && String(value).trim() !== "") return String(value)
   }
   return fallback
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim())
 }
 
 function num(row: Row | null, keys: string[]) {
@@ -39,6 +44,14 @@ export default async function ContratoDetalhePage({
   const { data: juridico } = supabase
     ? await supabase.from("legal_cases").select("*").eq("contract_id", id).maybeSingle()
     : { data: null }
+  const clientId = text(contract, ["client_id"], "")
+  const rawClientName = text(contract, ["client_name", "clientName"], "")
+  const { data: client } = supabase && clientId
+    ? await supabase.from("clients").select("*").eq("id", clientId).maybeSingle()
+    : { data: null }
+  const displayClientName = rawClientName && !isUuidLike(rawClientName)
+    ? rawClientName
+    : client ? clientLabel(client) : "Cliente nao encontrado"
 
   return (
     <InternalLayout>
@@ -65,7 +78,7 @@ export default async function ContratoDetalhePage({
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>{text(contract, ["client_name", "clientName"])}</CardTitle>
+            <CardTitle>{displayClientName}</CardTitle>
             <CardDescription>{text(contract, ["description", "notes"], "Contrato carregado do Supabase")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-4">

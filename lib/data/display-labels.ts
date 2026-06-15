@@ -1,15 +1,20 @@
 export type DisplayRecord = Record<string, unknown>
 
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim())
+}
+
 export function friendlyLabel(record: DisplayRecord, keys: string[], fallback = "Registro sem nome") {
   for (const key of keys) {
     const value = record[key]
-    if (value !== null && value !== undefined && String(value).trim() !== "") return String(value)
+    const label = String(value ?? "").trim()
+    if (label && !isUuidLike(label)) return label
   }
   return fallback
 }
 
 export function clientLabel(record: DisplayRecord) {
-  return friendlyLabel(record, ["name", "legal_name", "company_name", "trade_name", "fantasy_name", "nome", "razao_social"])
+  return friendlyLabel(record, ["name", "legal_name", "company_name", "email"], "Cliente sem nome")
 }
 
 export function dreCategoryLabel(record: DisplayRecord) {
@@ -28,7 +33,7 @@ export function contractLabel(record: DisplayRecord) {
 }
 
 export function equipmentLabel(record: DisplayRecord) {
-  return friendlyLabel(record, ["name", "nome", "description", "descricao"])
+  return friendlyLabel(record, ["name", "category"], "Equipamento sem nome")
 }
 
 export function partnerLabel(record: DisplayRecord) {
