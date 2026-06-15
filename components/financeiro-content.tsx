@@ -75,14 +75,13 @@ import { toast } from "sonner"
 import { createBankAccount, createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
+import { getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
 import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
 import {
   calculateMonthlyExpense,
   calculateMonthlyRevenueMetrics,
-  getContractDueDateForMonth,
-  getContractMonthlyValue,
 } from "@/lib/data/recurring-revenue"
 import {
   financialStatusValues,
@@ -158,6 +157,24 @@ function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow 
     status: normalizeFinancialStatus(item.status),
     contractId: item.contract_id ? String(item.contract_id) : undefined,
   }
+}
+
+function normalizeFinancialEntryWithLabels(item: SupabaseRow, categories: SupabaseRow[]): TransactionRow {
+  const base = normalizeFinancialEntry(item)
+  const categoryId = String(item.dre_category_id ?? "")
+  const category = categories.find((row) => String(row.id ?? "") === categoryId)
+  return {
+    ...base,
+    category: category ? dreCategoryLabel(category) : categoryId ? "Sem categoria" : "Sem categoria",
+  }
+}
+
+function getInstallmentAmount(item: SupabaseRow) {
+  return Number(item.updated_value ?? item.original_value ?? item.installment_value ?? item.amount ?? item.value ?? 0)
+}
+
+function isOpenInstallment(item: SupabaseRow) {
+  return String(item.status ?? "").toLowerCase() === "aberta" && !item.payment_date
 }
 
 const initialLaunchForm: NewLaunchForm = {
@@ -301,7 +318,7 @@ function NewBankAccountDialog() {
   )
 }
 
-function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => void }) {
+function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<NewLaunchForm>(initialLaunchForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -391,7 +408,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: (entry: TransactionRow) => 
           },
         })
       }
-      onCreated(normalizeFinancialEntry(created as Record<string, unknown>))
+      await onCreated()
       toast.success("Lançamento salvo e DRE atualizado")
       setForm(initialLaunchForm)
       setAttachmentFile(null)
@@ -488,36 +505,59 @@ export function FinanceiroContent() {
   const [financialEntries, setFinancialEntries] = useState<TransactionRow[]>([])
   const [rawFinancialEntries, setRawFinancialEntries] = useState<SupabaseRow[]>([])
   const [contracts, setContracts] = useState<SupabaseRow[]>([])
+  const [clients, setClients] = useState<SupabaseRow[]>([])
+  const [installments, setInstallments] = useState<SupabaseRow[]>([])
+
+  const loadFinanceData = async () => {
+    const [entries, contractRows, installmentRows, clientRows, options] = await Promise.all([
+      getFinancialEntries(),
+      getContracts(),
+      getInstallments(),
+      getClients(),
+      getFinancialSelectOptions(),
+    ])
+    const categories = (options.dreCategories ?? []) as SupabaseRow[]
+    setRawFinancialEntries(entries as SupabaseRow[])
+    setFinancialEntries((entries as SupabaseRow[]).map((item) => normalizeFinancialEntryWithLabels(item, categories)))
+    setContracts(contractRows as SupabaseRow[])
+    setInstallments(installmentRows as SupabaseRow[])
+    setClients(clientRows as SupabaseRow[])
+  }
 
   useEffect(() => {
-    Promise.all([getFinancialEntries(), getContracts()]).then(([entries, contractRows]) => {
-      setRawFinancialEntries(entries as SupabaseRow[])
-      setFinancialEntries((entries as Record<string, unknown>[]).map((item) => normalizeFinancialEntry(item)))
-      setContracts(contractRows as SupabaseRow[])
+    let active = true
+    Promise.resolve().then(async () => {
+      try {
+        await loadFinanceData()
+      } catch (error) {
+        if (active) toast.error(error instanceof Error ? error.message : "Nao foi possivel carregar o financeiro.")
+      }
     })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const allTransactions = financialEntries
   const currentRevenue = calculateMonthlyRevenueMetrics(contracts, rawFinancialEntries)
   const currentMonthKey = currentRevenue.monthKey
+  const clientById = new Map(clients.map((client) => [String(client.id ?? ""), client]))
+  const contractById = new Map(contracts.map((contract) => [String(contract.id ?? ""), contract]))
   const currentMonthTransactions = allTransactions.filter((transaction) => transaction.date.slice(0, 7) === currentMonthKey)
   const chartRows = allTransactions.reduce((acc, transaction) => {
     const month = transaction.date ? transaction.date.slice(0, 7) : "Sem data"
     const current = acc.get(month) ?? { month, receitas: 0, despesas: 0, balance: 0 }
-    if (transaction.type === "income") {
+    if (transaction.type === "income" && transaction.status === "recebido") {
       current.receitas += transaction.amount
       current.balance += transaction.amount
-    } else {
+    } else if (transaction.type === "expense") {
       current.despesas += transaction.amount
       current.balance -= transaction.amount
     }
     acc.set(month, current)
     return acc
   }, new Map<string, { month: string; receitas: number; despesas: number; balance: number }>())
-  const currentChartRow = chartRows.get(currentMonthKey) ?? { month: currentMonthKey, receitas: 0, despesas: 0, balance: 0 }
-  currentChartRow.receitas += currentRevenue.contractExpectedRevenue
-  currentChartRow.balance += currentRevenue.contractExpectedRevenue
-  chartRows.set(currentMonthKey, currentChartRow)
   const monthlyData = Array.from(chartRows.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-12)
   const cashFlowData = monthlyData.reduce((items, item) => {
     const previous = items.at(-1)?.balance ?? 0
@@ -538,17 +578,54 @@ export function FinanceiroContent() {
   const totalDespesas = calculateMonthlyExpense(rawFinancialEntries, currentMonthKey)
   const pendingReceivables = currentMonthTransactions.filter((t) => t.type === "income" && ["a_receber", "parcial"].includes(t.status))
   const pendingPayables = currentMonthTransactions.filter((t) => t.type === "expense" && ["a_pagar", "parcial"].includes(t.status))
-  const contractReceivables = currentRevenue.pendingContractReceivables.map((contract) => ({
-    id: String(contract.id ?? ""),
-    description: String(contract.contract_number ?? contract.number ?? "Contrato ativo"),
-    date: getContractDueDateForMonth(contract, currentMonthKey),
-    amount: getContractMonthlyValue(contract),
-  }))
+  const installmentReceivables = installments
+    .filter(isOpenInstallment)
+    .map((installment) => {
+      const contract = contractById.get(String(installment.contract_id ?? ""))
+      const client = clientById.get(String(installment.client_id ?? ""))
+      return {
+        id: String(installment.id ?? ""),
+        contractId: String(installment.contract_id ?? ""),
+        clientId: String(installment.client_id ?? ""),
+        description: `Parcela ${String(installment.installment_number ?? "")} - ${String(contract?.contract_number ?? "Contrato")}`,
+        clientName: client ? clientLabel(client) : "Cliente nao informado",
+        contractNumber: String(contract?.contract_number ?? "Contrato"),
+        date: String(installment.due_date ?? ""),
+        amount: getInstallmentAmount(installment),
+      }
+    })
   const pendingReceivableAmount =
     pendingReceivables.reduce((sum, t) => sum + t.amount, 0) +
-    contractReceivables.reduce((sum, item) => sum + item.amount, 0)
+    installmentReceivables.reduce((sum, item) => sum + item.amount, 0)
 
   const saldo = totalReceitas - totalDespesas
+
+  const confirmInstallmentReceipt = async (item: (typeof installmentReceivables)[number]) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const paymentDate = window.prompt("Data de recebimento (AAAA-MM-DD)", today)
+    if (!paymentDate) return
+
+    try {
+      await markInstallmentAsPaid(item.id, item.amount, paymentDate)
+      await createFinancialEntry({
+        type: "receita",
+        status: "recebido",
+        description: `Recebimento contrato ${item.contractNumber} - ${item.clientName}`,
+        value: item.amount,
+        amount: item.amount,
+        competence_date: paymentDate,
+        due_date: item.date || null,
+        payment_date: paymentDate,
+        client_id: item.clientId || null,
+        contract_id: item.contractId || null,
+        installment_id: item.id,
+      })
+      await loadFinanceData()
+      toast.success("Recebimento confirmado e lancamento financeiro criado.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar o recebimento.")
+    }
+  }
 
   const getStatusBadge = (status: FinancialStatus) => {
     switch (status) {
@@ -577,14 +654,14 @@ export function FinanceiroContent() {
         <div className="flex items-center gap-2">
           <NewBankAccountDialog />
           <Button variant="outline" onClick={() => exportPdfReport(buildFinancialEntriesReport([
-            ...currentRevenue.pendingContractReceivables.map((contract) => ({
-              id: String(contract.id ?? ""),
-              date: getContractDueDateForMonth(contract, currentMonthKey),
-              description: `Receita prevista contrato ${String(contract.contract_number ?? contract.number ?? "")}`,
-              categoria: "Contrato ativo",
+            ...installmentReceivables.map((installment) => ({
+              id: installment.id,
+              date: installment.date,
+              description: installment.description,
+              categoria: "Parcela de contrato",
               type: "income",
-              status: "previsto",
-              amount: getContractMonthlyValue(contract),
+              status: "a_receber",
+              amount: installment.amount,
             })),
             ...filteredTransactions.map((transaction) => ({
             id: transaction.id,
@@ -599,7 +676,7 @@ export function FinanceiroContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <NewLaunchDialog onCreated={(entry) => setFinancialEntries((current) => [entry, ...current])} />
+          <NewLaunchDialog onCreated={loadFinanceData} />
         </div>
       </div>
 
@@ -618,7 +695,7 @@ export function FinanceiroContent() {
             </div>
             <div className="flex items-center gap-1 mt-2 text-sm text-emerald-600">
               <TrendingUp className="h-4 w-4" />
-              Contratos + financial_entries
+              Recebido em financial_entries
             </div>
           </CardContent>
         </Card>
@@ -672,7 +749,7 @@ export function FinanceiroContent() {
               </div>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              {pendingReceivables.length + contractReceivables.length} recebiveis pendentes
+              {pendingReceivables.length + installmentReceivables.length} recebiveis pendentes
             </p>
           </CardContent>
         </Card>
@@ -690,7 +767,7 @@ export function FinanceiroContent() {
               ["Receita realizada", formatCurrency(currentRevenue.financialRealizedRevenue)],
               ["Receita pendente lancada", formatCurrency(currentRevenue.financialPendingRevenue)],
               ["Contratos ativos", currentRevenue.activeContracts.length],
-              ["Proximos vencimentos", contractReceivables.length],
+              ["Parcelas abertas", installmentReceivables.length],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -955,7 +1032,7 @@ export function FinanceiroContent() {
                     <CardTitle className="text-emerald-600">Contas a Receber</CardTitle>
                     <CardDescription>Próximos vencimentos</CardDescription>
                   </div>
-                  <Badge className="bg-emerald-100 text-emerald-700">{pendingReceivables.length} pendentes</Badge>
+                  <Badge className="bg-emerald-100 text-emerald-700">{pendingReceivables.length + installmentReceivables.length} pendentes</Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -974,15 +1051,17 @@ export function FinanceiroContent() {
                       </div>
                     </div>
                   ))}
-                  {contractReceivables.map((item) => (
-                    <div key={`contract-${item.id}`} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  {installmentReceivables.map((item) => (
+                    <div key={`installment-${item.id}`} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div>
                         <p className="font-medium">{item.description}</p>
-                        <p className="text-sm text-muted-foreground">Vence em {formatDate(item.date)}</p>
+                        <p className="text-sm text-muted-foreground">{item.clientName} - vence em {formatDate(item.date)}</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-emerald-600">{formatCurrency(item.amount)}</p>
-                        <Badge variant="secondary">Previsto</Badge>
+                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => confirmInstallmentReceipt(item)}>
+                          Confirmar recebimento
+                        </Button>
                       </div>
                     </div>
                   ))}

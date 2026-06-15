@@ -2,7 +2,7 @@ export type DreImportRow = {
   account: string
   groupName: string
   rowIndex: number
-  rowType: "group" | "account" | "total" | "percent" | "result"
+  rowType: "group" | "account" | "total" | "percent" | "result" | "balance" | "structural_blank"
   type: "receita" | "despesa" | "neutro"
   values: Record<number, number>
   total: number | null
@@ -201,6 +201,7 @@ function typeForGroup(groupName: string) {
 function rowTypeForLabel(account: string, hasValues: boolean): DreImportRow["rowType"] {
   const normalized = normalizeText(account).toUpperCase()
   if (normalized.includes("%")) return "percent"
+  if (normalized.includes("SALDO")) return "balance"
   if (normalized.startsWith("TOTAL ") || normalized.includes("RECEITA TOTAL")) return "total"
   if (normalized.includes("RESULTADO") || normalized.includes("LUCRO") || normalized.includes("DIFEREN")) return "result"
   if (!hasValues || normalized.startsWith("RECEITAS") || normalized.includes("DESPESAS OPERACIONAIS") || normalized.includes("DESPESAS COM PESSOAL")) {
@@ -230,7 +231,8 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
   const ignoredRows: Array<{ rowIndex: number; reason: string }> = []
   let currentGroup = "Receitas"
 
-  matrix.slice(header.index + 1).forEach((row, offset) => {
+  const dataRows = matrix.slice(header.index + 1)
+  dataRows.forEach((row, offset) => {
     const rowIndex = header.index + offset + 2
     const account = normalizeText(row[accountIndex])
     const values = header.monthColumns.reduce<Record<number, number>>((acc, column) => {
@@ -242,7 +244,29 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
     const hasValues = Object.keys(values).length > 0 || Boolean(total)
 
     if (!account && !hasValues) {
-      ignoredRows.push({ rowIndex, reason: "Linha vazia, sem conta e sem valor" })
+      const hasPreviousImportedRow = rows.length > 0
+      const hasNextContent = dataRows.slice(offset + 1).some((nextRow) => {
+        const nextAccount = normalizeText(nextRow[accountIndex])
+        const nextValues = header.monthColumns.some((column) => parseNumber(nextRow[column.index]) !== 0)
+        const nextTotal = totalColumnIndex >= 0 ? parseNumber(nextRow[totalColumnIndex]) : 0
+        return Boolean(nextAccount) || nextValues || nextTotal !== 0
+      })
+
+      if (hasPreviousImportedRow && hasNextContent) {
+        rows.push({
+          account: "",
+          groupName: currentGroup,
+          rowIndex,
+          rowType: "structural_blank",
+          type: "neutro",
+          values: {},
+          total: null,
+          rawLabel: "",
+        })
+        return
+      }
+
+      ignoredRows.push({ rowIndex, reason: "Linha vazia fora da estrutura da DRE" })
       return
     }
 

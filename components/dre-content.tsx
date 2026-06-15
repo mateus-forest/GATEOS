@@ -29,7 +29,6 @@ import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builder
 import {
   createDreManualAdjustment,
   createDreMonthlyClosing,
-  createDreCategory,
   deleteAllDreManualAdjustments,
   deleteDreImportedAdjustments,
   deleteDreImportSnapshots,
@@ -41,7 +40,6 @@ import {
   getDreMonthlyClosings,
 } from "@/lib/data/dre"
 import { formatCurrency } from "@/lib/utils"
-import { getContracts } from "@/lib/data/contracts"
 import { getFinancialEntries } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
 import { getFinancialSelectOptions } from "@/lib/data/financial"
@@ -51,6 +49,7 @@ import { clientLabel } from "@/lib/data/display-labels"
 import {
   getEntryAmount,
   getEntryMonthKey,
+  isEntryReceived,
   isExpenseEntry,
   isIncomeEntry,
 } from "@/lib/data/recurring-revenue"
@@ -104,26 +103,6 @@ function addValues(a: number[], b: number[]) {
 
 function subtractValues(a: number[], b: number[]) {
   return a.map((value, index) => value - b[index])
-}
-
-function valuesForContract(contract: SupabaseRow, year: string, realizedContractMonths = new Set<string>()) {
-  const values = [...empty]
-  if (String(contract.status ?? "").toLowerCase() !== "ativo") return values
-
-  const monthlyValue = Number(contract.monthly_value ?? contract.monthlyValue ?? 0)
-  if (!monthlyValue) return values
-
-  const start = contract.start_date ? new Date(`${contract.start_date}T00:00:00`) : new Date(`${year}-01-01T00:00:00`)
-  const end = contract.end_date ? new Date(`${contract.end_date}T00:00:00`) : new Date(`${year}-12-31T00:00:00`)
-
-  for (let index = 0; index < 12; index += 1) {
-    const monthStart = new Date(`${year}-${String(index + 1).padStart(2, "0")}-01T00:00:00`)
-    const monthEnd = new Date(Number(year), index + 1, 0)
-    if (realizedContractMonths.has(`${String(contract.id ?? "")}-${index + 1}`)) continue
-    if (monthEnd >= start && monthStart <= end) values[index] += monthlyValue
-  }
-
-  return values
 }
 
 function monthLabelToNumber(label: string) {
@@ -218,11 +197,32 @@ function normalizeAdjustment(item: SupabaseRow, categoryById: Map<string, Supaba
   }
 }
 
+function isDreSheetName(sheetName: string) {
+  return normalizeTextKey(sheetName).startsWith("dre")
+}
+
+function dreImportRowTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    group: "grupo",
+    account: "conta",
+    total: "total",
+    percent: "percentual",
+    result: "resultado",
+    balance: "saldo",
+    structural_blank: "vazia estrutural",
+  }
+  return labels[type] ?? "linha"
+}
+
+function yearFromSheetName(sheetName: string, fallbackYear: string) {
+  const match = sheetName.match(/20\d{2}/)
+  return Number(match?.[0] ?? fallbackYear)
+}
+
 function buildRows({
   year,
   categories,
   clients,
-  contracts,
   financialEntries,
   adjustments,
   partnerEntries,
@@ -232,7 +232,6 @@ function buildRows({
   year: string
   categories: SupabaseRow[]
   clients: SupabaseRow[]
-  contracts: SupabaseRow[]
   financialEntries: SupabaseRow[]
   adjustments: ManualAdjustment[]
   partnerEntries: SupabaseRow[]
@@ -262,15 +261,13 @@ function buildRows({
   clients.forEach((client) => {
     const clientId = String(client.id ?? "")
     const clientIncomeEntries = financialEntries
-      .filter((entry) => String(entry.client_id ?? "") === clientId && isIncomeEntry(entry) && getEntryMonthKey(entry).startsWith(`${year}-`))
-    const realizedContractMonths = new Set(
-      clientIncomeEntries
-        .filter((entry) => entry.contract_id)
-        .map((entry) => `${String(entry.contract_id)}-${Number(getEntryMonthKey(entry).slice(5, 7))}`)
-    )
-    const values = contracts
-      .filter((contract) => String(contract.client_id ?? "") === clientId)
-      .reduce((acc, contract) => addValues(acc, valuesForContract(contract, year, realizedContractMonths)), [...empty])
+      .filter((entry) =>
+        String(entry.client_id ?? "") === clientId &&
+        isIncomeEntry(entry) &&
+        isEntryReceived(entry) &&
+        getEntryMonthKey(entry).startsWith(`${year}-`)
+      )
+    const values = [...empty]
 
     clientIncomeEntries.forEach((entry) => {
         const monthIndex = Number(getEntryMonthKey(entry).slice(5, 7)) - 1
@@ -336,6 +333,9 @@ function buildRows({
 
     const categoryId = String(entry.dre_category_id ?? "")
     const category = categoryById.get(categoryId)
+    if (isIncomeEntry(entry) && !isEntryReceived(entry)) return
+    if (isIncomeEntry(entry) && entry.client_id) return
+
     const group = isIncomeEntry(entry) ? "revenue" : isExpenseEntry(entry) ? "expense" : null
     if (!group) return
 
@@ -523,6 +523,8 @@ function kindFromImportedRow(rowType: unknown): RowKind {
   if (type === "total") return "total"
   if (type === "percent") return "percent"
   if (type === "result") return "highlight"
+  if (type === "balance") return "total"
+  if (type === "structural_blank") return "normal"
   return "normal"
 }
 
@@ -562,19 +564,18 @@ export function DREContent() {
   const [newValue, setNewValue] = useState("")
   const [reason, setReason] = useState("")
   const [responsible, setResponsible] = useState("Administrador GATE")
-  const [contracts, setContracts] = useState<SupabaseRow[]>([])
   const [clients, setClients] = useState<SupabaseRow[]>([])
   const [financialEntries, setFinancialEntries] = useState<SupabaseRow[]>([])
   const [partnerEntries, setPartnerEntries] = useState<SupabaseRow[]>([])
   const [bankAccounts, setBankAccounts] = useState<SupabaseRow[]>([])
   const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const [closings, setClosings] = useState<SupabaseRow[]>([])
-  const [importPreview, setImportPreview] = useState<DreImportPreview | null>(null)
+  const [importPreviews, setImportPreviews] = useState<DreImportPreview[]>([])
   const [importOpen, setImportOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
   const [sheetNames, setSheetNames] = useState<DreWorkbookSheet[]>([])
-  const [selectedSheetName, setSelectedSheetName] = useState("")
+  const [selectedSheetNames, setSelectedSheetNames] = useState<string[]>([])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [cleanupMode, setCleanupMode] = useState<"imported" | "manual" | null>(null)
   const [cleaning, setCleaning] = useState(false)
@@ -586,7 +587,6 @@ export function DREContent() {
 
   useEffect(() => {
     Promise.all([
-      getContracts(),
       getClients(),
       getFinancialEntries(),
       getDreCategories(),
@@ -595,11 +595,10 @@ export function DREContent() {
       getPartnerEntries(),
       getFinancialSelectOptions(),
       getLatestDreImportSnapshot(year),
-    ]).then(([contractRows, clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult]) => {
+    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
-      setContracts(contractRows as SupabaseRow[])
       setClients(clientRows as SupabaseRow[])
       setFinancialEntries(entryRows as SupabaseRow[])
       setPartnerEntries(partnerEntryRows as SupabaseRow[])
@@ -629,14 +628,13 @@ export function DREContent() {
       year,
       categories: dreCategories,
       clients,
-      contracts,
       financialEntries,
       adjustments,
       partnerEntries,
       bankAccounts,
       closings,
     }),
-    [adjustments, bankAccounts, clients, closings, contracts, dreCategories, financialEntries, partnerEntries, year]
+    [adjustments, bankAccounts, clients, closings, dreCategories, financialEntries, partnerEntries, year]
   )
 
   const usingImportedDre = dreView === "imported" && importedRows.length > 0
@@ -755,9 +753,9 @@ export function DREContent() {
     }
   }
 
-  const openImportPreview = async (file: File, sheetName?: string) => {
-    const preview = await parseDreImportFile(file, sheetName)
-    setImportPreview(preview)
+  const openImportPreview = async (file: File, sheetNamesToParse: string[]) => {
+    const previews = await Promise.all(sheetNamesToParse.map((sheetName) => parseDreImportFile(file, sheetName)))
+    setImportPreviews(previews)
     setImportOpen(true)
   }
 
@@ -767,14 +765,15 @@ export function DREContent() {
       const sheets = await getDreWorkbookSheets(file)
       const extension = file.name.split(".").pop()?.toLowerCase()
       if (extension !== "csv" && sheets.length > 1) {
+        const dreSheets = sheets.filter((sheet) => isDreSheetName(sheet.name))
         setPendingImportFile(file)
         setSheetNames(sheets)
-        setSelectedSheetName(sheets[0]?.name ?? "")
+        setSelectedSheetNames(dreSheets.map((sheet) => sheet.name))
         setSheetOpen(true)
         return
       }
 
-      await openImportPreview(file, sheets[0]?.name)
+      await openImportPreview(file, [sheets[0]?.name ?? "CSV"])
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel ler o arquivo.")
     } finally {
@@ -783,103 +782,62 @@ export function DREContent() {
   }
 
   const handleConfirmSheet = async () => {
-    if (!pendingImportFile || !selectedSheetName) return
+    if (!pendingImportFile || selectedSheetNames.length === 0) return
     try {
-      await openImportPreview(pendingImportFile, selectedSheetName)
+      await openImportPreview(pendingImportFile, selectedSheetNames)
       setSheetOpen(false)
       setPendingImportFile(null)
       setSheetNames([])
+      setSelectedSheetNames([])
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel ler a aba selecionada.")
     }
   }
 
   const handleConfirmImport = async () => {
-    if (!importPreview) return
+    if (importPreviews.length === 0) return
 
     setImporting(true)
     try {
-      const snapshot = await createDreImportSnapshot({
-        fileName: importPreview.fileName,
-        sheetName: importPreview.sheetName,
-        year: Number(year),
-        importedBy: responsible || "Sistema",
-        rows: importPreview.rows.map((row) => ({
-          row_index: row.rowIndex,
-          group_name: row.groupName,
-          account_name: row.account,
-          row_type: row.rowType,
-          jan: row.values[1] ?? null,
-          fev: row.values[2] ?? null,
-          mar: row.values[3] ?? null,
-          abr: row.values[4] ?? null,
-          mai: row.values[5] ?? null,
-          jun: row.values[6] ?? null,
-          jul: row.values[7] ?? null,
-          ago: row.values[8] ?? null,
-          set: row.values[9] ?? null,
-          out: row.values[10] ?? null,
-          nov: row.values[11] ?? null,
-          dez: row.values[12] ?? null,
-          total: row.total,
-          raw_label: row.rawLabel,
-        })),
-      })
-
-      const categoriesByName = new Map(
-        dreCategories.map((category) => [normalizeTextKey(getCategoryName(category)), category])
-      )
-      const nextCategories = [...dreCategories]
-      const nextAdjustments: ManualAdjustment[] = []
-      const categoryById = new Map(nextCategories.map((category) => [String(category.id ?? ""), category]))
-
-      for (const row of importPreview.rows) {
-        const hasOperationalValues = row.rowType === "account" && row.type !== "neutro" && Object.values(row.values).some((value) => value !== 0)
-        if (!hasOperationalValues) continue
-
-        const key = normalizeTextKey(row.account)
-        let category = categoriesByName.get(key)
-        if (!category) {
-          category = await createDreCategory({
-            name: row.account,
+      let latestSnapshot: Awaited<ReturnType<typeof createDreImportSnapshot>> | null = null
+      for (const preview of importPreviews) {
+        latestSnapshot = await createDreImportSnapshot({
+          fileName: preview.fileName,
+          sheetName: preview.sheetName,
+          year: yearFromSheetName(preview.sheetName, year),
+          importedBy: responsible || "Sistema",
+          rows: preview.rows.map((row) => ({
+            row_index: row.rowIndex,
             group_name: row.groupName,
-            type: row.type,
-            sort_order: nextCategories.length + 1,
-            active: true,
-          }) as SupabaseRow
-          categoriesByName.set(key, category)
-          nextCategories.push(category)
-          categoryById.set(String(category.id ?? ""), category)
-        }
-
-        const categoryId = String(category.id ?? "")
-        if (!categoryId) continue
-
-        for (const [monthText, value] of Object.entries(row.values)) {
-          const month = Number(monthText)
-          if (!month || value === 0) continue
-          const created = await createDreManualAdjustment({
-            year: Number(year),
-            month,
-            dre_category_id: categoryId,
-            previous_value: 0,
-            new_value: value,
-            reason: `IMPORTACAO_DRE: ${importPreview.sheetName} - ${row.account}`,
-            responsible: responsible || "Sistema",
-          }) as SupabaseRow
-          nextAdjustments.push(normalizeAdjustment(created, categoryById))
-        }
+            account_name: row.account,
+            row_type: row.rowType,
+            jan: row.values[1] ?? null,
+            fev: row.values[2] ?? null,
+            mar: row.values[3] ?? null,
+            abr: row.values[4] ?? null,
+            mai: row.values[5] ?? null,
+            jun: row.values[6] ?? null,
+            jul: row.values[7] ?? null,
+            ago: row.values[8] ?? null,
+            set: row.values[9] ?? null,
+            out: row.values[10] ?? null,
+            nov: row.values[11] ?? null,
+            dez: row.values[12] ?? null,
+            total: row.total,
+            raw_label: row.rawLabel,
+          })),
+        })
       }
 
-      setImportedSnapshotInfo(snapshot.import as SupabaseRow)
-      setImportedRows(snapshotRowsToDreRows(snapshot.rows as SupabaseRow[]))
-      setDreCategories(nextCategories)
-      setAdjustments((current) => [...nextAdjustments, ...current])
+      if (latestSnapshot) {
+        setImportedSnapshotInfo(latestSnapshot.import as SupabaseRow)
+        setImportedRows(snapshotRowsToDreRows(latestSnapshot.rows as SupabaseRow[]))
+      }
       setImportStructureMissing(false)
       setDreView("operational")
       setImportOpen(false)
-      setImportPreview(null)
-      toast.success("DRE importada salva como historico e base operacional.")
+      setImportPreviews([])
+      toast.success(importPreviews.length > 1 ? "DREs importadas como historicos separados." : "DRE importada salva como historico separado.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {
@@ -994,15 +952,21 @@ export function DREContent() {
           }]
     ))
 
-  const importPreviewRows = importPreview?.rows.flatMap((row) =>
-    Object.entries(row.values).map(([month, value]) => ({
+  const totalImportRowsRead = importPreviews.reduce((total, preview) => total + preview.totalRowsRead, 0)
+  const totalImportRows = importPreviews.reduce((total, preview) => total + preview.rows.length, 0)
+  const totalIgnoredRows = importPreviews.reduce((total, preview) => total + preview.ignoredRows.length, 0)
+  const importPreviewRows = importPreviews.flatMap((preview) =>
+    preview.rows.flatMap((row) => Object.entries(row.values).map(([month, value]) => ({
+      sheetName: preview.sheetName,
+      rowIndex: row.rowIndex,
       account: row.account,
       groupName: row.groupName,
       type: row.type,
+      rowType: row.rowType,
       month: Number(month),
       value,
-    }))
-  ) ?? []
+    })))
+  )
   const importPreviewMonthTotals = importPreviewRows.reduce((totals, row) => {
     totals.set(row.month, (totals.get(row.month) ?? 0) + row.value)
     return totals
@@ -1311,25 +1275,47 @@ export function DREContent() {
           <DialogHeader>
             <DialogTitle>Selecionar aba da planilha</DialogTitle>
             <DialogDescription>
-              Escolha a aba que contem a DRE mensal. Nenhuma aba sera importada automaticamente.
+              Escolha uma ou mais abas DRE. Abas fora desse padrao ficam separadas para evitar importacao acidental.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2">
-            <Label>Aba do Excel</Label>
-            <Select value={selectedSheetName} onValueChange={(value) => setSelectedSheetName(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione a aba" />
-              </SelectTrigger>
-              <SelectContent>
-                {sheetNames.map((sheet) => (
-                  <SelectItem key={sheet.name} value={sheet.name}>{sheet.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Abas DRE detectadas</Label>
+              <div className="space-y-2 rounded-lg border p-3">
+                {sheetNames.filter((sheet) => isDreSheetName(sheet.name)).length ? (
+                  sheetNames.filter((sheet) => isDreSheetName(sheet.name)).map((sheet) => (
+                    <label key={sheet.name} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedSheetNames.includes(sheet.name)}
+                        onChange={(event) => {
+                          setSelectedSheetNames((current) =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, sheet.name]))
+                              : current.filter((name) => name !== sheet.name)
+                          )
+                        }}
+                      />
+                      <span className="font-medium">{sheet.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhuma aba iniciada por DRE foi detectada.</p>
+                )}
+              </div>
+            </div>
+            {sheetNames.some((sheet) => !isDreSheetName(sheet.name)) && (
+              <div className="grid gap-2">
+                <Label>Outras abas</Label>
+                <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  {sheetNames.filter((sheet) => !isDreSheetName(sheet.name)).map((sheet) => sheet.name).join(", ")}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancelar</Button>
-            <Button onClick={handleConfirmSheet} disabled={!selectedSheetName}>Continuar para preview</Button>
+            <Button onClick={handleConfirmSheet} disabled={selectedSheetNames.length === 0}>Continuar para preview</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1342,15 +1328,15 @@ export function DREContent() {
               Confira os dados que serao importados para a DRE gerencial.
             </DialogDescription>
           </DialogHeader>
-          {importPreview && (
+          {importPreviews.length > 0 && (
             <div className="space-y-4">
               <div className="rounded-lg border p-3 text-sm">
-                <p><strong>Arquivo:</strong> {importPreview.fileName}</p>
-                <p><strong>Aba:</strong> {importPreview.sheetName}</p>
-                <p><strong>Linhas lidas:</strong> {importPreview.totalRowsRead}</p>
-                <p><strong>Linhas que serao importadas:</strong> {importPreview.rows.length}</p>
-                <p><strong>Meses identificados:</strong> {importPreview.monthNumbers.map((month) => months[month - 1] ?? month).join(", ")}</p>
-                <p><strong>Linhas ignoradas:</strong> {importPreview.ignoredRows.length}</p>
+                <p><strong>Arquivo:</strong> {importPreviews[0]?.fileName}</p>
+                <p><strong>Abas:</strong> {importPreviews.map((preview) => preview.sheetName).join(", ")}</p>
+                <p><strong>Linhas lidas:</strong> {totalImportRowsRead}</p>
+                <p><strong>Linhas que serao importadas:</strong> {totalImportRows}</p>
+                <p><strong>Meses identificados:</strong> {Array.from(new Set(importPreviews.flatMap((preview) => preview.monthNumbers))).map((month) => months[month - 1] ?? month).join(", ")}</p>
+                <p><strong>Linhas ignoradas:</strong> {totalIgnoredRows}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
                 {Array.from(importPreviewMonthTotals.entries()).map(([month, total]) => (
@@ -1365,6 +1351,8 @@ export function DREContent() {
                   <thead className="sticky top-0 bg-muted">
                     <tr>
                       <th className="px-3 py-2 text-left">Conta</th>
+                      <th className="px-3 py-2 text-left">Aba</th>
+                      <th className="px-3 py-2 text-left">Linha</th>
                       <th className="px-3 py-2 text-left">Grupo</th>
                       <th className="px-3 py-2 text-left">Tipo</th>
                       <th className="px-3 py-2 text-left">Tipo de linha</th>
@@ -1375,11 +1363,13 @@ export function DREContent() {
                   <tbody>
                     {importPreviewRows
                       .map((row) => (
-                        <tr key={`${row.groupName}-${row.account}-${row.month}`} className="border-t">
+                        <tr key={`${row.sheetName}-${row.rowIndex}-${row.groupName}-${row.account}-${row.month}`} className="border-t">
                           <td className="px-3 py-2">{row.account}</td>
+                          <td className="px-3 py-2">{row.sheetName}</td>
+                          <td className="px-3 py-2">{row.rowIndex}</td>
                           <td className="px-3 py-2">{row.groupName}</td>
                           <td className="px-3 py-2">{row.type === "receita" ? "Receita" : row.type === "despesa" ? "Despesa" : "Neutro"}</td>
-                          <td className="px-3 py-2">{importPreview.rows.find((item) => item.account === row.account && item.groupName === row.groupName)?.rowType ?? "linha"}</td>
+                          <td className="px-3 py-2">{dreImportRowTypeLabel(row.rowType)}</td>
                           <td className="px-3 py-2">{months[row.month - 1] ?? row.month}</td>
                           <td className="px-3 py-2 text-right font-semibold">{formatCurrency(row.value)}</td>
                         </tr>
@@ -1387,13 +1377,13 @@ export function DREContent() {
                   </tbody>
                 </table>
               </div>
-              {importPreview.ignoredRows.length > 0 && (
+              {totalIgnoredRows > 0 && (
                 <div className="rounded-lg border p-3 text-xs text-muted-foreground">
                   <p className="font-medium text-foreground">Linhas ignoradas</p>
                   <p>Foram ignoradas apenas linhas vazias, sem conta e sem valor.</p>
                   <ul className="mt-2 max-h-24 overflow-auto">
-                    {importPreview.ignoredRows.slice(0, 10).map((row) => (
-                      <li key={`${row.rowIndex}-${row.reason}`}>Linha {row.rowIndex}: {row.reason}</li>
+                    {importPreviews.flatMap((preview) => preview.ignoredRows.map((row) => ({ ...row, sheetName: preview.sheetName }))).slice(0, 10).map((row) => (
+                      <li key={`${row.sheetName}-${row.rowIndex}-${row.reason}`}>{row.sheetName}, linha {row.rowIndex}: {row.reason}</li>
                     ))}
                   </ul>
                 </div>
@@ -1402,7 +1392,7 @@ export function DREContent() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setImportOpen(false)} disabled={importing}>Cancelar</Button>
-            <Button onClick={handleConfirmImport} disabled={importing || !importPreview}>
+            <Button onClick={handleConfirmImport} disabled={importing || importPreviews.length === 0}>
               {importing ? "Importando..." : "Confirmar importacao"}
             </Button>
           </DialogFooter>

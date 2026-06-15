@@ -106,7 +106,7 @@ export function calculateMonthlyRevenueMetrics(
     contractExpectedRevenue,
     financialRealizedRevenue,
     financialPendingRevenue,
-    totalRevenue: contractExpectedRevenue + financialRealizedRevenue + financialPendingRevenue,
+    totalRevenue: financialRealizedRevenue,
     activeContracts,
     pendingContractReceivables,
   }

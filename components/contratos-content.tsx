@@ -63,6 +63,7 @@ import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
 import { createContract, createContractEquipment, getContracts, recalculateEquipmentInventory } from "@/lib/data/contracts"
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
+import { createInstallment } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
@@ -114,6 +115,28 @@ function toNumber(value: string | undefined) {
 
 function isEquipmentAvailable(status: string, availableQuantity: number) {
   return ["available", "active", "ativo", "disponivel"].includes(status.toLowerCase()) && availableQuantity > 0
+}
+
+function buildContractInstallmentDates(startDate: string, endDate: string | null | undefined, dueDay: number) {
+  const start = new Date(`${startDate}T00:00:00`)
+  if (Number.isNaN(start.getTime())) return []
+
+  const end = endDate ? new Date(`${endDate}T00:00:00`) : new Date(start)
+  if (!endDate) end.setMonth(end.getMonth() + 11)
+  if (Number.isNaN(end.getTime())) return []
+
+  const dates: string[] = []
+  const current = new Date(start.getFullYear(), start.getMonth(), Math.min(Math.max(1, dueDay), 28))
+  if (current < start) current.setMonth(current.getMonth() + 1)
+
+  while (current <= end && dates.length < 120) {
+    const lastDay = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate()
+    current.setDate(Math.min(Math.max(1, dueDay), lastDay))
+    dates.push(current.toISOString().slice(0, 10))
+    current.setMonth(current.getMonth() + 1)
+  }
+
+  return dates
 }
 
 function normalizeContract(item: Record<string, unknown>): ContractWithPublicLink {
@@ -266,6 +289,22 @@ function NewContractDialog({
       })
 
       const contractId = String((created as SupabaseRow).id ?? "")
+      const monthlyValue = toNumber(values.monthly_value) ?? 0
+      const installmentDates = buildContractInstallmentDates(values.start_date, values.end_date || null, dueDate.getDate())
+      for (const [index, installmentDate] of installmentDates.entries()) {
+        await createInstallment({
+          contract_id: contractId,
+          client_id: values.client_id,
+          installment_number: index + 1,
+          original_value: monthlyValue,
+          updated_value: monthlyValue,
+          paid_value: 0,
+          due_date: installmentDate,
+          status: "aberta",
+          notes: `Parcela gerada automaticamente pelo contrato ${contractNumber}`,
+        })
+      }
+
       const selectedDrafts = equipmentDrafts.filter((item) => item.equipmentId)
       for (const draft of selectedDrafts) {
         await createContractEquipment({

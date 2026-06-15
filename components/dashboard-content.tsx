@@ -363,6 +363,14 @@ export function DashboardContent() {
         isCurrentMonth(row.competence_date ?? row.due_date ?? row.date ?? row.created_at) &&
         ["despesa", "expense", "saida"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase())
     )
+    const currentMonthReceivedRevenue = sumRows(
+      data.financialEntries,
+      ["amount", "valor", "value"],
+      (row) =>
+        isCurrentMonth(row.competence_date ?? row.payment_date ?? row.due_date ?? row.date ?? row.created_at) &&
+        ["receita", "income", "entrada"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase()) &&
+        ["recebido", "received", "completed"].includes(text(row, ["status"]).toLowerCase())
+    )
     const activeContractsFromTable = data.contracts.filter((row) =>
       ["ativo", "active"].includes(text(row, ["status"]).toLowerCase())
     )
@@ -372,7 +380,7 @@ export function DashboardContent() {
       ? sumRows(data.overdueRows, ["amount", "valor", "value", "total_amount"], () => true)
       : sumRows(
           data.installments,
-          ["amount", "valor", "value"],
+          ["updated_value", "original_value", "installment_value", "amount", "valor", "value"],
           (row) => {
             const dueDate = new Date(String(row.due_date ?? row.vencimento ?? ""))
             return Boolean(row.due_date ?? row.vencimento) && dueDate < new Date() && !row.paid_at && !row.payment_date
@@ -380,8 +388,8 @@ export function DashboardContent() {
         )
     const receivableAmount = sumRows(
       data.installments,
-      ["amount", "valor", "value"],
-      (row) => !row.paid_at && !row.payment_date
+      ["updated_value", "original_value", "installment_value", "amount", "valor", "value"],
+      (row) => !row.paid_at && !row.payment_date && !["paga", "cancelada"].includes(text(row, ["status"]).toLowerCase())
     )
     const bankBalances = data.bankBalanceRows.map((row, index) => ({
       name: text(row, ["name", "account_name", "bank_name", "description"], `Conta ${index + 1}`),
@@ -419,11 +427,11 @@ export function DashboardContent() {
         id: text(row, ["id"], String(index)),
         client: text(row, ["client_name", "cliente", "client"], "Cliente nao informado"),
         dueDate: text(row, ["due_date", "vencimento"], "-"),
-        amount: num(row, ["amount", "valor", "value"]),
+        amount: num(row, ["updated_value", "original_value", "installment_value", "amount", "valor", "value"]),
         status: text(row, ["status"], "pending"),
       }))
     const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
-    const monthlyRevenue = revenueMetrics.totalRevenue
+    const monthlyRevenue = currentMonthReceivedRevenue
     const monthlyExpenses = num(financial, ["monthly_expenses", "expenses_month", "expenses", "despesas_mensais"], currentMonthExpensesFromEntries)
     const profitDistribution = {
       revenue: num(profit, ["revenue", "receita"], monthlyRevenue),
@@ -443,6 +451,7 @@ export function DashboardContent() {
 
     return {
       monthlyRevenue,
+      forecastRevenue: revenueMetrics.contractExpectedRevenue,
       monthlyExpenses,
       monthlyProfit: operatingProfit,
       activeContracts: revenueMetrics.activeContracts.length || num(data.contractSummaryRows[0], ["active_contracts", "ativos"], activeContractsFromTable.length),
@@ -497,6 +506,7 @@ export function DashboardContent() {
 
   const {
     monthlyRevenue,
+    forecastRevenue,
     monthlyExpenses,
     monthlyProfit,
     activeContracts,
@@ -621,12 +631,12 @@ export function DashboardContent() {
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          title="Receita Prevista Mensal"
+          title="Receita Realizada Mensal"
           value={formatCurrency(monthlyRevenue)}
           change={formatCurrency(monthlyProfit)}
           changeType={monthlyProfit >= 0 ? "positive" : "negative"}
           icon={DollarSign}
-          description="lucro mensal"
+          description="recebida no mes"
         />
         <MetricCard
           title="Contratos Ativos"
@@ -662,6 +672,7 @@ export function DashboardContent() {
         <CardContent>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             {[
+              ["Receita prevista", formatCurrency(forecastRevenue)],
               ["Despesas mensais", formatCurrency(monthlyExpenses)],
               ["Contas a receber", formatCurrency(receivableAmount)],
               ["Contas a pagar", formatCurrency(payableAmount)],
