@@ -355,6 +355,8 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
         bankAccounts: options.bankAccounts.map(bankOption).filter((item) => item.value),
         clients: clients.map(clientOption).filter((item) => item.value),
       })
+    }).catch((error) => {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel carregar as categorias DRE.")
     })
   }, [open])
 

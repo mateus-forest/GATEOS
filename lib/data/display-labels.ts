@@ -18,7 +18,9 @@ export function clientLabel(record: DisplayRecord) {
 }
 
 export function dreCategoryLabel(record: DisplayRecord) {
-  return friendlyLabel(record, ["name", "description", "nome", "descricao", "label"])
+  const name = friendlyLabel(record, ["name", "description", "nome", "descricao", "label"])
+  const group = friendlyLabel(record, ["group_name", "groupName", "grupo"], "")
+  return group ? `${group} - ${name}` : name
 }
 
 export function bankAccountLabel(record: DisplayRecord) {

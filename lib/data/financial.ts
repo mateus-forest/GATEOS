@@ -1,4 +1,5 @@
 import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
+import { getDreCategories } from "@/lib/data/dre"
 import { normalizeFinancialStatus } from "@/lib/data/financial-status"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
@@ -19,7 +20,7 @@ export async function createFinancialEntry(payload: SupabaseRow) {
 
 export async function getFinancialSelectOptions() {
   const [dreCategories, costCenters, bankAccounts, clients, contracts] = await Promise.all([
-    selectRows("dre_categories", []),
+    getDreCategories(),
     selectRows("cost_centers", []),
     selectRows("bank_accounts", []),
     selectRows("clients", []),

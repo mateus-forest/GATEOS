@@ -482,7 +482,8 @@ function buildRows({
     const categoryId = String(entry.dre_category_id ?? "")
     const category = categoryById.get(categoryId)
     if (isIncomeEntry(entry) && !isEntryReceived(entry)) return
-    if (isIncomeEntry(entry) && entry.client_id) return
+    if (isExpenseEntry(entry) && !isEntryReceived(entry)) return
+    if (isIncomeEntry(entry) && entry.client_id && !categoryId) return
 
     const group = isIncomeEntry(entry) ? "revenue" : isExpenseEntry(entry) ? "expense" : null
     if (!group) return
@@ -534,7 +535,11 @@ function buildRows({
   const revenueRows = detailRows.filter((row) => row.group === "revenue")
   const expenseRows = detailRows.filter((row) => row.group === "expense")
   const expenseRowsByGroup = (key: string) =>
-    expenseRows.filter((row) => categoryGroupKey(row.groupName) === key)
+    expenseRows.filter((row) => {
+      const label = normalizeTextKey(row.label)
+      if (key === "cpv" && (label.includes("cpv") || label.includes("custo do produto"))) return true
+      return categoryGroupKey(row.groupName) === key
+    })
   const cpvRows = expenseRowsByGroup("cpv")
   const peopleRows = expenseRowsByGroup("people")
   const operationalRows = expenseRowsByGroup("operational")
@@ -542,7 +547,10 @@ function buildRows({
   const nonOperationalRows = expenseRowsByGroup("non-operational")
   const aporteRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "aporte")
   const closingRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "closing")
-  const ordinaryRevenueRows = revenueRows.filter((row) => !["aporte", "closing"].includes(categoryGroupKey(row.groupName)))
+  const ordinaryRevenueRows = revenueRows.filter((row) => {
+    const label = normalizeTextKey(row.label)
+    return !["aporte", "closing"].includes(categoryGroupKey(row.groupName)) && !label.includes("cpv") && !label.includes("custo do produto")
+  })
   const templateOrder = new Map(templateRows.map((row) => [normalizeTextKey(row.label), row.order]))
   const sortByTemplate = (items: DreRow[]) =>
     [...items].sort((a, b) => {

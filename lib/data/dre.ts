@@ -12,7 +12,19 @@ export async function getDreMonthlyClosings() {
 }
 
 export async function getDreCategories() {
-  return selectRows("dre_categories", [])
+  const supabase = getDreSupabaseClient()
+  const { data, error } = await supabase
+    .from("dre_categories")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+
+  if (error) {
+    throw new Error(`dre_categories: falha ao consultar categorias ativas. ${error.message}`)
+  }
+
+  return data ?? []
 }
 
 export async function getDreManualAdjustments() {

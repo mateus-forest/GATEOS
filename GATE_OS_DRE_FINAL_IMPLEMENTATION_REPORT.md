@@ -47,6 +47,73 @@ O carregamento principal da DRE agora exibe erro real retornado pelas consultas 
 - O caminho historico `2022`-`2025` nao foi alterado; ele continua lendo `dre_historical_values`.
 - A exportacao permanece baseada em `activeRows`, portanto respeita a fonte ativa selecionada (`2026` operacional, `2022`-`2025` historica ou snapshot importado).
 
+## Conexao da DRE 2026 com financeiro
+
+### Causa real encontrada
+
+O template operacional `dre_operational_template_rows` estava carregado e renderizava a estrutura visual de 2026, mas `dre_categories` estava vazia. Como `financial_entries` e `dre_manual_adjustments` usam `dre_category_id`, a DRE nao tinha categorias reais para ligar lancamentos financeiros, ajustes manuais e linhas do demonstrativo.
+
+O modal financeiro ja possuia o campo `dre_category_id` e ja salvava esse valor em `financial_entries`, mas a lista vinha vazia porque dependia de `dre_categories`.
+
+### SQL criado
+
+Foi criado o SQL idempotente:
+
+- `supabase/gate-os-dre-2026-categories-from-template.sql`
+
+Ele popula `dre_categories` a partir de `dre_operational_template_rows`, usando somente `year = 2026`, `active = true` e linhas de detalhe. O script ignora headers, totais, KPIs, percentuais e linhas de fechamento.
+
+Com o seed operacional versionado de 74 linhas, o filtro gera `51` categorias elegiveis. No Supabase real, onde existem `76` linhas, a quantidade criada deve continuar seguindo o mesmo filtro; linhas `balance/result` de fechamento nao viram categoria.
+
+### Como o modal usa dre_categories
+
+O financeiro busca categorias com:
+
+- `active = true`
+- ordenacao por `sort_order`
+- erro explicito caso `dre_categories` nao possa ser consultada
+
+O label exibido no modal passou a ser:
+
+- `group_name - name`
+
+Exemplos:
+
+- `RECEITAS - Fribal`
+- `DESPESAS COM PESSOAL - Salarios`
+- `DESPESAS OPERACIONAIS / GERAIS - Aluguel`
+
+Ao salvar o lancamento, o modal continua gravando `dre_category_id` em `financial_entries`.
+
+### Como a DRE 2026 calcula valores
+
+A DRE 2026 cruza:
+
+- `financial_entries.dre_category_id`
+- `dre_categories.id`
+- `dre_categories.name/group_name`
+- `dre_operational_template_rows.account_name/group_name`
+
+Os valores entram no mes de `competence_date`. Receitas entram somente quando o status normalizado e `recebido`; despesas entram somente quando o status normalizado e `pago`.
+
+Linhas sem lancamento continuam aparecendo com valor zerado, sem criar fallback falso.
+
+### Acoes na DRE 2026
+
+Ja existe ajuste manual por linha da DRE quando a linha tem `categoryId`, gravando em `dre_manual_adjustments`.
+
+Nao foi encontrada uma acao completa e segura para criar/editar/excluir lancamentos financeiros diretamente dentro da grade da DRE 2026. A implementacao minima recomendada para uma proxima etapa e abrir o modal financeiro pre-preenchido a partir da linha da DRE, reaproveitando `dre_category_id`, `competence_date`, status e conta bancaria, sem duplicar regras de financeiro dentro da DRE.
+
+### Validacoes executadas nesta correcao
+
+- Validacao local do SQL contra o seed versionado:
+  - `74` linhas de template no arquivo.
+  - `51` categorias elegiveis pelo filtro seguro.
+- `npm run lint`
+- `npm run build`
+- Consulta local com `NEXT_PUBLIC_SUPABASE_ANON_KEY` ainda retorna `0` linhas para `dre_categories` e `financial_entries` neste ambiente, entao a validacao de dados reais depende da execucao manual do SQL no Supabase e de sessao autenticada/policies do projeto.
+- O historico `2022`-`2025` nao foi alterado.
+
 ## Correcao da leitura historica na interface
 
 ### Causa do problema
