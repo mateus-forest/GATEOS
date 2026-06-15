@@ -55,7 +55,7 @@ import type { AssetView } from "@/lib/mock-data"
 import { getAssets } from "@/lib/data/assets"
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { exportPdfReport } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildAssetsReport } from "@/lib/reports/report-builders"
 
 const CATEGORY_COLORS = ["#22B8CF", "#22C55E", "#F59E0B", "#8B5CF6", "#EF4444"]
@@ -363,15 +363,18 @@ export function PatrimonioContent() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("A visualização detalhada do patrimônio ainda precisa de modal persistente dedicado.")}>
                           <Eye className="mr-2 h-4 w-4" />
                           Ver detalhes
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("A edição de patrimônio ainda precisa de formulário persistente dedicado.")}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => featureInPreparation("Alienar patrimônio exige baixa contábil e registro financeiro auditável.")}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Alienar
                         </DropdownMenuItem>

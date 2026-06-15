@@ -45,7 +45,7 @@ export function exportPdfReport(report: UniversalReport) {
   const downloaded = exportReportPdf(report)
 
   if (!downloaded) {
-    toast.error("Nao foi possivel gerar o PDF deste relatorio.")
+    toast.error("Não foi possível gerar o PDF deste relatório.")
     return false
   }
 

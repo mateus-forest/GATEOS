@@ -55,6 +55,19 @@ const initialForm: TicketForm = {
   description: "",
 }
 
+const ticketTypeLabels: Record<string, string> = {
+  corretiva: "Corretiva",
+  preventiva: "Preventiva",
+  emergencial: "Emergencial",
+}
+
+const ticketPriorityLabels: Record<string, string> = {
+  low: "Baixa",
+  medium: "Média",
+  high: "Alta",
+  critical: "Crítica",
+}
+
 function text(row: Row | null | undefined, keys: string[], fallback = "-") {
   if (!row) return fallback
   const value = keys.map((key) => row[key]).find((item) => item !== undefined && item !== null && item !== "")
@@ -100,11 +113,11 @@ function isOverdue(installment: Row) {
 
 async function loadPublicContract(token: string): Promise<PublicData> {
   if (!isSupabaseConfigured()) {
-    throw new Error("Supabase nao esta configurado para carregar o contrato publico.")
+    throw new Error("Supabase não está configurado para carregar o contrato público.")
   }
 
   const supabase = createSupabaseBrowserClient()
-  if (!supabase) throw new Error("Nao foi possivel iniciar a conexao com o Supabase.")
+  if (!supabase) throw new Error("Não foi possível iniciar a conexão com o Supabase.")
 
   const { data: contract, error: contractError } = await supabase
     .from("contracts")
@@ -114,10 +127,10 @@ async function loadPublicContract(token: string): Promise<PublicData> {
     .maybeSingle()
 
   if (contractError) {
-    throw new Error("A consulta por token publico falhou. Verifique se a migration do link publico foi aplicada.")
+    throw new Error("A consulta por token público falhou. Verifique se a migration do link público foi aplicada.")
   }
   if (!contract) {
-    throw new Error("Link invalido, expirado ou desativado.")
+    throw new Error("Link inválido, expirado ou desativado.")
   }
 
   const contractRow = contract as Row
@@ -176,7 +189,7 @@ export function PublicContractPage({ token }: { token: string }) {
       })
       .catch((caught: unknown) => {
         if (!active) return
-        setError(caught instanceof Error ? caught.message : "Nao foi possivel carregar o contrato.")
+        setError(caught instanceof Error ? caught.message : "Não foi possível carregar o contrato.")
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -211,21 +224,23 @@ export function PublicContractPage({ token }: { token: string }) {
     event.preventDefault()
     if (!data || !selectedEquipment) return
     if (!form.requester.trim() || !form.phone.trim() || !form.description.trim()) {
-      toast.error("Preencha solicitante, telefone/WhatsApp e descricao do problema.")
+      toast.error("Preencha solicitante, telefone/WhatsApp e descrição do problema.")
       return
     }
     if (!isSupabaseConfigured()) {
-      toast.error("Supabase nao esta configurado. O chamado nao foi criado.")
+      toast.error("Supabase não está configurado. O chamado não foi criado.")
       return
     }
 
     const supabase = createSupabaseBrowserClient()
     if (!supabase) {
-      toast.error("Nao foi possivel conectar ao Supabase. O chamado nao foi criado.")
+      toast.error("Não foi possível conectar ao Supabase. O chamado não foi criado.")
       return
     }
 
     const ticketNumber = `GATE-${Date.now().toString().slice(-8)}`
+    const ticketType = ticketTypeLabels[form.type] ?? form.type
+    const priorityLabel = ticketPriorityLabels[form.priority] ?? form.priority
     setSending(true)
     const { data: created, error: insertError } = await supabase
       .from("maintenance_orders")
@@ -234,10 +249,10 @@ export function PublicContractPage({ token }: { token: string }) {
         client_id: text(data.contract, ["client_id", "cliente_id"], "") || null,
         contract_id: text(data.contract, ["id"], ""),
         ticket_number: ticketNumber,
-        type: form.type,
         priority: form.priority,
         status: "open",
-        problem: `Solicitante: ${form.requester}\nTelefone/WhatsApp: ${form.phone}\nE-mail: ${form.email || "-"}\n\n${form.description}`,
+        problem: `Tipo do problema: ${ticketType}\nPrioridade informada: ${priorityLabel}\nSolicitante: ${form.requester}\nTelefone/WhatsApp: ${form.phone}\nE-mail: ${form.email || "-"}\n\n${form.description}`,
+        diagnosis: "Aguardando triagem",
         entry_date: new Date().toISOString().slice(0, 10),
       })
       .select("*")
@@ -245,7 +260,7 @@ export function PublicContractPage({ token }: { token: string }) {
     setSending(false)
 
     if (insertError || !created) {
-      toast.error(insertError?.message ?? "Nao foi possivel criar o chamado.")
+      toast.error(insertError?.message ?? "Não foi possível criar o chamado.")
       return
     }
 
@@ -273,8 +288,8 @@ export function PublicContractPage({ token }: { token: string }) {
         <div className="mx-auto max-w-2xl pt-16">
           <Card>
             <CardHeader>
-              <CardTitle>Link indisponivel</CardTitle>
-              <CardDescription>{error || "Nao foi possivel carregar este contrato."}</CardDescription>
+              <CardTitle>Link indisponível</CardTitle>
+              <CardDescription>{error || "Não foi possível carregar este contrato."}</CardDescription>
             </CardHeader>
           </Card>
         </div>
@@ -302,11 +317,11 @@ export function PublicContractPage({ token }: { token: string }) {
               <Badge className={statusClass(contractStatus)}>{contractStatus}</Badge>
             </div>
             <div>
-              <p className="text-slate-500">Inicio</p>
+              <p className="text-slate-500">Início</p>
               <p className="font-medium">{dateValue(contract, ["start_date", "data_inicio"])}</p>
             </div>
             <div>
-              <p className="text-slate-500">Termino</p>
+              <p className="text-slate-500">Término</p>
               <p className="font-medium">{dateValue(contract, ["end_date", "data_fim"])}</p>
             </div>
           </div>
@@ -334,7 +349,7 @@ export function PublicContractPage({ token }: { token: string }) {
           <Card>
             <CardContent className="p-4">
               <FileText className="mb-3 h-5 w-5 text-primary" />
-              <p className="text-sm text-muted-foreground">Plano/servico</p>
+              <p className="text-sm text-muted-foreground">Plano/serviço</p>
               <p className="font-semibold">{text(contract, ["type", "tipo", "description", "descricao"], "Contrato GATE")}</p>
             </CardContent>
           </Card>
@@ -348,22 +363,22 @@ export function PublicContractPage({ token }: { token: string }) {
           <Card>
             <CardContent className="p-4">
               <Wrench className="mb-3 h-5 w-5 text-primary" />
-              <p className="text-sm text-muted-foreground">Maquinas vinculadas</p>
+              <p className="text-sm text-muted-foreground">Máquinas vinculadas</p>
               <p className="font-semibold">{data.equipment.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <CheckCircle2 className="mb-3 h-5 w-5 text-primary" />
-              <p className="text-sm text-muted-foreground">Situacao financeira</p>
-              <p className="font-semibold">{overdueInstallments.length ? "Com pendencias" : "Sem pendencias vencidas"}</p>
+              <p className="text-sm text-muted-foreground">Situação financeira</p>
+              <p className="font-semibold">{overdueInstallments.length ? "Com pendências" : "Sem pendências vencidas"}</p>
             </CardContent>
           </Card>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Maquinas e equipamentos</CardTitle>
+            <CardTitle>Máquinas e equipamentos</CardTitle>
             <CardDescription>Equipamentos vinculados a este contrato.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
@@ -375,17 +390,17 @@ export function PublicContractPage({ token }: { token: string }) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold">{text(equipment, ["name", "nome", "model", "modelo"], "Equipamento")}</p>
-                      <p className="text-sm text-muted-foreground">Identificacao: {text(equipment, ["code", "number", "numero", "patrimony_code"])}</p>
+                      <p className="text-sm text-muted-foreground">Identificação: {text(equipment, ["code", "number", "numero", "patrimony_code"])}</p>
                     </div>
                     <Badge className={statusClass(text(equipment, ["status"], "Ativo"))}>{normalizeStatus(text(equipment, ["status"], "Ativo"))}</Badge>
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-                    <span>Serie: {text(equipment, ["serial_number", "numero_serie"])}</span>
+                    <span>Série: {text(equipment, ["serial_number", "numero_serie"])}</span>
                     <span>Local: {text(equipment, ["location", "localizacao"])}</span>
-                    <span className="sm:col-span-2">Configuracao: {text(equipment, ["configuration", "configuracao", "description", "descricao"])}</span>
+                    <span className="sm:col-span-2">Configuração: {text(equipment, ["configuration", "configuracao", "description", "descricao"])}</span>
                   </div>
                   <Button className="mt-4 w-full sm:w-auto" onClick={() => handleOpenTicket(equipment)}>
-                    Abrir chamado para esta maquina
+                    Abrir chamado para esta máquina
                   </Button>
                 </div>
               ))
@@ -397,7 +412,7 @@ export function PublicContractPage({ token }: { token: string }) {
           <Card>
             <CardHeader>
               <CardTitle>Pagamentos</CardTitle>
-              <CardDescription>Proximas parcelas, vencidas e historico.</CardDescription>
+              <CardDescription>Próximas parcelas, vencidas e histórico.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {data.installments.length === 0 ? (
@@ -419,7 +434,7 @@ export function PublicContractPage({ token }: { token: string }) {
               )}
               {nextInstallments.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Proximo vencimento: {dateValue(nextInstallments[0], ["due_date", "vencimento"])}
+                  Próximo vencimento: {dateValue(nextInstallments[0], ["due_date", "vencimento"])}
                 </p>
               )}
             </CardContent>
@@ -427,7 +442,7 @@ export function PublicContractPage({ token }: { token: string }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Historico de chamados</CardTitle>
+              <CardTitle>Histórico de chamados</CardTitle>
               <CardDescription>Acompanhamento dos chamados deste contrato.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -440,8 +455,8 @@ export function PublicContractPage({ token }: { token: string }) {
                       <p className="font-medium">{text(order, ["ticket_number"], "Chamado")}</p>
                       <Badge className={statusClass(text(order, ["status"], "open"))}>{normalizeStatus(text(order, ["status"], "open"))}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{text(order, ["problem"], "Sem descricao").slice(0, 140)}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">Atualizacao: {dateValue(order, ["updated_at", "entry_date", "created_at"])}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{text(order, ["problem"], "Sem descrição").slice(0, 140)}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">Atualização: {dateValue(order, ["updated_at", "entry_date", "created_at"])}</p>
                   </div>
                 ))
               )}
@@ -455,7 +470,7 @@ export function PublicContractPage({ token }: { token: string }) {
           <DialogHeader>
             <DialogTitle>Abrir chamado</DialogTitle>
             <DialogDescription>
-              Maquina selecionada: {text(selectedEquipment, ["name", "nome", "model", "modelo"], "Equipamento")}
+              Máquina selecionada: {text(selectedEquipment, ["name", "nome", "model", "modelo"], "Equipamento")}
             </DialogDescription>
           </DialogHeader>
           {protocol ? (
@@ -497,15 +512,15 @@ export function PublicContractPage({ token }: { token: string }) {
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Baixa</SelectItem>
-                      <SelectItem value="medium">Media</SelectItem>
+                      <SelectItem value="medium">Média</SelectItem>
                       <SelectItem value="high">Alta</SelectItem>
-                      <SelectItem value="critical">Critica</SelectItem>
+                      <SelectItem value="critical">Crítica</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="description">Descricao do problema</Label>
+                <Label htmlFor="description">Descrição do problema</Label>
                 <textarea
                   id="description"
                   className="min-h-28 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
@@ -514,7 +529,7 @@ export function PublicContractPage({ token }: { token: string }) {
                 />
               </div>
               <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-                Anexos/fotos serao habilitados quando o fluxo publico de upload no Storage estiver liberado.
+                Anexos/fotos serão habilitados quando o fluxo público de upload no Storage estiver liberado.
               </div>
             </form>
           )}

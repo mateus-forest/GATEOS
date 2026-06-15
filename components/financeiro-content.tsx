@@ -936,15 +936,18 @@ export function FinanceiroContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A visualização detalhada do lançamento ainda precisa de modal persistente dedicado.")}>
                               <Eye className="mr-2 h-4 w-4" />
                               Ver detalhes
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A edição de lançamentos financeiros ainda precisa de validação de caixa, anexos e DRE.")}>
                               <Edit className="mr-2 h-4 w-4" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => featureInPreparation("A exclusão de lançamentos financeiros exige trilha de auditoria e recálculo da DRE.")}
+                            >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Excluir
                             </DropdownMenuItem>

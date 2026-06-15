@@ -39,5 +39,14 @@ export function equipmentLabel(record: DisplayRecord) {
 }
 
 export function partnerLabel(record: DisplayRecord) {
-  return friendlyLabel(record, ["name", "partner_name", "nome", "socio"])
+  return friendlyLabel(record, [
+    "name",
+    "partner_name",
+    "full_name",
+    "display_name",
+    "legal_name",
+    "shareholder_name",
+    "nome",
+    "socio",
+  ])
 }

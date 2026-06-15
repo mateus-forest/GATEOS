@@ -185,9 +185,9 @@ export function SociosContent() {
       const normalized = normalizePartner(updated as Record<string, unknown>, entries)
       setPartners((current) => current.map((partner) => (partner.id === normalized.id ? normalized : partner)))
       setEditingPartner(null)
-      toast.success("Socio atualizado com sucesso")
+      toast.success("Sócio atualizado com sucesso")
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Nao foi possivel atualizar o socio.")
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o sócio.")
     } finally {
       setSavingPartner(false)
     }
@@ -196,7 +196,7 @@ export function SociosContent() {
   const handleSave = async () => {
     const amount = Number(form.amount.replace(",", "."))
     if (!amount) {
-      toast.error("Informe um valor valido")
+      toast.error("Informe um valor válido")
       return
     }
 
@@ -212,12 +212,12 @@ export function SociosContent() {
       const partnerName = partners.find((partner) => partner.id === form.partner)?.name ?? "Registro sem nome"
       const normalized = normalizePartnerEntry({ ...(created as Record<string, unknown>), partner: partnerName })
       setEntries((current) => [normalized, ...current])
-      toast.success("Lancamento de socio salvo com sucesso")
+      toast.success("Lançamento de sócio salvo com sucesso")
       setOpen(false)
       setForm({ partner: "", type: "distribuicao_lucro", date: new Date().toISOString().slice(0, 10), amount: "", description: "", status: "previsto" })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Nao foi possivel salvar o lancamento de socio."
-      console.error("[socios] Falha ao salvar lancamento", error)
+      const message = error instanceof Error ? error.message : "Não foi possível salvar o lançamento de sócio."
+      console.error("[socios] Falha ao salvar lançamento", error)
       toast.error(message)
     }
   }
@@ -226,8 +226,8 @@ export function SociosContent() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Socios</h1>
-          <p className="text-muted-foreground">Participacoes, aportes, distribuicoes e saldo liquido.</p>
+          <h1 className="text-3xl font-bold">Sócios</h1>
+          <p className="text-muted-foreground">Participações, aportes, distribuições e saldo líquido.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildPartnersReport(entries.map((entry) => ({
@@ -243,7 +243,7 @@ export function SociosContent() {
           </Button>
           <Button onClick={() => setOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Novo lancamento
+            Novo lançamento
           </Button>
         </div>
       </div>
@@ -252,7 +252,7 @@ export function SociosContent() {
         <Card>
           <CardContent className="p-6">
             <Users className="mb-3 h-5 w-5 text-primary" />
-            <p className="text-sm text-muted-foreground">Socios</p>
+            <p className="text-sm text-muted-foreground">Sócios</p>
             <p className="text-2xl font-bold">{partners.length}</p>
           </CardContent>
         </Card>
@@ -266,7 +266,7 @@ export function SociosContent() {
         <Card>
           <CardContent className="p-6">
             <TrendingUp className="mb-3 h-5 w-5 text-blue-600" />
-            <p className="text-sm text-muted-foreground">Distribuicoes</p>
+            <p className="text-sm text-muted-foreground">Distribuições</p>
             <p className="text-2xl font-bold">{formatCurrency(totals.distributions)}</p>
           </CardContent>
         </Card>
@@ -274,12 +274,12 @@ export function SociosContent() {
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Aportes</p>
             <p className="text-2xl font-bold">{formatCurrency(totals.contributions)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Devolucoes: {formatCurrency(totals.returns)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Devoluções: {formatCurrency(totals.returns)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Saldo liquido</p>
+            <p className="text-sm text-muted-foreground">Saldo líquido</p>
             <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totals.net)}</p>
           </CardContent>
         </Card>
@@ -288,8 +288,8 @@ export function SociosContent() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>Participacao societaria</CardTitle>
-            <CardDescription>Divisao percentual atual.</CardDescription>
+            <CardTitle>Participação societária</CardTitle>
+            <CardDescription>Divisão percentual atual.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -305,6 +305,9 @@ export function SociosContent() {
               </ResponsiveContainer>
             </div>
             <div className="space-y-2">
+              {partners.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum sócio cadastrado ou visível para o usuário atual.</p>
+              )}
               {partners.map((partner, index) => (
                 <div key={partner.id} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
@@ -320,11 +323,14 @@ export function SociosContent() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Quadro de socios</CardTitle>
-            <CardDescription>Indicadores individuais dos socios.</CardDescription>
+            <CardTitle>Quadro de sócios</CardTitle>
+            <CardDescription>Indicadores individuais dos sócios.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
+              {partners.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum sócio retornado pela consulta atual.</p>
+              )}
               {partners.map((partner, index) => (
                 <div key={partner.id} className="flex flex-col gap-3 rounded-lg bg-muted/50 p-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
@@ -340,7 +346,7 @@ export function SociosContent() {
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                     <div>
-                      <p className="text-muted-foreground">Participacao</p>
+                      <p className="text-muted-foreground">Participação</p>
                       <p className="font-bold">{partner.participationPercentage}%</p>
                     </div>
                     <div>
@@ -375,7 +381,7 @@ export function SociosContent() {
                         date: entry.date,
                         status: entry.status,
                         amount: entry.amount,
-                      }))))}>Exportar historico</DropdownMenuItem>
+                      }))))}>Exportar histórico</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -387,17 +393,17 @@ export function SociosContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Movimentacoes dos socios</CardTitle>
-          <CardDescription>Distribuicoes, aportes e devolucoes.</CardDescription>
+          <CardTitle>Movimentações dos sócios</CardTitle>
+          <CardDescription>Distribuições, aportes e devoluções.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Socio</TableHead>
+                <TableHead>Sócio</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Data</TableHead>
-                <TableHead>Descricao</TableHead>
+                <TableHead>Descrição</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
               </TableRow>
@@ -425,15 +431,15 @@ export function SociosContent() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Novo lancamento de socio</DialogTitle>
+            <DialogTitle>Novo lançamento de sócio</DialogTitle>
             <DialogDescription>Registro salvo em partner_entries.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             {[
-              ["partner", "Socio"],
+              ["partner", "Sócio"],
               ["type", "Tipo"],
               ["date", "Data"],
-              ["description", "Descricao"],
+              ["description", "Descrição"],
               ["status", "Status"],
               ["amount", "Valor"],
             ].map(([key, label]) => (
@@ -442,12 +448,12 @@ export function SociosContent() {
                 {key === "partner" ? (
                   <Select value={form.partner} onValueChange={(value) => setForm((current) => ({ ...current, partner: value ?? "" }))}>
                     <SelectTrigger id={key}>
-                      <SelectValue placeholder="Selecione o socio" />
+                      <SelectValue placeholder="Selecione o sócio" />
                     </SelectTrigger>
                     <SelectContent>
                       {partners.length ? partners.map((partner) => (
                         <SelectItem key={partner.id} value={partner.id}>{partner.name}</SelectItem>
-                      )) : <SelectItem value="empty" disabled>Registro sem nome</SelectItem>}
+                      )) : <SelectItem value="empty" disabled>Nenhum sócio disponível</SelectItem>}
                     </SelectContent>
                   </Select>
                 ) : key === "type" ? (
@@ -497,11 +503,11 @@ export function SociosContent() {
           {details && (
             <div className="grid gap-3">
               <div className="flex justify-between rounded-lg border p-3">
-                <span>Participacao nos lucros</span>
+                <span>Participação nos lucros</span>
                 <strong>{details.participationPercentage}%</strong>
               </div>
               <div className="flex justify-between rounded-lg border p-3">
-                <span>Distribuicoes</span>
+                <span>Distribuições</span>
                 <strong>{formatCurrency(details.distributions)}</strong>
               </div>
               <div className="flex justify-between rounded-lg border p-3">
@@ -509,7 +515,7 @@ export function SociosContent() {
                 <strong>{formatCurrency(details.contributions)}</strong>
               </div>
               <div className="flex justify-between rounded-lg border p-3">
-                <span>Saldo liquido</span>
+                <span>Saldo líquido</span>
                 <strong>{formatCurrency(details.received + details.returns - details.contributions)}</strong>
               </div>
             </div>
@@ -520,15 +526,15 @@ export function SociosContent() {
       <Dialog open={!!editingPartner} onOpenChange={(nextOpen) => !nextOpen && setEditingPartner(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar socio</DialogTitle>
-            <DialogDescription>Atualizacao real na tabela partners.</DialogDescription>
+            <DialogTitle>Editar sócio</DialogTitle>
+            <DialogDescription>Atualização real na tabela partners.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             {[
               ["name", "Nome"],
-              ["participationPercentage", "Participacao (%)"],
+              ["participationPercentage", "Participação (%)"],
               ["fixedMonthlyValue", "Fixo mensal"],
-              ["resultParticipationPercentage", "Participacao resultado (%)"],
+              ["resultParticipationPercentage", "Participação no resultado (%)"],
               ["active", "Ativo (true/false)"],
             ].map(([key, label]) => (
               <div key={key} className="grid gap-2">

@@ -996,15 +996,15 @@ export function ContratosContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { window.location.href = `/contratos/${contract.id}` }}>
                               <Eye className="mr-2 h-4 w-4" />
                               Ver detalhes
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A edição de contratos ainda precisa de um formulário persistente dedicado.")}>
                               <Edit className="mr-2 h-4 w-4" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A duplicação de contratos precisa copiar parcelas, equipamentos e vínculo jurídico com segurança.")}>
                               <Copy className="mr-2 h-4 w-4" />
                               Duplicar
                             </DropdownMenuItem>
@@ -1028,12 +1028,15 @@ export function ContratosContent() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("Renovação de contrato precisa gerar nova vigência, parcelas e validação de equipamentos.")}>
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Renovar contrato
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => featureInPreparation("Cancelamento de contrato exige atualização de estoque, parcelas e auditoria financeira.")}
+                            >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Cancelar
                             </DropdownMenuItem>

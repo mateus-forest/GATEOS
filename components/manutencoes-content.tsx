@@ -49,7 +49,7 @@ import { getContracts } from "@/lib/data/contracts"
 import { getEquipment } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
-import { exportPdfReport } from "@/lib/cta-actions"
+import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
 import { buildMaintenanceReport } from "@/lib/reports/report-builders"
 import { clientLabel, contractLabel, equipmentLabel } from "@/lib/data/display-labels"
 
@@ -429,15 +429,15 @@ export function ManutencoesContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A visualização detalhada de manutenção ainda precisa de modal persistente dedicado.")}>
                               <Eye className="mr-2 h-4 w-4" />
                               Ver detalhes
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A edição de manutenção ainda precisa de formulário persistente dedicado.")}>
                               <Edit className="mr-2 h-4 w-4" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => featureInPreparation("A atribuição de técnico ainda precisa atualizar o chamado no Supabase com confirmação.")}>
                               <User className="mr-2 h-4 w-4" />
                               Atribuir técnico
                             </DropdownMenuItem>

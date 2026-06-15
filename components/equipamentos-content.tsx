@@ -443,20 +443,23 @@ export function EquipamentosContent() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("A tela de detalhes de equipamentos ainda precisa de consulta persistente dedicada.")}>
                           <Eye className="mr-2 h-4 w-4" />
                           Ver detalhes
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => featureInPreparation("A edição de equipamentos ainda precisa de um formulário persistente dedicado.")}>
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { window.location.href = "/manutencoes" }}>
                           <Wrench className="mr-2 h-4 w-4" />
                           Registrar manutenção
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => featureInPreparation("O descarte de equipamentos exige baixa de estoque e patrimônio vinculados.")}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Descartar
                         </DropdownMenuItem>
