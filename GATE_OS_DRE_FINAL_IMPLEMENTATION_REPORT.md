@@ -53,7 +53,32 @@ O historico e somente leitura:
 - `supabase/gate-os-dre-2026-operational-template-seed.sql`
 - `supabase/gate-os-dre-historical-values-2022-2025-seed.sql`
 
-Os arquivos nao foram executados automaticamente.
+Os arquivos foram atualizados com cargas idempotentes geradas a partir dos CSVs aprovados. Nao foram executados automaticamente no Supabase.
+
+## Dados de carga gerados
+
+DRE operacional 2026:
+
+- Fonte: `gate_dre_2026_operational_template_extracted.csv`
+- Registros no SQL: `74`
+- Chave de upsert: `year + row_index`
+- Estrutura preservada: `source_sheet`, `order_index`, `section`, `row_type`, `line_name`
+
+DRE historica 2022-2025:
+
+- Fonte principal: `gate_dre_historical_2022_2025_long_for_database.csv`
+- Registros no SQL: `3.608`
+- Anos: `2022`, `2023`, `2024`, `2025`
+- Intervalo: `2022-08` ate `2025-12`
+- Chave de upsert: `source_sheet + line_order + competency`
+- Campos preservados: `excel_row`, `section`, `line_name`, `row_type`, `year`, `month`, `competency`, `value`, `excel_col`, `formula`
+
+Arquivo wide usado apenas como validacao visual/estrutural:
+
+- `gate_dre_historical_2022_2025_wide_extracted.csv`
+- `91` linhas originais
+- `41` competencias
+- Sem divergencia de valores contra o CSV long nos `3.608` registros existentes.
 
 ## Arquivos alterados
 
@@ -65,18 +90,27 @@ Os arquivos nao foram executados automaticamente.
 
 ## Validacoes executadas
 
+- Auditoria dos CSVs:
+  - DRE 2026 com `74` linhas.
+  - Historico com `3.608` registros.
+  - `0` divergencias long x wide.
+  - `0` duplicidades na chave `source_sheet + excel_row + line_name + period`.
+- Validacao dos SQLs gerados:
+  - `74` tuplas de carga operacional.
+  - `3.608` tuplas de carga historica.
 - `npm run lint`
 - `npm run build`
 
 ## Riscos conhecidos
 
-- Os arquivos CSV extraidos nao estavam no workspace durante esta implementacao, entao os SQLs foram criados como suporte de estrutura/carga manual, sem inserts gerados.
-- Para a DRE historica aparecer, `dre_historical_values` precisa existir e receber a carga de `gate_dre_historical_2022_2025_long_for_database.csv`.
-- Para confirmar as 74 linhas da DRE 2026 em producao, validar `dre_operational_template_rows` no Supabase.
+- Os SQLs de carga ainda precisam ser aplicados manualmente no Supabase SQL Editor ou via processo aprovado.
+- Se ja houver registros historicos duplicados fora da chave `source_sheet + line_order + competency`, o indice unico pode exigir limpeza manual antes da carga.
+- As 3 linhas de header do CSV wide nao entram nos `3.608` registros long; a tela historica deve reconstruir a visualizacao por secao/ordem.
 
 ## Proximos passos
 
-- Aplicar o SQL historico no Supabase.
-- Importar `gate_dre_historical_2022_2025_long_for_database.csv` para `dre_historical_values`.
+- Aplicar os SQLs de carga no Supabase.
+- Validar `select count(*)` em `dre_operational_template_rows` para `year = 2026 and active = true`.
+- Validar `select count(*)` em `dre_historical_values`.
 - Validar contagens por ano e totais historicos.
 - Confirmar em `/dre` que 2026 mostra a DRE operacional e 2022-2025 mostram somente historico.
