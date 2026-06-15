@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -55,7 +55,7 @@ import type { AssetView } from "@/lib/mock-data"
 import { getAssets } from "@/lib/data/assets"
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildAssetsReport } from "@/lib/reports/report-builders"
 
 const CATEGORY_COLORS = ["#22B8CF", "#22C55E", "#F59E0B", "#8B5CF6", "#EF4444"]
@@ -136,7 +136,7 @@ export function PatrimonioContent() {
       case "active":
         return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
       case "maintenance":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Manutenção</Badge>
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">ManutenÃ§Ã£o</Badge>
       case "disposed":
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Alienado</Badge>
       case "inactive":
@@ -164,8 +164,8 @@ export function PatrimonioContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Patrimônio</h1>
-          <p className="text-muted-foreground">Gestão de ativos e bens patrimoniais</p>
+          <h1 className="text-3xl font-bold">PatrimÃ´nio</h1>
+          <p className="text-muted-foreground">GestÃ£o de ativos e bens patrimoniais</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildAssetsReport(filteredAssets.map((asset) => ({
@@ -192,7 +192,7 @@ export function PatrimonioContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Patrimônio Total</p>
+                <p className="text-sm text-muted-foreground">PatrimÃ´nio Total</p>
                 <p className="text-2xl font-bold">{formatCurrency(totalPatrimonio)}</p>
               </div>
               <div className="p-3 rounded-xl bg-primary/10">
@@ -234,7 +234,7 @@ export function PatrimonioContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Em Manutenção</p>
+                <p className="text-sm text-muted-foreground">Em ManutenÃ§Ã£o</p>
                 <p className="text-2xl font-bold text-amber-600">
                   {maintenanceEquipmentQuantity}
                 </p>
@@ -251,7 +251,7 @@ export function PatrimonioContent() {
         {/* Asset Distribution Chart */}
         <Card>
           <CardHeader>
-            <CardTitle>Distribuição por Categoria</CardTitle>
+            <CardTitle>DistribuiÃ§Ã£o por Categoria</CardTitle>
             <CardDescription>Valor total por tipo de ativo</CardDescription>
           </CardHeader>
           <CardContent>
@@ -312,7 +312,7 @@ export function PatrimonioContent() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por nome ou código..."
+                  placeholder="Buscar por nome ou cÃ³digo..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -324,10 +324,10 @@ export function PatrimonioContent() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="imovel">Imóvel</SelectItem>
-                  <SelectItem value="veiculo">Veículo</SelectItem>
+                  <SelectItem value="imovel">ImÃ³vel</SelectItem>
+                  <SelectItem value="veiculo">VeÃ­culo</SelectItem>
                   <SelectItem value="equipamento">Equipamento</SelectItem>
-                  <SelectItem value="movel">Móvel</SelectItem>
+                  <SelectItem value="movel">MÃ³vel</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -343,7 +343,7 @@ export function PatrimonioContent() {
                       <p className="font-medium">{asset.name}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="font-mono">{asset.code}</span>
-                        <span>•</span>
+                        <span>â€¢</span>
                         <span>{asset.location}</span>
                       </div>
                     </div>
@@ -352,7 +352,7 @@ export function PatrimonioContent() {
                     <div className="text-right">
                       <p className="font-semibold">{formatCurrency(asset.currentValue)}</p>
                       <p className="text-xs text-muted-foreground">
-                        Aquisição: {formatCurrency(asset.acquisitionValue)}
+                        AquisiÃ§Ã£o: {formatCurrency(asset.acquisitionValue)}
                       </p>
                     </div>
                     {getStatusBadge(asset.status)}
@@ -363,21 +363,9 @@ export function PatrimonioContent() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => featureInPreparation("A visualização detalhada do patrimônio ainda precisa de modal persistente dedicado.")}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          Ver detalhes
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => featureInPreparation("A edição de patrimônio ainda precisa de formulário persistente dedicado.")}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => featureInPreparation("Alienar patrimônio exige baixa contábil e registro financeiro auditável.")}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Alienar
-                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled>`r`n                          <Eye className="mr-2 h-4 w-4" />`r`n                          Detalhes indisponíveis`r`n                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled>`r`n                          <Edit className="mr-2 h-4 w-4" />`r`n                          Editar indisponível`r`n                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" disabled>`r`n                          <Trash2 className="mr-2 h-4 w-4" />`r`n                          Alienar indisponível`r`n                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

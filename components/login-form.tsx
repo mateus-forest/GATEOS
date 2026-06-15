@@ -102,12 +102,9 @@ export function LoginForm() {
           type="button"
           variant="link"
           className="px-0 text-primary"
-          onClick={() => {
-            setErrorMessage("")
-            setInfoMessage("Recuperacao de senha ainda nao configurada para este ambiente.")
-          }}
+          disabled
         >
-          Esqueci minha senha
+          Recuperação indisponível
         </Button>
       </div>
 

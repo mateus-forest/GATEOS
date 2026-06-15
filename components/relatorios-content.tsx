@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, Download, Printer, Mail, Calendar as CalendarIcon, Clock, BarChart3, PieChart, TrendingUp, Users, Package, FileSpreadsheet, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildContractsReport, buildFinancialEntriesReport, buildGenericReport } from "@/lib/reports/report-builders"
 import { cn } from "@/lib/utils"
 import { getContracts } from "@/lib/data/contracts"
@@ -30,7 +30,7 @@ import type { SupabaseRow } from "@/lib/supabase/types"
 const relatoriosPredefinidos = [
   {
     id: 1,
-    nome: "Relatório Financeiro Mensal",
+    nome: "RelatÃ³rio Financeiro Mensal",
     descricao: "Resumo completo de receitas, despesas e lucro",
     categoria: "Financeiro",
     icon: BarChart3,
@@ -39,8 +39,8 @@ const relatoriosPredefinidos = [
   },
   {
     id: 2,
-    nome: "DRE - Demonstração de Resultados",
-    descricao: "Demonstração do resultado do exercício",
+    nome: "DRE - DemonstraÃ§Ã£o de Resultados",
+    descricao: "DemonstraÃ§Ã£o do resultado do exercÃ­cio",
     categoria: "Financeiro",
     icon: TrendingUp,
     cor: "text-blue-500",
@@ -48,7 +48,7 @@ const relatoriosPredefinidos = [
   },
   {
     id: 3,
-    nome: "Relatório de Clientes",
+    nome: "RelatÃ³rio de Clientes",
     descricao: "Lista completa de clientes e status",
     categoria: "Comercial",
     icon: Users,
@@ -66,8 +66,8 @@ const relatoriosPredefinidos = [
   },
   {
     id: 5,
-    nome: "Inventário de Equipamentos",
-    descricao: "Lista completa do patrimônio da empresa",
+    nome: "InventÃ¡rio de Equipamentos",
+    descricao: "Lista completa do patrimÃ´nio da empresa",
     categoria: "Operacional",
     icon: Package,
     cor: "text-orange-500",
@@ -75,8 +75,8 @@ const relatoriosPredefinidos = [
   },
   {
     id: 6,
-    nome: "Manutenções Realizadas",
-    descricao: "Histórico de manutenções por período",
+    nome: "ManutenÃ§Ãµes Realizadas",
+    descricao: "HistÃ³rico de manutenÃ§Ãµes por perÃ­odo",
     categoria: "Operacional",
     icon: FileSpreadsheet,
     cor: "text-yellow-500",
@@ -84,7 +84,7 @@ const relatoriosPredefinidos = [
   },
   {
     id: 7,
-    nome: "Análise de Inadimplência",
+    nome: "AnÃ¡lise de InadimplÃªncia",
     descricao: "Clientes com parcelas em atraso",
     categoria: "Financeiro",
     icon: PieChart,
@@ -94,7 +94,7 @@ const relatoriosPredefinidos = [
   {
     id: 8,
     nome: "Performance de Vendas",
-    descricao: "Métricas de vendas e conversão",
+    descricao: "MÃ©tricas de vendas e conversÃ£o",
     categoria: "Comercial",
     icon: TrendingUp,
     cor: "text-emerald-500",
@@ -103,17 +103,17 @@ const relatoriosPredefinidos = [
 ]
 
 const relatoriosRecentes = [
-  { id: 1, nome: "Relatório Financeiro Mensal", data: "2024-02-20 14:30", formato: "PDF", tamanho: "1.2 MB" },
-  { id: 2, nome: "Inventário de Equipamentos", data: "2024-02-19 10:15", formato: "XLSX", tamanho: "856 KB" },
+  { id: 1, nome: "RelatÃ³rio Financeiro Mensal", data: "2024-02-20 14:30", formato: "PDF", tamanho: "1.2 MB" },
+  { id: 2, nome: "InventÃ¡rio de Equipamentos", data: "2024-02-19 10:15", formato: "XLSX", tamanho: "856 KB" },
   { id: 3, nome: "Contratos Ativos", data: "2024-02-18 16:45", formato: "PDF", tamanho: "2.4 MB" },
   { id: 4, nome: "DRE - Janeiro 2024", data: "2024-02-15 09:00", formato: "PDF", tamanho: "980 KB" },
-  { id: 5, nome: "Análise de Inadimplência", data: "2024-02-12 11:30", formato: "PDF", tamanho: "654 KB" },
+  { id: 5, nome: "AnÃ¡lise de InadimplÃªncia", data: "2024-02-12 11:30", formato: "PDF", tamanho: "654 KB" },
 ]
 
 const agendados = [
-  { id: 1, nome: "Relatório Financeiro Mensal", frequencia: "Mensal", proximaExecucao: "01/03/2024", destino: "admin@gate.com" },
-  { id: 2, nome: "Inventário de Equipamentos", frequencia: "Semanal", proximaExecucao: "26/02/2024", destino: "operacoes@gate.com" },
-  { id: 3, nome: "Análise de Inadimplência", frequencia: "Semanal", proximaExecucao: "25/02/2024", destino: "financeiro@gate.com" },
+  { id: 1, nome: "RelatÃ³rio Financeiro Mensal", frequencia: "Mensal", proximaExecucao: "01/03/2024", destino: "admin@gate.com" },
+  { id: 2, nome: "InventÃ¡rio de Equipamentos", frequencia: "Semanal", proximaExecucao: "26/02/2024", destino: "operacoes@gate.com" },
+  { id: 3, nome: "AnÃ¡lise de InadimplÃªncia", frequencia: "Semanal", proximaExecucao: "25/02/2024", destino: "financeiro@gate.com" },
 ]
 
 export function RelatoriosContent() {
@@ -189,8 +189,8 @@ export function RelatoriosContent() {
   const handleHistoricoDownload = (relatorio: (typeof relatoriosRecentes)[number]) =>
     exportPdfReport(buildGenericReport({
       title: relatorio.nome,
-      subtitle: "Histórico de relatório",
-      description: "Registro histórico de relatório gerado no GATE OS.",
+      subtitle: "HistÃ³rico de relatÃ³rio",
+      description: "Registro histÃ³rico de relatÃ³rio gerado no GATE OS.",
       rows: [relatorio],
     }))
 
@@ -206,8 +206,8 @@ export function RelatoriosContent() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
-          <p className="text-muted-foreground">Geração e exportação de relatórios do sistema</p>
+          <h1 className="text-2xl font-bold text-foreground">RelatÃ³rios</h1>
+          <p className="text-muted-foreground">GeraÃ§Ã£o e exportaÃ§Ã£o de relatÃ³rios do sistema</p>
         </div>
       </div>
 
@@ -215,11 +215,11 @@ export function RelatoriosContent() {
         <TabsList>
           <TabsTrigger value="gerar">
             <FileText className="h-4 w-4 mr-2" />
-            Gerar Relatório
+            Gerar RelatÃ³rio
           </TabsTrigger>
           <TabsTrigger value="historico">
             <Clock className="h-4 w-4 mr-2" />
-            Histórico
+            HistÃ³rico
           </TabsTrigger>
           <TabsTrigger value="agendados">
             <CalendarIcon className="h-4 w-4 mr-2" />
@@ -228,16 +228,16 @@ export function RelatoriosContent() {
         </TabsList>
 
         <TabsContent value="gerar" className="space-y-4">
-          {/* Filtros de Período */}
+          {/* Filtros de PerÃ­odo */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Período do Relatório</CardTitle>
-              <CardDescription>Selecione o intervalo de datas para geração</CardDescription>
+              <CardTitle className="text-base">PerÃ­odo do RelatÃ³rio</CardTitle>
+              <CardDescription>Selecione o intervalo de datas para geraÃ§Ã£o</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-4">
                 <div className="space-y-2">
-                  <Label>Data Início</Label>
+                  <Label>Data InÃ­cio</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn("w-[200px] justify-start text-left font-normal", !dataInicio && "text-muted-foreground")}>
@@ -282,7 +282,7 @@ export function RelatoriosContent() {
             </CardContent>
           </Card>
 
-          {/* Grid de Relatórios */}
+          {/* Grid de RelatÃ³rios */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {relatoriosFiltrados.map((relatorio) => {
               const Icon = relatorio.icon
@@ -320,10 +320,10 @@ export function RelatoriosContent() {
             })}
           </div>
 
-          {/* Opções de Exportação */}
+          {/* OpÃ§Ãµes de ExportaÃ§Ã£o */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Opções de Exportação</CardTitle>
+              <CardTitle className="text-base">OpÃ§Ãµes de ExportaÃ§Ã£o</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-6">
@@ -351,8 +351,8 @@ export function RelatoriosContent() {
         <TabsContent value="historico" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Relatórios Recentes</CardTitle>
-              <CardDescription>Histórico de relatórios gerados</CardDescription>
+              <CardTitle>RelatÃ³rios Recentes</CardTitle>
+              <CardDescription>HistÃ³rico de relatÃ³rios gerados</CardDescription>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[400px]">
@@ -378,7 +378,7 @@ export function RelatoriosContent() {
                         <Button variant="ghost" size="icon" onClick={() => handlePrint(rel)}>
                           <Printer className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => featureInPreparation("Envio de relatorio por e-mail depende de servico de e-mail no backend.")}>
+                        <Button variant="ghost" size="icon" disabled>
                           <Mail className="h-4 w-4" />
                         </Button>
                       </div>
@@ -394,10 +394,10 @@ export function RelatoriosContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Relatórios Agendados</CardTitle>
-                <CardDescription>Geração automática de relatórios</CardDescription>
+                <CardTitle>RelatÃ³rios Agendados</CardTitle>
+                <CardDescription>GeraÃ§Ã£o automÃ¡tica de relatÃ³rios</CardDescription>
               </div>
-              <Button onClick={() => featureInPreparation("Agendamento automatico de relatorios depende de backend e rotina programada.")}>
+              <Button disabled>
                 <CalendarIcon className="h-4 w-4 mr-2" />
                 Novo Agendamento
               </Button>
@@ -413,7 +413,7 @@ export function RelatoriosContent() {
                       <div>
                         <p className="font-medium text-foreground">{ag.nome}</p>
                         <p className="text-sm text-muted-foreground">
-                          {ag.frequencia} - Próxima: {ag.proximaExecucao}
+                          {ag.frequencia} - PrÃ³xima: {ag.proximaExecucao}
                         </p>
                       </div>
                     </div>
@@ -423,7 +423,7 @@ export function RelatoriosContent() {
                         <p className="text-sm text-foreground">{ag.destino}</p>
                       </div>
                       <Badge variant="secondary" className="bg-green-500/10 text-green-600">Ativo</Badge>
-                      <Button variant="outline" size="sm" onClick={() => featureInPreparation("Edicao de agendamento depende do fluxo real de agendamentos.")}>Editar</Button>
+                      <Button variant="outline" size="sm" disabled>Editar indisponível</Button>
                     </div>
                   </div>
                 ))}

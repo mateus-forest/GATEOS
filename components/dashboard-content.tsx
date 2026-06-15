@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -47,7 +47,7 @@ import {
   Pie,
   Cell,
 } from "recharts"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildDashboardReport } from "@/lib/reports/report-builders"
 import { formatCurrency } from "@/lib/utils"
 import {
@@ -86,8 +86,8 @@ const brokenAgreements = 0
 const agreementsDue = 0
 const legalContracts = activeLegalCases
 const bankBalances = [
-  { name: "Saldo Banco Itaú CNPJ", amount: 0 },
-  { name: "Saldo Aplicação", amount: 0 },
+  { name: "Saldo Banco ItaÃº CNPJ", amount: 0 },
+  { name: "Saldo AplicaÃ§Ã£o", amount: 0 },
   { name: "Saldo Caixa", amount: 0 },
 ]
 const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
@@ -143,7 +143,7 @@ function formatActivityTime(value: string) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).replace(",", " às")
+  }).replace(",", " Ã s")
 }
 
 function isCurrentMonth(value: unknown) {
@@ -563,15 +563,15 @@ export function DashboardContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Visão geral do sistema GATE OS</p>
+          <p className="text-muted-foreground">VisÃ£o geral do sistema GATE OS</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => featureInPreparation("Filtro de ultimo mes depende da consulta real por periodo no dashboard.")}>
+          <Button variant="outline" disabled>
             <Calendar className="mr-2 h-4 w-4" />
-            Último mês
+            Último mês indisponível
           </Button>
           <Button onClick={handleExportReport}>
-            Exportar Relatório
+            Exportar RelatÃ³rio
           </Button>
         </div>
       </div>
@@ -592,7 +592,7 @@ export function DashboardContent() {
                 {loading ? "Carregando contratos..." : `${expiringContracts} contratos vencem nos proximos 30 dias`}
               </p>
               <p className="text-xs text-amber-600">
-                Revise os contratos e inicie o processo de renovação
+                Revise os contratos e inicie o processo de renovaÃ§Ã£o
               </p>
             </div>
             <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => router.push("/contratos")}>
@@ -606,18 +606,18 @@ export function DashboardContent() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Scale className="h-5 w-5 text-primary" />
-            Jurídico
+            JurÃ­dico
           </CardTitle>
-          <CardDescription>Resumo compacto de cobranças e acordos</CardDescription>
+          <CardDescription>Resumo compacto de cobranÃ§as e acordos</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             {[
-              ["Casos jurídicos ativos", activeLegalCases],
-              ["Valor em cobrança jurídica", formatCurrency(legalCollectionValue)],
+              ["Casos jurÃ­dicos ativos", activeLegalCases],
+              ["Valor em cobranÃ§a jurÃ­dica", formatCurrency(legalCollectionValue)],
               ["Acordos vencendo", agreementsDue],
               ["Acordos quebrados", brokenAgreements],
-              ["Contratos em jurídico", legalContracts],
+              ["Contratos em jurÃ­dico", legalContracts],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -660,7 +660,7 @@ export function DashboardContent() {
           change={equipmentInMaintenance.toString()}
           changeType={equipmentInMaintenance > 0 ? "negative" : "neutral"}
           icon={Package}
-          description="em manutenção"
+          description="em manutenÃ§Ã£o"
         />
       </div>
 
@@ -695,9 +695,9 @@ export function DashboardContent() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Landmark className="h-5 w-5 text-primary" />
-              Saldo Bancário
+              Saldo BancÃ¡rio
             </CardTitle>
-            <CardDescription>Posição consolidada</CardDescription>
+            <CardDescription>PosiÃ§Ã£o consolidada</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {bankBalances.length > 0 ? (
@@ -721,21 +721,21 @@ export function DashboardContent() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Distribuição de Lucros</CardTitle>
-            <CardDescription>Simulação do resultado distribuível do mês</CardDescription>
+            <CardTitle>DistribuiÃ§Ã£o de Lucros</CardTitle>
+            <CardDescription>SimulaÃ§Ã£o do resultado distribuÃ­vel do mÃªs</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {[
-                ["Receita do mês", profitDistribution.revenue],
+                ["Receita do mÃªs", profitDistribution.revenue],
                 ["Custos/despesas", profitDistribution.costs],
                 ["Lucro operacional", operatingProfit],
-                ["Resultado distribuível", distributableResult],
+                ["Resultado distribuÃ­vel", distributableResult],
                 ["Carlos a receber", carlosReceivable],
                 ["Renan a receber", renanReceivable],
                 ["Mateus fixo", profitDistribution.mateusFixed],
-                ["Mateus participação 8%", mateusShare],
-                ["Total distribuído", totalDistributed],
+                ["Mateus participaÃ§Ã£o 8%", mateusShare],
+                ["Total distribuÃ­do", totalDistributed],
                 ["Lucro retido", retainedProfit],
               ].map(([label, value]) => (
                 <div key={String(label)} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
@@ -757,8 +757,8 @@ export function DashboardContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Evolução da Receita</CardTitle>
-                <CardDescription>Receita mensal dos últimos 12 meses</CardDescription>
+                <CardTitle>EvoluÃ§Ã£o da Receita</CardTitle>
+                <CardDescription>Receita mensal dos Ãºltimos 12 meses</CardDescription>
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">
@@ -822,7 +822,7 @@ export function DashboardContent() {
         <Card>
           <CardHeader>
             <CardTitle>Contratos por Status</CardTitle>
-            <CardDescription>Distribuição atual</CardDescription>
+            <CardDescription>DistribuiÃ§Ã£o atual</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -880,7 +880,7 @@ export function DashboardContent() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Atividades Recentes</CardTitle>
-                <CardDescription>Últimas atualizações do sistema</CardDescription>
+                <CardDescription>Ãšltimas atualizaÃ§Ãµes do sistema</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => router.push("/relatorios")}>
                 Ver todas
@@ -905,8 +905,8 @@ export function DashboardContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Próximos Pagamentos</CardTitle>
-                <CardDescription>Vencimentos dos próximos 7 dias</CardDescription>
+                <CardTitle>PrÃ³ximos Pagamentos</CardTitle>
+                <CardDescription>Vencimentos dos prÃ³ximos 7 dias</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => router.push("/financeiro")}>
                 Ver todos
@@ -955,7 +955,7 @@ export function DashboardContent() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Taxa de Renovação</h3>
+              <h3 className="font-semibold">Taxa de RenovaÃ§Ã£o</h3>
               <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">Base real</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
@@ -969,7 +969,7 @@ export function DashboardContent() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Ticket Médio</h3>
+              <h3 className="font-semibold">Ticket MÃ©dio</h3>
               <Badge variant="secondary">Mensal</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
@@ -983,8 +983,8 @@ export function DashboardContent() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Inadimplência</h3>
-              <Badge variant="secondary" className="bg-amber-100 text-amber-700">Atenção</Badge>
+              <h3 className="font-semibold">InadimplÃªncia</h3>
+              <Badge variant="secondary" className="bg-amber-100 text-amber-700">AtenÃ§Ã£o</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
               <span className="text-4xl font-bold">{delinquencyRate.toFixed(1)}%</span>

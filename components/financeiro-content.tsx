@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
 import {
@@ -77,7 +77,7 @@ import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
 import { getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildFinancialEntriesReport } from "@/lib/reports/report-builders"
 import {
   calculateMonthlyExpense,
@@ -98,9 +98,9 @@ import {
 } from "@/lib/dre-store"
 
 const bankConnections = [
-  { name: "Banco Itaú CNPJ", balance: 0, status: "Pendente", lastSync: "Sem sincronização" },
-  { name: "Aplicação", balance: 0, status: "Pendente", lastSync: "Sem sincronização" },
-  { name: "Caixa", balance: 0, status: "Manual", lastSync: "Sem sincronização" },
+  { name: "Banco ItaÃº CNPJ", balance: 0, status: "Pendente", lastSync: "Sem sincronizaÃ§Ã£o" },
+  { name: "AplicaÃ§Ã£o", balance: 0, status: "Pendente", lastSync: "Sem sincronizaÃ§Ã£o" },
+  { name: "Caixa", balance: 0, status: "Manual", lastSync: "Sem sincronizaÃ§Ã£o" },
 ]
 
 const financialTypeOptions = [
@@ -369,11 +369,11 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
   const validate = () => {
     const nextErrors: Record<string, string> = {}
     if (!form.type) nextErrors.type = "Informe o tipo."
-    if (!form.description.trim()) nextErrors.description = "Informe a descrição."
-    if (!Number(form.amount.replace(",", "."))) nextErrors.amount = "Informe um valor válido."
+    if (!form.description.trim()) nextErrors.description = "Informe a descriÃ§Ã£o."
+    if (!Number(form.amount.replace(",", "."))) nextErrors.amount = "Informe um valor vÃ¡lido."
     if (!form.dueDate) nextErrors.dueDate = "Informe a data de vencimento."
     if (!form.dreCategoryId) nextErrors.dreCategoryId = "Selecione a categoria DRE."
-    if (!form.bankAccountId) nextErrors.bankAccountId = "Selecione a conta bancária."
+    if (!form.bankAccountId) nextErrors.bankAccountId = "Selecione a conta bancÃ¡ria."
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -411,14 +411,14 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
         })
       }
       await onCreated()
-      toast.success("Lançamento salvo e DRE atualizado")
+      toast.success("LanÃ§amento salvo e DRE atualizado")
       setForm(initialLaunchForm)
       setAttachmentFile(null)
       setErrors({})
       setOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Não foi possível salvar o lançamento."
-      console.error("[financeiro] Falha ao salvar lançamento", error)
+      const message = error instanceof Error ? error.message : "NÃ£o foi possÃ­vel salvar o lanÃ§amento."
+      console.error("[financeiro] Falha ao salvar lanÃ§amento", error)
       setSubmitError(message)
       toast.error(message)
     } finally {
@@ -461,22 +461,22 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
     <>
       <Button onClick={() => setOpen(true)}>
         <Plus className="mr-2 h-4 w-4" />
-        Novo Lançamento
+        Novo LanÃ§amento
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Novo Lançamento</DialogTitle>
-            <DialogDescription>O lançamento entra no mês da competência e alimenta a linha escolhida da DRE.</DialogDescription>
+            <DialogTitle>Novo LanÃ§amento</DialogTitle>
+            <DialogDescription>O lanÃ§amento entra no mÃªs da competÃªncia e alimenta a linha escolhida da DRE.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
-            {renderSelect("type", "Tipo de lançamento", financialTypeOptions)}
-            {renderInput("description", "Descrição")}
+            {renderSelect("type", "Tipo de lanÃ§amento", financialTypeOptions)}
+            {renderInput("description", "DescriÃ§Ã£o")}
             {renderInput("amount", "Valor", "number")}
             {renderInput("dueDate", "Data de vencimento", "date")}
             {renderInput("paymentDate", "Data de pagamento", "date")}
             {renderSelect("dreCategoryId", "Categoria DRE", selectOptions.dreCategories)}
-            {renderSelect("bankAccountId", "Conta bancária", selectOptions.bankAccounts)}
+            {renderSelect("bankAccountId", "Conta bancÃ¡ria", selectOptions.bankAccounts)}
             {renderSelect("clientId", "Cliente ou fornecedor", selectOptions.clients)}
             {renderSelect("paymentMethod", "Forma de pagamento", paymentMethods)}
             {renderSelect("attachment", "Tipo de anexo", attachmentTypes)}
@@ -492,7 +492,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar lançamento"}</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Salvar lanÃ§amento"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -651,7 +651,7 @@ export function FinanceiroContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Financeiro</h1>
-          <p className="text-muted-foreground">Gestão de receitas, despesas e fluxo de caixa</p>
+          <p className="text-muted-foreground">GestÃ£o de receitas, despesas e fluxo de caixa</p>
         </div>
         <div className="flex items-center gap-2">
           <NewBankAccountDialog />
@@ -688,7 +688,7 @@ export function FinanceiroContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Receitas (mês)</p>
+                <p className="text-sm text-muted-foreground">Receitas (mÃªs)</p>
                 <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalReceitas)}</p>
               </div>
               <div className="p-3 rounded-xl bg-emerald-100">
@@ -706,7 +706,7 @@ export function FinanceiroContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Despesas (mês)</p>
+                <p className="text-sm text-muted-foreground">Despesas (mÃªs)</p>
                 <p className="text-2xl font-bold text-red-600">{formatCurrency(totalDespesas)}</p>
               </div>
               <div className="p-3 rounded-xl bg-red-100">
@@ -786,22 +786,22 @@ export function FinanceiroContent() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Landmark className="h-5 w-5 text-primary" />
-                Conexões bancárias
+                ConexÃµes bancÃ¡rias
               </CardTitle>
-              <CardDescription>Integração futura para importação e conciliação.</CardDescription>
+              <CardDescription>IntegraÃ§Ã£o futura para importaÃ§Ã£o e conciliaÃ§Ã£o.</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => featureInPreparation("Conexão bancária/Open Finance ainda depende de integração futura.")}>
+              <Button variant="outline" disabled>
                 <Landmark className="mr-2 h-4 w-4" />
                 Conectar banco
               </Button>
-              <Button variant="outline" onClick={() => featureInPreparation("Importação OFX/CSV completa ainda depende de parser e validação final.")}>
+              <Button variant="outline" disabled>
                 <Upload className="mr-2 h-4 w-4" />
                 Importar OFX/CSV
               </Button>
-              <Button variant="outline" onClick={() => featureInPreparation("Conciliação bancária automática ainda depende do motor de conciliação.")}>
+              <Button variant="outline" disabled>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Conciliar lançamentos
+                Conciliar lanÃ§amentos
               </Button>
             </div>
           </div>
@@ -814,7 +814,7 @@ export function FinanceiroContent() {
                   <div>
                     <p className="font-medium">{connection.name}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Última sincronização: {connection.lastSync}
+                      Ãšltima sincronizaÃ§Ã£o: {connection.lastSync}
                     </p>
                   </div>
                   <Badge
@@ -830,7 +830,7 @@ export function FinanceiroContent() {
                   </Badge>
                 </div>
                 <p className="mt-4 text-2xl font-bold">{formatCurrency(connection.balance)}</p>
-                <p className="text-xs text-muted-foreground">Status da conexão</p>
+                <p className="text-xs text-muted-foreground">Status da conexÃ£o</p>
               </div>
             ))}
           </div>
@@ -839,7 +839,7 @@ export function FinanceiroContent() {
 
       <Tabs defaultValue="lancamentos" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="lancamentos">Lançamentos</TabsTrigger>
+          <TabsTrigger value="lancamentos">LanÃ§amentos</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de Caixa</TabsTrigger>
           <TabsTrigger value="contas">Contas a Pagar/Receber</TabsTrigger>
         </TabsList>
@@ -852,7 +852,7 @@ export function FinanceiroContent() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar lançamentos..."
+                    placeholder="Buscar lanÃ§amentos..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -890,7 +890,7 @@ export function FinanceiroContent() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Data</TableHead>
-                    <TableHead>Descrição</TableHead>
+                    <TableHead>DescriÃ§Ã£o</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Status</TableHead>
@@ -936,21 +936,9 @@ export function FinanceiroContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => featureInPreparation("A visualização detalhada do lançamento ainda precisa de modal persistente dedicado.")}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Ver detalhes
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => featureInPreparation("A edição de lançamentos financeiros ainda precisa de validação de caixa, anexos e DRE.")}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => featureInPreparation("A exclusão de lançamentos financeiros exige trilha de auditoria e recálculo da DRE.")}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Excluir
-                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>`r`n                              <Eye className="mr-2 h-4 w-4" />`r`n                              Detalhes indisponíveis`r`n                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>`r`n                              <Edit className="mr-2 h-4 w-4" />`r`n                              Editar indisponível`r`n                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" disabled>`r`n                              <Trash2 className="mr-2 h-4 w-4" />`r`n                              Excluir indisponível`r`n                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -995,7 +983,7 @@ export function FinanceiroContent() {
             <Card>
               <CardHeader>
                 <CardTitle>Fluxo de Caixa</CardTitle>
-                <CardDescription>Evolução do saldo</CardDescription>
+                <CardDescription>EvoluÃ§Ã£o do saldo</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -1035,7 +1023,7 @@ export function FinanceiroContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-emerald-600">Contas a Receber</CardTitle>
-                    <CardDescription>Próximos vencimentos</CardDescription>
+                    <CardDescription>PrÃ³ximos vencimentos</CardDescription>
                   </div>
                   <Badge className="bg-emerald-100 text-emerald-700">{pendingReceivables.length + installmentReceivables.length} pendentes</Badge>
                 </div>
@@ -1079,7 +1067,7 @@ export function FinanceiroContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-red-600">Contas a Pagar</CardTitle>
-                    <CardDescription>Próximos vencimentos</CardDescription>
+                    <CardDescription>PrÃ³ximos vencimentos</CardDescription>
                   </div>
                   <Badge className="bg-red-100 text-red-700">{pendingPayables.length} pendentes</Badge>
                 </div>

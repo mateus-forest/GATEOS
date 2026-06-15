@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -49,7 +49,7 @@ import {
   juridicoResponsaveis,
   type JuridicoCaso,
 } from "@/lib/juridico-data"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildLegalReport } from "@/lib/reports/report-builders"
 import { createLegalCase, getLegalCases } from "@/lib/data/legal"
 import { getClients } from "@/lib/data/clients"
@@ -60,31 +60,31 @@ import { clientLabel, contractLabel } from "@/lib/data/display-labels"
 type SelectOption = { label: string; value: string }
 
 const legalStatusOptions = [
-  { label: "Em análise", value: "em_analise" },
-  { label: "Notificação extrajudicial", value: "notificacao_extrajudicial" },
-  { label: "Em negociação", value: "em_negociacao" },
+  { label: "Em anÃ¡lise", value: "em_analise" },
+  { label: "NotificaÃ§Ã£o extrajudicial", value: "notificacao_extrajudicial" },
+  { label: "Em negociaÃ§Ã£o", value: "em_negociacao" },
   { label: "Acordo firmado", value: "acordo_firmado" },
-  { label: "Ação judicial", value: "acao_judicial" },
-  { label: "Em execução", value: "em_execucao" },
+  { label: "AÃ§Ã£o judicial", value: "acao_judicial" },
+  { label: "Em execuÃ§Ã£o", value: "em_execucao" },
   { label: "Encerrado", value: "encerrado" },
   { label: "Perdido", value: "perdido" },
 ] as const
 
 const legalRiskOptions = [
   { label: "Baixo", value: "baixo" },
-  { label: "Médio", value: "medio" },
+  { label: "MÃ©dio", value: "medio" },
   { label: "Alto", value: "alto" },
-  { label: "Crítico", value: "critico" },
+  { label: "CrÃ­tico", value: "critico" },
 ] as const
 
 function legalStatusLabel(value: unknown) {
   const status = String(value ?? "")
-  return legalStatusOptions.find((item) => item.value === status)?.label ?? (status || "Em análise")
+  return legalStatusOptions.find((item) => item.value === status)?.label ?? (status || "Em anÃ¡lise")
 }
 
 function legalRiskLabel(value: unknown) {
   const risk = String(value ?? "")
-  return legalRiskOptions.find((item) => item.value === risk)?.label ?? (risk || "Médio")
+  return legalRiskOptions.find((item) => item.value === risk)?.label ?? (risk || "MÃ©dio")
 }
 
 type CaseForm = {
@@ -189,16 +189,16 @@ function normalizeLegalCase(item: Record<string, unknown>): JuridicoCaso {
 }
 
 function riskClass(risk: string) {
-  if (risk === "Crítico") return "bg-red-100 text-red-700"
+  if (risk === "CrÃ­tico") return "bg-red-100 text-red-700"
   if (risk === "Alto") return "bg-orange-100 text-orange-700"
-  if (risk === "Médio") return "bg-amber-100 text-amber-700"
+  if (risk === "MÃ©dio") return "bg-amber-100 text-amber-700"
   return "bg-emerald-100 text-emerald-700"
 }
 
 function statusClass(status: string) {
   if (status === "Encerrado") return "bg-emerald-100 text-emerald-700"
-  if (status === "Ação judicial" || status === "Em execução") return "bg-red-100 text-red-700"
-  if (status === "Em negociação" || status === "Acordo firmado") return "bg-blue-100 text-blue-700"
+  if (status === "AÃ§Ã£o judicial" || status === "Em execuÃ§Ã£o") return "bg-red-100 text-red-700"
+  if (status === "Em negociaÃ§Ã£o" || status === "Acordo firmado") return "bg-blue-100 text-blue-700"
   return "bg-amber-100 text-amber-700"
 }
 
@@ -271,16 +271,16 @@ function CaseFormDialog({
       primeiroVencimento: form.primeiroVencimento,
       formaPagamento: "",
       resumo: form.resumo,
-      ultimoAndamento: "Caso criado no módulo jurídico.",
+      ultimoAndamento: "Caso criado no mÃ³dulo jurÃ­dico.",
       resultadoEsperado: "",
       resultadoAcao: "",
       observacoes: form.resumo,
       })
-      toast.success("Caso jurídico criado com sucesso")
+      toast.success("Caso jurÃ­dico criado com sucesso")
       setForm(emptyForm)
       setOpen(false)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Não foi possível salvar o caso jurídico."
+      const message = error instanceof Error ? error.message : "NÃ£o foi possÃ­vel salvar o caso jurÃ­dico."
       console.error("[juridico] Falha ao salvar caso", error)
       setSubmitError(message)
       toast.error(message)
@@ -317,13 +317,13 @@ function CaseFormDialog({
     <>
       <Button onClick={() => setOpen(true)}>
         <Plus className="mr-2 h-4 w-4" />
-        Novo Caso Jurídico
+        Novo Caso JurÃ­dico
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Novo Caso Jurídico</DialogTitle>
-            <DialogDescription>Cadastro para cobrança jurídica, acordos e ações.</DialogDescription>
+            <DialogTitle>Novo Caso JurÃ­dico</DialogTitle>
+            <DialogDescription>Cadastro para cobranÃ§a jurÃ­dica, acordos e aÃ§Ãµes.</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[70vh] gap-4 overflow-y-auto pr-2 md:grid-cols-3">
             {select("cliente", "Cliente", clientOptions)}
@@ -360,7 +360,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
       <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>{caso.cliente} - {caso.contrato}</DialogTitle>
-          <DialogDescription>Detalhe do caso jurídico.</DialogDescription>
+          <DialogDescription>Detalhe do caso jurÃ­dico.</DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="resumo">
           <TabsList className="flex flex-wrap">
@@ -369,7 +369,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
             <TabsTrigger value="valores">Valores</TabsTrigger>
             <TabsTrigger value="acordo">Acordo/Parcelamento</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
-            <TabsTrigger value="historico">Histórico</TabsTrigger>
+            <TabsTrigger value="historico">HistÃ³rico</TabsTrigger>
             <TabsTrigger value="contrato">Contrato vinculado</TabsTrigger>
             <TabsTrigger value="parcelas">Parcelas vinculadas</TabsTrigger>
           </TabsList>
@@ -380,10 +380,10 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
               ["Status", caso.status],
               ["Etapa atual", caso.etapa],
               ["Risco", caso.risco],
-              ["Responsável", caso.responsavel],
-              ["Última atualização", caso.ultimaAtualizacao],
-              ["Próximo prazo", caso.proximoPrazo],
-              ["Resultado da ação", caso.resultadoAcao],
+              ["ResponsÃ¡vel", caso.responsavel],
+              ["Ãšltima atualizaÃ§Ã£o", caso.ultimaAtualizacao],
+              ["PrÃ³ximo prazo", caso.proximoPrazo],
+              ["Resultado da aÃ§Ã£o", caso.resultadoAcao],
             ].map(([label, value]) => (
               <div key={label} className="rounded-lg border p-3">
                 <p className="text-sm text-muted-foreground">{label}</p>
@@ -392,9 +392,9 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
             ))}
           </TabsContent>
           <TabsContent value="andamentos" className="space-y-3 pt-4">
-            <div className="rounded-lg border p-3"><strong>Último andamento:</strong> {caso.ultimoAndamento}</div>
+            <div className="rounded-lg border p-3"><strong>Ãšltimo andamento:</strong> {caso.ultimoAndamento}</div>
             <div className="rounded-lg border p-3"><strong>Resultado esperado:</strong> {caso.resultadoEsperado}</div>
-            <Button onClick={() => featureInPreparation("Atualizacao de andamento depende do registro real do historico juridico.")}>Atualizar andamento</Button>
+            <Button disabled>Atualização indisponível</Button>
           </TabsContent>
           <TabsContent value="valores" className="grid gap-3 pt-4 md:grid-cols-3">
             {[
@@ -402,7 +402,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
               ["Multa", caso.multa],
               ["Juros", caso.juros],
               ["Custas", caso.custas],
-              ["Honorários", caso.honorarios],
+              ["HonorÃ¡rios", caso.honorarios],
               ["Desconto", caso.desconto],
               ["Valor atualizado", valorAtualizado],
               ["Valor negociado", caso.valorNegociado],
@@ -419,13 +419,13 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
           </TabsContent>
           <TabsContent value="acordo" className="space-y-4 pt-4">
             <div className="grid gap-3 md:grid-cols-4">
-              <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Tipo</p><p className="font-semibold">{caso.parcelado ? "Parcelado" : "À vista"}</p></div>
+              <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Tipo</p><p className="font-semibold">{caso.parcelado ? "Parcelado" : "Ã€ vista"}</p></div>
               <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Valor por parcela</p><p className="font-semibold">{formatCurrency(valorParcela)}</p></div>
               <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Status</p><p className="font-semibold">{caso.acordoStatus}</p></div>
               <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Parcelas pendentes</p><p className="font-semibold">{Math.max(0, caso.quantidadeParcelas - 1)}</p></div>
             </div>
             <Table>
-              <TableHeader><TableRow><TableHead>Parcela</TableHead><TableHead>Valor</TableHead><TableHead>Vencimento</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Parcela</TableHead><TableHead>Valor</TableHead><TableHead>Vencimento</TableHead><TableHead>Status</TableHead><TableHead>AÃ§Ãµes</TableHead></TableRow></TableHeader>
               <TableBody>
                 {Array.from({ length: caso.quantidadeParcelas }).map((_, index) => (
                   <TableRow key={index}>
@@ -434,8 +434,8 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
                     <TableCell>{caso.primeiroVencimento}</TableCell>
                     <TableCell>{index === 0 ? "Pago" : "Pendente"}</TableCell>
                     <TableCell className="space-x-2">
-                      <Button variant="link" size="sm" onClick={() => featureInPreparation("Baixa de parcela de acordo depende do fluxo real de pagamentos juridicos.")}>Marcar como pago</Button>
-                      <Button variant="link" size="sm" onClick={() => featureInPreparation("Geracao de recibo juridico depende da rotina real de documentos.")}>Gerar recibo</Button>
+                      <Button variant="link" size="sm" disabled>Pagamento indisponível</Button>
+                      <Button variant="link" size="sm" disabled>Recibo indisponível</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -444,7 +444,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
           </TabsContent>
           <TabsContent value="documentos" className="pt-4">
             <Table>
-              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Tipo</TableHead><TableHead>Data</TableHead><TableHead>Responsável</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Tipo</TableHead><TableHead>Data</TableHead><TableHead>ResponsÃ¡vel</TableHead><TableHead>AÃ§Ãµes</TableHead></TableRow></TableHeader>
               <TableBody>
                 {juridicoDocumentTypes.slice(0, 4).map((type, index) => (
                   <TableRow key={type}>
@@ -452,7 +452,7 @@ function CaseDetailDialog({ caso, onClose }: { caso: JuridicoCaso | null; onClos
                     <TableCell>{type}</TableCell>
                     <TableCell>04/06/2026</TableCell>
                     <TableCell>{caso.responsavel}</TableCell>
-                    <TableCell><Button variant="link" size="sm" onClick={() => toast.error("Documento juridico sem arquivo real vinculado para visualizacao.")}>Visualizar</Button></TableCell>
+                    <TableCell><Button variant="link" size="sm" disabled>Visualização indisponível</Button></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -512,25 +512,25 @@ export function JuridicoContent() {
   })
 
   const activeCases = cases.filter((caso) => caso.status !== "Encerrado" && caso.status !== "Perdido").length
-  const negotiationCases = cases.filter((caso) => caso.status === "Em negociação").length
-  const judicialCases = cases.filter((caso) => caso.status === "Ação judicial").length
+  const negotiationCases = cases.filter((caso) => caso.status === "Em negociaÃ§Ã£o").length
+  const judicialCases = cases.filter((caso) => caso.status === "AÃ§Ã£o judicial").length
   const closedCases = cases.filter((caso) => caso.status === "Encerrado").length
   const totalOriginal = cases.reduce((sum, caso) => sum + caso.valorOriginal, 0)
   const totalMulta = cases.reduce((sum, caso) => sum + caso.multa, 0)
   const totalJuros = cases.reduce((sum, caso) => sum + caso.juros, 0)
   const totalRecovered = cases.reduce((sum, caso) => sum + caso.valorPago, 0)
-  const highRisk = cases.filter((caso) => caso.risco === "Alto" || caso.risco === "Crítico").length
+  const highRisk = cases.filter((caso) => caso.risco === "Alto" || caso.risco === "CrÃ­tico").length
 
   const metrics = [
     ["Casos ativos", activeCases],
-    ["Casos em negociação", negotiationCases],
-    ["Casos em ação judicial", judicialCases],
+    ["Casos em negociaÃ§Ã£o", negotiationCases],
+    ["Casos em aÃ§Ã£o judicial", judicialCases],
     ["Casos encerrados", closedCases],
-    ["Valor total em cobrança", formatCurrency(totalOriginal)],
+    ["Valor total em cobranÃ§a", formatCurrency(totalOriginal)],
     ["Valor total de multas", formatCurrency(totalMulta)],
     ["Valor total de juros", formatCurrency(totalJuros)],
     ["Valor recuperado", formatCurrency(totalRecovered)],
-    ["Próximos vencimentos de acordo", 2],
+    ["PrÃ³ximos vencimentos de acordo", 2],
     ["Contratos com risco alto", highRisk],
   ]
 
@@ -548,8 +548,8 @@ export function JuridicoContent() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Jurídico</h1>
-          <p className="text-muted-foreground">Gestão de contratos em cobrança, acordos e ações judiciais.</p>
+          <h1 className="text-3xl font-bold">JurÃ­dico</h1>
+          <p className="text-muted-foreground">GestÃ£o de contratos em cobranÃ§a, acordos e aÃ§Ãµes judiciais.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildLegalReport(filteredCases.map((caso) => ({
@@ -615,8 +615,8 @@ export function JuridicoContent() {
             </div>
             {selectFilter(statusFilter, setStatusFilter, "Status", legalStatusOptions.map((item) => item.label))}
             {selectFilter(etapaFilter, setEtapaFilter, "Etapa", juridicoEtapas)}
-            {selectFilter(responsavelFilter, setResponsavelFilter, "Responsável", juridicoResponsaveis)}
-            {selectFilter(periodoFilter, setPeriodoFilter, "Período", ["Últimos 30 dias", "Este trimestre", "Este ano"])}
+            {selectFilter(responsavelFilter, setResponsavelFilter, "ResponsÃ¡vel", juridicoResponsaveis)}
+            {selectFilter(periodoFilter, setPeriodoFilter, "PerÃ­odo", ["Ãšltimos 30 dias", "Este trimestre", "Este ano"])}
             {selectFilter(riscoFilter, setRiscoFilter, "Risco", legalRiskOptions.map((item) => item.label))}
             {selectFilter(pagamentoFilter, setPagamentoFilter, "Forma de pagamento", juridicoFormasPagamento)}
           </div>
@@ -625,8 +625,8 @@ export function JuridicoContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Casos jurídicos</CardTitle>
-          <CardDescription>Contratos em cobrança, acordos e ações judiciais.</CardDescription>
+          <CardTitle>Casos jurÃ­dicos</CardTitle>
+          <CardDescription>Contratos em cobranÃ§a, acordos e aÃ§Ãµes judiciais.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -634,17 +634,17 @@ export function JuridicoContent() {
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Contrato</TableHead>
-                <TableHead>Nº Processo</TableHead>
+                <TableHead>NÂº Processo</TableHead>
                 <TableHead>Valor original</TableHead>
                 <TableHead>Multa</TableHead>
                 <TableHead>Juros</TableHead>
                 <TableHead>Valor atualizado</TableHead>
                 <TableHead>Etapa</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Última atualização</TableHead>
-                <TableHead>Próximo prazo</TableHead>
-                <TableHead>Responsável</TableHead>
-                <TableHead className="w-12">Ações</TableHead>
+                <TableHead>Ãšltima atualizaÃ§Ã£o</TableHead>
+                <TableHead>PrÃ³ximo prazo</TableHead>
+                <TableHead>ResponsÃ¡vel</TableHead>
+                <TableHead className="w-12">AÃ§Ãµes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -669,13 +669,13 @@ export function JuridicoContent() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setSelectedCase(caso)}><Eye className="mr-2 h-4 w-4" />Ver caso</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => featureInPreparation("Edicao de caso juridico depende do formulario real de edicao.")}>Editar</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => featureInPreparation("Atualizacao de andamento depende do registro real do historico juridico.")}>Atualizar andamento</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => featureInPreparation("Anexo de documento juridico depende de upload real no Storage.")}>Anexar documento</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => featureInPreparation("Registro de pagamento juridico depende do fluxo financeiro real.")}>Registrar pagamento</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => featureInPreparation("Criacao de acordo parcelado depende do cadastro real de parcelas juridicas.")}>Criar acordo</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Editar indisponível</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Atualização indisponível</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Anexo indisponível</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Pagamento indisponível</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Acordo indisponível</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => featureInPreparation("Encerramento de caso depende de persistencia real do status juridico.")}>Encerrar caso</DropdownMenuItem>
+                        <DropdownMenuItem disabled>Encerramento indisponível</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -688,8 +688,8 @@ export function JuridicoContent() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card><CardContent className="p-4"><AlertTriangle className="mb-2 h-5 w-5 text-amber-600" /><p className="font-semibold">Acordos vencendo</p><p className="text-sm text-muted-foreground">2 acordos exigem acompanhamento.</p></CardContent></Card>
-        <Card><CardContent className="p-4"><CalendarClock className="mb-2 h-5 w-5 text-primary" /><p className="font-semibold">Audiências</p><p className="text-sm text-muted-foreground">1 audiência prevista este mês.</p></CardContent></Card>
-        <Card><CardContent className="p-4"><Paperclip className="mb-2 h-5 w-5 text-emerald-600" /><p className="font-semibold">Documentos jurídicos</p><p className="text-sm text-muted-foreground">Contratos, notificações, petições e acordos vinculados ao caso.</p></CardContent></Card>
+        <Card><CardContent className="p-4"><CalendarClock className="mb-2 h-5 w-5 text-primary" /><p className="font-semibold">AudiÃªncias</p><p className="text-sm text-muted-foreground">1 audiÃªncia prevista este mÃªs.</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Paperclip className="mb-2 h-5 w-5 text-emerald-600" /><p className="font-semibold">Documentos jurÃ­dicos</p><p className="text-sm text-muted-foreground">Contratos, notificaÃ§Ãµes, petiÃ§Ãµes e acordos vinculados ao caso.</p></CardContent></Card>
       </div>
 
       <CaseDetailDialog caso={selectedCase} onClose={() => setSelectedCase(null)} />

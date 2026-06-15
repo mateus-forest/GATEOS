@@ -56,7 +56,7 @@ import type { ClientView } from "@/lib/mock-data"
 import { createClient, getClients } from "@/lib/data/clients"
 import { formatCurrency, formatCPFCNPJ, formatPhone } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildClientsReport } from "@/lib/reports/report-builders"
 
 function normalizeClient(item: Record<string, unknown>): ClientView {
@@ -403,20 +403,17 @@ export function ClientesContent() {
                               Ver detalhes
                             </DropdownMenuItem>
                           </DialogTrigger>
-                          <DropdownMenuItem onClick={() => featureInPreparation("A edição de clientes ainda precisa de um formulário persistente dedicado.")}>
+                          <DropdownMenuItem disabled>
                             <Edit className="mr-2 h-4 w-4" />
-                            Editar
+                            Editar indisponível
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { window.location.href = "/contratos" }}>
                             <FileText className="mr-2 h-4 w-4" />
                             Ver contratos
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => featureInPreparation("A exclusão de clientes exige validação de contratos e lançamentos vinculados.")}
-                          >
+                          <DropdownMenuItem className="text-destructive" disabled>
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
+                            Excluir indisponível
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

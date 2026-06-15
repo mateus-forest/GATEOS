@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -68,7 +68,7 @@ import { uploadDocumentFile } from "@/lib/data/documents"
 import { isContratoEmJuridico } from "@/lib/juridico-data"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportPdfReport } from "@/lib/cta-actions"
 import { buildContractsReport } from "@/lib/reports/report-builders"
 import type { SupabaseRow } from "@/lib/supabase/types"
 import { clientLabel, equipmentLabel } from "@/lib/data/display-labels"
@@ -745,7 +745,7 @@ export function ContratosContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Contratos</h1>
-          <p className="text-muted-foreground">Gestão de contratos e renovações</p>
+          <p className="text-muted-foreground">GestÃ£o de contratos e renovaÃ§Ãµes</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildContractsReport(filteredContracts.map((contract) => ({
@@ -803,10 +803,10 @@ export function ContratosContent() {
               <AlertCircle className="h-5 w-5 text-amber-600" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-amber-800">
-                  {expiringContracts} contratos vencem nos próximos 30 dias
+                  {expiringContracts} contratos vencem nos prÃ³ximos 30 dias
                 </p>
                 <p className="text-xs text-amber-600">
-                  Inicie o processo de renovação para manter a continuidade dos serviços
+                  Inicie o processo de renovaÃ§Ã£o para manter a continuidade dos serviÃ§os
                 </p>
               </div>
               <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100">
@@ -881,7 +881,7 @@ export function ContratosContent() {
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="ativos">Ativos</TabsTrigger>
           <TabsTrigger value="vencendo">Vencendo</TabsTrigger>
-          <TabsTrigger value="renovacoes">Renovações</TabsTrigger>
+          <TabsTrigger value="renovacoes">RenovaÃ§Ãµes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="todos" className="space-y-4">
@@ -892,7 +892,7 @@ export function ContratosContent() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por número ou cliente..."
+                    placeholder="Buscar por nÃºmero ou cliente..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -917,9 +917,9 @@ export function ContratosContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os tipos</SelectItem>
-                    <SelectItem value="locacao">Locação</SelectItem>
+                    <SelectItem value="locacao">LocaÃ§Ã£o</SelectItem>
                     <SelectItem value="venda">Venda</SelectItem>
-                    <SelectItem value="servico">Serviço</SelectItem>
+                    <SelectItem value="servico">ServiÃ§o</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -935,7 +935,7 @@ export function ContratosContent() {
                     <TableHead>Contrato</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Tipo</TableHead>
-                    <TableHead>Vigência</TableHead>
+                    <TableHead>VigÃªncia</TableHead>
                     <TableHead>Progresso</TableHead>
                     <TableHead>Valor Mensal</TableHead>
                     <TableHead>Status</TableHead>
@@ -963,7 +963,7 @@ export function ContratosContent() {
                       <TableCell>
                         <div className="text-sm">
                           <p>{formatDate(contract.startDate)}</p>
-                          <p className="text-muted-foreground">até {formatDate(contract.endDate)}</p>
+                          <p className="text-muted-foreground">atÃ© {formatDate(contract.endDate)}</p>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -973,7 +973,7 @@ export function ContratosContent() {
                             className="h-2"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            {calculateProgress(contract.startDate, contract.endDate).toFixed(0)}% concluído
+                            {calculateProgress(contract.startDate, contract.endDate).toFixed(0)}% concluÃ­do
                           </p>
                         </div>
                       </TableCell>
@@ -984,7 +984,7 @@ export function ContratosContent() {
                         <div className="flex flex-col gap-1">
                           {getStatusBadge(contract.status)}
                           {isContratoEmJuridico(contract.number) && (
-                            <Badge className="w-fit bg-red-100 text-red-700 hover:bg-red-100">Em Jurídico</Badge>
+                            <Badge className="w-fit bg-red-100 text-red-700 hover:bg-red-100">Em JurÃ­dico</Badge>
                           )}
                         </div>
                       </TableCell>
@@ -1000,14 +1000,8 @@ export function ContratosContent() {
                               <Eye className="mr-2 h-4 w-4" />
                               Ver detalhes
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => featureInPreparation("A edição de contratos ainda precisa de um formulário persistente dedicado.")}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => featureInPreparation("A duplicação de contratos precisa copiar parcelas, equipamentos e vínculo jurídico com segurança.")}>
-                              <Copy className="mr-2 h-4 w-4" />
-                              Duplicar
-                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>`r`n                              <Edit className="mr-2 h-4 w-4" />`r`n                              Editar indisponível`r`n                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>`r`n                              <Copy className="mr-2 h-4 w-4" />`r`n                              Duplicar indisponível`r`n                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleCopyClientLink(contract)}>
                               <Copy className="mr-2 h-4 w-4" />
                               Copiar link do cliente
@@ -1019,27 +1013,15 @@ export function ContratosContent() {
                             {isContratoEmJuridico(contract.number) ? (
                               <DropdownMenuItem onClick={() => { window.location.href = "/juridico" }}>
                                 <Scale className="mr-2 h-4 w-4" />
-                                Ver caso jurídico
+                                Ver caso jurÃ­dico
                               </DropdownMenuItem>
                             ) : (
-                              <DropdownMenuItem onClick={() => featureInPreparation("Envio de contrato para o juridico depende da criacao real do caso juridico vinculado.")}>
-                                <Scale className="mr-2 h-4 w-4" />
-                                Enviar para jurídico
-                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled>`r`n                                <Scale className="mr-2 h-4 w-4" />`r`n                                Enviar para jurídico indisponível`r`n                              </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => featureInPreparation("Renovação de contrato precisa gerar nova vigência, parcelas e validação de equipamentos.")}>
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Renovar contrato
-                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>`r`n                              <RefreshCw className="mr-2 h-4 w-4" />`r`n                              Renovar indisponível`r`n                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => featureInPreparation("Cancelamento de contrato exige atualização de estoque, parcelas e auditoria financeira.")}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Cancelar
-                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive" disabled>`r`n                              <Trash2 className="mr-2 h-4 w-4" />`r`n                              Cancelar indisponível`r`n                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1050,7 +1032,7 @@ export function ContratosContent() {
                       <TableCell colSpan={8} className="h-28 text-center">
                         <div className="space-y-1">
                           <p className="font-medium">Nenhum contrato cadastrado ainda.</p>
-                          <p className="text-sm text-muted-foreground">Clique em Novo Contrato para começar.</p>
+                          <p className="text-sm text-muted-foreground">Clique em Novo Contrato para comeÃ§ar.</p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1080,7 +1062,7 @@ export function ContratosContent() {
         <TabsContent value="renovacoes">
           <Card>
             <CardContent className="p-6">
-              <p className="text-muted-foreground">Mostrando contratos em processo de renovação...</p>
+              <p className="text-muted-foreground">Mostrando contratos em processo de renovaÃ§Ã£o...</p>
             </CardContent>
           </Card>
         </TabsContent>

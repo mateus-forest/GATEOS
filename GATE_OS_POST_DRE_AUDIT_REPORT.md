@@ -9,7 +9,7 @@ Data: 2026-06-15
 - Rotas renderizadas no build.
 - Consultas Supabase usadas por modulos operacionais.
 - Tabelas/views Supabase pelo script `scripts/audit-supabase-structure.mjs`.
-- Pontos com `featureInPreparation`.
+- Pontos com CTAs sem persistencia real.
 - Pontos com nome ou dependencia legado/mock.
 - Exports PDF/Excel usados pelos modulos.
 - DRE operacional 2026 apos inclusao do baseline.

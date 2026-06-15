@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen, Download, Trash2, Eye, Grid, List, Plus, Filter, MoreVertical, Clock, User } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { featureInPreparation } from "@/lib/cta-actions"
 import { getDocuments, uploadDocumentFile } from "@/lib/data/documents"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
@@ -31,15 +30,15 @@ type DocumentoView = {
 
 type SelectOption = { label: string; value: string }
 
-const categorias = ["Todos", "Contratos", "Notas Fiscais", "Relatórios", "Propostas", "Termos", "Imagens", "Laudos", "Controles"]
+const categorias = ["Todos", "Contratos", "Notas Fiscais", "RelatÃ³rios", "Propostas", "Termos", "Imagens", "Laudos", "Controles"]
 const documentTypeOptions = [
   { label: "Contrato", value: "contrato" },
   { label: "Boleto", value: "boleto" },
   { label: "Recibo", value: "recibo" },
   { label: "Nota fiscal", value: "nota_fiscal" },
   { label: "Comprovante", value: "comprovante" },
-  { label: "Petição", value: "peticao" },
-  { label: "Sentença", value: "sentenca" },
+  { label: "PetiÃ§Ã£o", value: "peticao" },
+  { label: "SentenÃ§a", value: "sentenca" },
   { label: "Acordo", value: "acordo" },
   { label: "Documento interno", value: "documento_interno" },
   { label: "Outro", value: "outro" },
@@ -184,24 +183,12 @@ export function DocumentosContent() {
     }
   }
 
-  const handleDocumentView = () => {
-    toast.error("Documento sem arquivo real vinculado para visualizacao.")
-  }
-
-  const handleDocumentDownload = () => {
-    toast.error("Documento sem arquivo real vinculado para download.")
-  }
-
-  const handleDocumentDelete = () => {
-    featureInPreparation("Exclusao de documento depende do registro real no Supabase Storage e na tabela de documentos.")
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Documentos</h1>
-          <p className="text-muted-foreground">Gestão de arquivos e documentos da empresa</p>
+          <p className="text-muted-foreground">GestÃ£o de arquivos e documentos da empresa</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -281,8 +268,8 @@ export function DocumentosContent() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Observações</Label>
-                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observações sobre o documento" />
+                  <Label>ObservaÃ§Ãµes</Label>
+                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="ObservaÃ§Ãµes sobre o documento" />
                 </div>
                 {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               </div>
@@ -295,7 +282,7 @@ export function DocumentosContent() {
         </Dialog>
       </div>
 
-      {/* Estatísticas */}
+      {/* EstatÃ­sticas */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="p-4">
@@ -318,7 +305,7 @@ export function DocumentosContent() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{estatisticas.tamanhoTotal}</p>
-                <p className="text-xs text-muted-foreground">Espaço utilizado</p>
+                <p className="text-xs text-muted-foreground">EspaÃ§o utilizado</p>
               </div>
             </div>
           </CardContent>
@@ -331,7 +318,7 @@ export function DocumentosContent() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{estatisticas.ultimoUpload}</p>
-                <p className="text-xs text-muted-foreground">Último upload</p>
+                <p className="text-xs text-muted-foreground">Ãšltimo upload</p>
               </div>
             </div>
           </CardContent>
@@ -412,18 +399,9 @@ export function DocumentosContent() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handleDocumentView}>
-                        <Eye className="h-4 w-4 mr-2" />
-                        Visualizar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleDocumentDownload}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Download
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onClick={handleDocumentDelete}>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled>`r`n                        <Eye className="h-4 w-4 mr-2" />`r`n                        Visualização indisponível`r`n                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled>`r`n                        <Download className="h-4 w-4 mr-2" />`r`n                        Download indisponível`r`n                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive" disabled>`r`n                        <Trash2 className="h-4 w-4 mr-2" />`r`n                        Excluir indisponível`r`n                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -456,8 +434,8 @@ export function DocumentosContent() {
                     <th className="text-left p-4 font-medium text-muted-foreground">Cliente</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Tamanho</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Data</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">Usuário</th>
-                    <th className="text-right p-4 font-medium text-muted-foreground">Ações</th>
+                    <th className="text-left p-4 font-medium text-muted-foreground">UsuÃ¡rio</th>
+                    <th className="text-right p-4 font-medium text-muted-foreground">AÃ§Ãµes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -482,13 +460,13 @@ export function DocumentosContent() {
                       <td className="p-4 text-sm text-muted-foreground">{doc.usuario}</td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDocumentView}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDocumentDownload}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
                             <Download className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={handleDocumentDelete}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>

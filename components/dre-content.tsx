@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Download, FileSpreadsheet, History, Lock, RotateCcw, Trash2 } from "lucide-react"
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { exportExcelTable, exportPdfReport, featureInPreparation } from "@/lib/cta-actions"
+import { exportExcelTable, exportPdfReport } from "@/lib/cta-actions"
 import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builders"
 import {
   createDreManualAdjustment,
@@ -1331,7 +1331,7 @@ export function DREContent() {
         const nextImportId = String(refreshedImports.imports[0]?.id ?? "")
         setAdjustments((current) => current.filter((item) => {
           const reason = item.reason.toUpperCase()
-          return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÇÃO EXCEL -")
+          return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÃ‡ÃƒO EXCEL -")
         }))
         setImportedRows([])
         setImportedRawRows([])
@@ -1434,7 +1434,7 @@ export function DREContent() {
       ? exportPdfReport(buildGenericReport({
           title: "Historico DRE importado",
           subtitle: String(importedSnapshotInfo?.sheet_name ?? "Snapshot historico"),
-          description: "Snapshot preservado da planilha importada, sem recálculo ou remapeamento de meses.",
+          description: "Snapshot preservado da planilha importada, sem recÃ¡lculo ou remapeamento de meses.",
           rows: rawHistoryTable.rows.map((row) => {
             const cellMap = new Map(row.cells.map((cell) => [cell.columnIndex, cell.value]))
             return Object.fromEntries(rawHistoryTable.columns.map((column) => [
@@ -1649,16 +1649,16 @@ export function DREContent() {
               <Badge className={isClosed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
                 {isClosed ? "Fechado" : "Em conferencia"}
               </Badge>
-              <Button variant="outline" onClick={() => featureInPreparation("Análise de divergências ainda não configurada.")}>
-                Ver divergencias
+              <Button variant="outline" disabled>
+                Divergências indisponíveis
               </Button>
               <Button variant="outline" onClick={exportClosingRows} disabled={usingStructuredHistory}>
                 Exportar fechamento
               </Button>
               {isClosed ? (
-                <Button variant="outline" onClick={() => featureInPreparation("Reabertura de mês ainda não configurada.")}>
+                <Button variant="outline" disabled>
                   <RotateCcw className="mr-2 h-4 w-4" />
-                  Reabrir
+                  Reabrir indisponível
                 </Button>
               ) : (
                 <Button onClick={() => setCloseOpen(true)} disabled={usingStructuredHistory}>
@@ -1717,7 +1717,7 @@ export function DREContent() {
             <div className="p-10 text-center text-muted-foreground">
               {dreCategories.length === 0
                 ? "Cadastre categorias DRE ou execute o seed base para iniciar."
-                : "Sem dados financeiros para o período selecionado."}
+                : "Sem dados financeiros para o perÃ­odo selecionado."}
             </div>
           ) : rawHistoryTable ? (
             <div className="overflow-x-auto">
@@ -1844,7 +1844,7 @@ export function DREContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajuste manual do DRE</DialogTitle>
-            <DialogDescription>Correção persistida em `dre_manual_adjustments`.</DialogDescription>
+            <DialogDescription>CorreÃ§Ã£o persistida em `dre_manual_adjustments`.</DialogDescription>
           </DialogHeader>
           {editTarget && (
             <div className="grid gap-4">

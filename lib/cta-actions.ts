@@ -97,7 +97,3 @@ export function exportExcelTable({
   toast.success("Planilha organizada gerada e download iniciado.")
   return true
 }
-
-export function featureInPreparation(detail: string) {
-  toast.info(`${detail} Não foi executada nenhuma ação real.`)
-}

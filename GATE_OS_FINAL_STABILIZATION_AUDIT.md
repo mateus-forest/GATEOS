@@ -21,7 +21,7 @@ Nenhum dado foi apagado. Nenhum mock foi criado. Nenhuma policy ou chave de serv
 
 - Acoes de tabela sem comportamento em Clientes, Contratos, Equipamentos, Financeiro, Manutencoes e Patrimonio.
   - Correcao: CTAs que possuem rota real agora navegam para ela.
-  - Correcao: CTAs sensiveis sem fluxo persistente seguro agora exibem aviso explicito via `featureInPreparation`, sem simular sucesso.
+  - Correcao posterior: CTAs sensiveis sem fluxo persistente seguro foram desabilitados visualmente ou removidos do comportamento clicavel.
   - Arquivos: `components/clientes-content.tsx`, `components/contratos-content.tsx`, `components/equipamentos-content.tsx`, `components/financeiro-content.tsx`, `components/manutencoes-content.tsx`, `components/patrimonio-content.tsx`.
 
 - Nomes de socios podiam aparecer vazios quando a tabela retornava campos alternativos.
