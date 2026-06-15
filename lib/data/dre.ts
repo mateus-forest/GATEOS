@@ -179,6 +179,27 @@ export async function getDreOperationalTemplateRows(year?: string) {
   return { missingStructure: false as const, rows: data ?? [] }
 }
 
+export async function getDreHistoricalValues(year?: string) {
+  const supabase = getDreSupabaseClient()
+  let query = supabase
+    .from("dre_historical_values")
+    .select("id,year,month,competency,section,line_name,line_order,value,source_sheet,created_at")
+    .order("line_order", { ascending: true })
+    .order("month", { ascending: true })
+
+  if (year) query = query.eq("year", Number(year))
+
+  const { data, error } = await query
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_historical_values")) {
+      return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+    }
+    throw new Error(`dre_historical_values: falha ao consultar historico. ${error.message}`)
+  }
+
+  return { missingStructure: false as const, rows: data ?? [] }
+}
+
 export async function replaceDreOperationalTemplateRows(year: number, rows: SupabaseRow[]) {
   const supabase = getDreSupabaseClient()
   const { error: deleteError } = await supabase

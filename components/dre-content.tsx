@@ -36,6 +36,7 @@ import {
   deleteDreManualAdjustment,
   createDreImportSnapshot,
   getDreCategories,
+  getDreHistoricalValues,
   getDreImportSnapshotById,
   getDreImportSnapshots,
   getLatestDreImportSnapshot,
@@ -62,6 +63,7 @@ import type { SupabaseRow } from "@/lib/supabase/types"
 
 const months = ["jan-26", "fev-26", "mar-26", "abr-26", "mai-26", "jun-26", "jul-26", "ago-26", "set-26", "out-26", "nov-26", "dez-26"]
 const empty = Array(12).fill(0)
+const historicalYears = new Set(["2022", "2023", "2024", "2025"])
 
 type RowKind = "section" | "normal" | "total" | "highlight" | "percent"
 
@@ -122,12 +124,18 @@ function subtractValues(a: number[], b: number[]) {
 }
 
 function monthLabelToNumber(label: string) {
-  return months.indexOf(label) + 1
+  const monthPrefix = normalizeTextKey(label).slice(0, 3)
+  return months.findIndex((month) => normalizeTextKey(month).startsWith(monthPrefix)) + 1
 }
 
 function monthNumberToLabel(month: unknown) {
   const index = Number(month) - 1
   return months[index] ?? months[0]
+}
+
+function monthsForYear(year: string) {
+  const suffix = String(year).slice(-2)
+  return months.map((month) => `${month.slice(0, 3)}-${suffix}`)
 }
 
 function getCategoryName(category: SupabaseRow) {
@@ -745,6 +753,51 @@ function buildRawHistoryTable(rows: SupabaseRow[]) {
   return { columns, rows: parsedRows }
 }
 
+function historicalRowKind(lineName: string, section: string): RowKind {
+  const label = normalizeTextKey(lineName)
+  const sectionKey = normalizeTextKey(section)
+  if (label.includes("%")) return "percent"
+  if (label.includes("total") || label.includes("receita liquida") || label.includes("lucro operacional") || label.includes("resultado operacional")) return "total"
+  if (label.includes("saldo") || label.includes("diferenca")) return "highlight"
+  if (sectionKey && label === sectionKey) return "section"
+  return "normal"
+}
+
+function historicalRowGroup(section: string): DreRow["group"] {
+  const normalized = normalizeTextKey(section)
+  if (normalized.includes("receita") || normalized.includes("aporte")) return "revenue"
+  if (normalized.includes("saldo") || normalized.includes("fechamento")) return "balance"
+  if (normalized.includes("resultado")) return "result"
+  return "expense"
+}
+
+function buildHistoricalRows(rows: SupabaseRow[]) {
+  const rowMap = new Map<string, DreRow & { order: number }>()
+
+  rows.forEach((item) => {
+    const lineName = String(item.line_name ?? "Linha sem nome")
+    const section = String(item.section ?? "Historico")
+    const order = Number(item.line_order ?? 0)
+    const key = `${order}-${normalizeTextKey(section)}-${normalizeTextKey(lineName)}`
+    const current = rowMap.get(key) ?? {
+      id: key,
+      label: lineName,
+      kind: historicalRowKind(lineName, section),
+      group: historicalRowGroup(section),
+      groupName: section,
+      values: [...empty],
+      order,
+    }
+    const monthIndex = Number(item.month ?? 0) - 1
+    if (monthIndex >= 0 && monthIndex <= 11) current.values[monthIndex] = Number(item.value ?? 0)
+    rowMap.set(key, current)
+  })
+
+  return Array.from(rowMap.values())
+    .sort((a, b) => a.order - b.order)
+    .map(({ order, ...row }) => row)
+}
+
 function findRowValues(rows: DreRow[], labelIncludes: string) {
   const key = normalizeTextKey(labelIncludes)
   return rows.find((row) => normalizeTextKey(row.label).includes(key))?.values ?? [...empty]
@@ -766,6 +819,8 @@ export function DREContent() {
   const [bankAccounts, setBankAccounts] = useState<SupabaseRow[]>([])
   const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const [closings, setClosings] = useState<SupabaseRow[]>([])
+  const [historicalRows, setHistoricalRows] = useState<DreRow[]>([])
+  const [historicalStructureMissing, setHistoricalStructureMissing] = useState(false)
   const [operationalTemplateRows, setOperationalTemplateRows] = useState<Array<{ label: string; groupName: string; rowType: string }>>([])
   const [importPreviews, setImportPreviews] = useState<DreImportPreview[]>([])
   const [importMode, setImportMode] = useState<DreImportMode>("operational")
@@ -798,7 +853,8 @@ export function DREContent() {
       getLatestDreImportSnapshot(year),
       getDreImportSnapshots(year),
       getDreOperationalTemplateRows(year),
-    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult, templateResult]) => {
+      getDreHistoricalValues(year),
+    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult, templateResult, historicalResult]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
@@ -819,6 +875,8 @@ export function DREContent() {
       console.log("[DRE Template] ano selecionado", year)
       console.log("[DRE Template] primeira linha", templateResult.rows[0] ?? null)
       setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
+      setHistoricalStructureMissing(historicalResult.missingStructure)
+      setHistoricalRows(buildHistoricalRows(historicalResult.rows))
     })
   }, [year])
 
@@ -867,18 +925,19 @@ export function DREContent() {
     [adjustments, bankAccounts, clients, closings, dreCategories, financialEntries, operationalTemplateRows, partnerEntries, year]
   )
 
-  const usingImportedDre = dreView === "imported" && importedRows.length > 0
+  const usingStructuredHistory = historicalYears.has(year) && dreView === "operational"
+  const usingImportedDre = !usingStructuredHistory && dreView === "imported" && importedRows.length > 0
   const rawHistoryTable = usingImportedDre ? buildRawHistoryTable(importedRawRows) : null
-  const activeRows = usingImportedDre ? importedRows : rows
-  const activeHasRealData = usingImportedDre || hasRealData
-  const activeReceitaTotal = usingImportedDre ? findRowValues(importedRows, "RECEITA TOTAL") : receitaTotal
-  const activeDespesasTotal = usingImportedDre ? findRowValues(importedRows, "Total de Despesas Operacionais") : despesasTotal
-  const activeResultado = usingImportedDre ? findRowValues(importedRows, "RESULTADO OPERACIONAL") : resultado
-  const activeLucroOperacional = usingImportedDre ? findRowValues(importedRows, "LUCRO OPERACIONAL") : lucroOperacional
-  const activeSaldoAnterior = usingImportedDre ? findRowValues(importedRows, "SALDO ANTERIOR") : saldoAnteriorValues
-  const activeSaldoOperacao = usingImportedDre ? findRowValues(importedRows, "SALDO OPERACAO") : saldoOperacaoValues
-  const activeSaldoBanco = usingImportedDre ? findRowValues(importedRows, "SALDO BANCO") : saldoBancoValues
-  const activeDiferenca = usingImportedDre ? findRowValues(importedRows, "DIFERENCA") : diferencaValues
+  const activeRows = usingStructuredHistory ? historicalRows : usingImportedDre ? importedRows : rows
+  const activeHasRealData = usingStructuredHistory ? historicalRows.length > 0 : usingImportedDre || hasRealData
+  const activeReceitaTotal = usingStructuredHistory ? findRowValues(historicalRows, "RECEITA TOTAL") : usingImportedDre ? findRowValues(importedRows, "RECEITA TOTAL") : receitaTotal
+  const activeDespesasTotal = usingStructuredHistory ? findRowValues(historicalRows, "Total de Despesas Operacionais") : usingImportedDre ? findRowValues(importedRows, "Total de Despesas Operacionais") : despesasTotal
+  const activeResultado = usingStructuredHistory ? findRowValues(historicalRows, "RESULTADO OPERACIONAL") : usingImportedDre ? findRowValues(importedRows, "RESULTADO OPERACIONAL") : resultado
+  const activeLucroOperacional = usingStructuredHistory ? findRowValues(historicalRows, "LUCRO OPERACIONAL") : usingImportedDre ? findRowValues(importedRows, "LUCRO OPERACIONAL") : lucroOperacional
+  const activeSaldoAnterior = usingStructuredHistory ? findRowValues(historicalRows, "SALDO ANTERIOR") : usingImportedDre ? findRowValues(importedRows, "SALDO ANTERIOR") : saldoAnteriorValues
+  const activeSaldoOperacao = usingStructuredHistory ? findRowValues(historicalRows, "SALDO OPERACAO") : usingImportedDre ? findRowValues(importedRows, "SALDO OPERACAO") : saldoOperacaoValues
+  const activeSaldoBanco = usingStructuredHistory ? findRowValues(historicalRows, "SALDO BANCO") : usingImportedDre ? findRowValues(importedRows, "SALDO BANCO") : saldoBancoValues
+  const activeDiferenca = usingStructuredHistory ? findRowValues(historicalRows, "DIFERENCA") : usingImportedDre ? findRowValues(importedRows, "DIFERENCA") : diferencaValues
 
   const monthIndex = months.indexOf(closingMonth)
   const safeMonthIndex = monthIndex >= 0 ? monthIndex : 0
@@ -894,6 +953,7 @@ export function DREContent() {
   const saldoOperacao = activeSaldoOperacao
   const saldoBanco = activeSaldoBanco
   const diferenca = activeDiferenca
+  const activeMonths = monthsForYear(year)
 
   const handleCloseMonth = async () => {
     try {
@@ -1242,14 +1302,14 @@ export function DREContent() {
         ["Mes em analise", closingMonth],
         ["Data de emissao", new Date().toLocaleDateString("pt-BR")],
       ],
-      columns: ["Conta", ...months, "Total"],
+      columns: ["Conta", ...activeMonths, "Total"],
       rows: activeRows.length
         ? activeRows.map((row) => [
             row.label,
-            ...months.map((_, index) => renderValue(row, index)),
+            ...activeMonths.map((_, index) => renderValue(row, index)),
             renderTotal(row),
           ])
-        : [["Sem dados financeiros para o periodo selecionado.", ...months.map(() => "-"), formatCurrency(0)]],
+        : [["Sem dados financeiros para o periodo selecionado.", ...activeMonths.map(() => "-"), formatCurrency(0)]],
     })
 
   const exportClosingRows = () =>
@@ -1352,7 +1412,11 @@ export function DREContent() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={year} onValueChange={(value) => value && setYear(value)}>
+          <Select value={year} onValueChange={(value) => {
+            if (!value) return
+            setYear(value)
+            if (historicalYears.has(value)) setDreView("operational")
+          }}>
             <SelectTrigger className="w-28">
               <SelectValue placeholder="Ano" />
             </SelectTrigger>
@@ -1360,10 +1424,12 @@ export function DREContent() {
               <SelectItem value="2026">2026</SelectItem>
               <SelectItem value="2025">2025</SelectItem>
               <SelectItem value="2024">2024</SelectItem>
+              <SelectItem value="2023">2023</SelectItem>
+              <SelectItem value="2022">2022</SelectItem>
             </SelectContent>
           </Select>
           <Badge variant={usingImportedDre ? "default" : "outline"}>
-            {usingImportedDre ? "DRE importada" : "DRE do sistema"}
+            {usingStructuredHistory ? "DRE historica" : usingImportedDre ? "DRE importada" : "DRE do sistema"}
           </Badge>
           {rawHistoryTable && (
             <Badge variant="outline">Historico multi-ano</Badge>
@@ -1373,8 +1439,8 @@ export function DREContent() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="operational">DRE operacional</SelectItem>
-              <SelectItem value="imported" disabled={!importedRows.length}>Historico importado</SelectItem>
+              <SelectItem value="operational">{historicalYears.has(year) ? "DRE historica" : "DRE operacional"}</SelectItem>
+              <SelectItem value="imported" disabled={historicalYears.has(year) || !importedRows.length}>Historico importado</SelectItem>
             </SelectContent>
           </Select>
           {dreView === "imported" && importHistory.length > 0 && (
@@ -1477,7 +1543,7 @@ export function DREContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {months.map((month) => (
+                  {activeMonths.map((month) => (
                     <SelectItem key={month} value={month}>{month}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1488,7 +1554,7 @@ export function DREContent() {
               <Button variant="outline" onClick={() => featureInPreparation("Análise de divergências ainda não configurada.")}>
                 Ver divergencias
               </Button>
-              <Button variant="outline" onClick={exportClosingRows}>
+              <Button variant="outline" onClick={exportClosingRows} disabled={usingStructuredHistory}>
                 Exportar fechamento
               </Button>
               {isClosed ? (
@@ -1497,7 +1563,7 @@ export function DREContent() {
                   Reabrir
                 </Button>
               ) : (
-                <Button onClick={() => setCloseOpen(true)}>
+                <Button onClick={() => setCloseOpen(true)} disabled={usingStructuredHistory}>
                   <Lock className="mr-2 h-4 w-4" />
                   Fechar mes
                 </Button>
@@ -1534,9 +1600,14 @@ export function DREContent() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          {importStructureMissing && !usingImportedDre && (
+          {importStructureMissing && !usingImportedDre && !usingStructuredHistory && (
             <div className="border-b bg-amber-50 p-4 text-sm text-amber-800">
               Estrutura de importacao integral da DRE ainda nao foi criada. Execute o SQL indicado em supabase/gate-os-dre-imported-snapshots.sql.
+            </div>
+          )}
+          {usingStructuredHistory && historicalStructureMissing && (
+            <div className="border-b bg-amber-50 p-4 text-sm text-amber-800">
+              Tabela historica da DRE ainda nao foi criada. Execute o SQL indicado em supabase/gate-os-dre-historical-values-2022-2025-seed.sql.
             </div>
           )}
           {!activeHasRealData ? (
@@ -1593,7 +1664,7 @@ export function DREContent() {
                 <thead>
                   <tr className="bg-slate-200">
                     <th className="sticky left-0 z-20 border bg-slate-200 px-3 py-2 text-left">Conta</th>
-                    {months.map((month) => (
+                    {activeMonths.map((month) => (
                       <th key={month} className="border px-3 py-2 text-right">{month}</th>
                     ))}
                     <th className="sticky right-0 z-20 border bg-slate-200 px-3 py-2 text-right">Total</th>
@@ -1603,7 +1674,7 @@ export function DREContent() {
                   {activeRows.map((row, rowIndex) => (
                     <tr key={row.id ?? `${row.label}-${rowIndex}`} className={rowClass(row.kind)}>
                       <td className={`sticky left-0 z-10 border px-3 py-1.5 ${rowClass(row.kind)}`}>{row.label}</td>
-                      {months.map((month, currentMonthIndex) => (
+                      {activeMonths.map((month, currentMonthIndex) => (
                         <td key={`${row.label}-${month}`} className="relative border px-3 py-1.5 text-right">
                           {row.categoryId ? (
                             <button
