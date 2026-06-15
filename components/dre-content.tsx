@@ -31,14 +31,16 @@ import {
   createDreMonthlyClosing,
   deleteAllDreManualAdjustments,
   deleteDreImportedAdjustments,
-  deleteDreImportSnapshots,
   deleteDreImportSnapshot,
+  deleteDreHistoryImportSnapshots,
   deleteDreManualAdjustment,
   createDreImportSnapshot,
   getDreCategories,
   getDreImportSnapshotById,
   getDreImportSnapshots,
   getLatestDreImportSnapshot,
+  getDreOperationalTemplateRows,
+  replaceDreOperationalTemplateRows,
   getDreManualAdjustments,
   getDreMonthlyClosings,
 } from "@/lib/data/dre"
@@ -200,10 +202,6 @@ function normalizeAdjustment(item: SupabaseRow, categoryById: Map<string, Supaba
   }
 }
 
-function isDreSheetName(sheetName: string) {
-  return normalizeTextKey(sheetName).startsWith("dre")
-}
-
 function isOperationalDreSheetName(sheetName: string) {
   const normalized = normalizeTextKey(sheetName)
   return normalized.startsWith("dre") && normalized.includes("2026")
@@ -232,8 +230,25 @@ function dreImportRowTypeLabel(type: string) {
 }
 
 function yearFromSheetName(sheetName: string, fallbackYear: string) {
-  const match = sheetName.match(/20\d{2}/)
-  return Number(match?.[0] ?? fallbackYear)
+  const fullYearMatch = sheetName.match(/20\d{2}/)
+  if (fullYearMatch) return Number(fullYearMatch[0])
+
+  const shortYears = Array.from(sheetName.matchAll(/(?:^|\D)(2[0-9])(?:\D|$)/g))
+    .map((match) => 2000 + Number(match[1]))
+    .filter((value) => value >= 2020 && value <= 2099)
+  if (shortYears.length) return Math.max(...shortYears)
+
+  return Number(fallbackYear)
+}
+
+function templateRowsToDreRows(rows: SupabaseRow[]) {
+  return rows
+    .map((row) => ({
+      label: String(row.account_name ?? "").trim(),
+      groupName: String(row.group_name ?? "").trim(),
+      rowType: String(row.row_type ?? "").trim(),
+    }))
+    .filter((row) => row.label)
 }
 
 function buildRows({
@@ -245,6 +260,7 @@ function buildRows({
   partnerEntries,
   bankAccounts,
   closings,
+  templateRows,
 }: {
   year: string
   categories: SupabaseRow[]
@@ -254,6 +270,7 @@ function buildRows({
   partnerEntries: SupabaseRow[]
   bankAccounts: SupabaseRow[]
   closings: SupabaseRow[]
+  templateRows: Array<{ label: string; groupName: string; rowType: string }>
 }) {
   const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
   const clientIdByName = new Map(
@@ -412,6 +429,14 @@ function buildRows({
   const aporteRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "aporte")
   const closingRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "closing")
   const ordinaryRevenueRows = revenueRows.filter((row) => !["aporte", "closing"].includes(categoryGroupKey(row.groupName)))
+  const templateOrder = new Map(templateRows.map((row, index) => [normalizeTextKey(row.label), index]))
+  const sortByTemplate = (items: DreRow[]) =>
+    [...items].sort((a, b) => {
+      const aIndex = templateOrder.get(normalizeTextKey(a.label)) ?? Number.MAX_SAFE_INTEGER
+      const bIndex = templateOrder.get(normalizeTextKey(b.label)) ?? Number.MAX_SAFE_INTEGER
+      if (aIndex !== bIndex) return aIndex - bIndex
+      return 0
+    })
   const receitaTotal = ordinaryRevenueRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
   const cpvTotal = cpvRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
   const peopleTotal = peopleRows.reduce((acc, row) => addValues(acc, row.values), [...empty])
@@ -460,20 +485,20 @@ function buildRows({
   return {
     rows: [
       rowMap.get("section-revenue"),
-      ...ordinaryRevenueRows,
+      ...sortByTemplate(ordinaryRevenueRows),
       { label: "RECEITA TOTAL", kind: "total", group: "result", values: receitaTotal },
       { label: "CUSTO DO PRODUTO VENDIDO (CPV)", kind: "highlight", group: "result", values: cpvTotal },
-      ...cpvRows,
+      ...sortByTemplate(cpvRows),
       { label: "RECEITA LIQUIDA TOTAL", kind: "total", group: "result", values: receitaLiquida },
       rowMap.get("section-expenses-people"),
-      ...peopleRows,
+      ...sortByTemplate(peopleRows),
       { label: "TOTAL DESPESAS COM PESSOAL", kind: "total", group: "result", values: peopleTotal },
       { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS COM PESSOAL", values: peopleTotal },
       rowMap.get("section-expenses-operational"),
-      ...operationalRows,
+      ...sortByTemplate(operationalRows),
       { label: "TOTAL DESPESAS GERAIS", kind: "total", group: "result", values: generalTotal },
       { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "TOTAL DESPESAS GERAIS", values: generalTotal },
-      ...financialRows,
+      ...sortByTemplate(financialRows),
       { label: "Total de despesas financeiras", kind: "total", group: "result", values: financialTotal },
       { label: "% Despesas s/Receita", kind: "percent", group: "result", percentOf: "Total de despesas financeiras", values: financialTotal },
       { label: "Total de Despesas Operacionais", kind: "highlight", group: "result", values: despesasOperacionais },
@@ -487,10 +512,10 @@ function buildRows({
       { label: "LUCRO OPERACIONAL", kind: "total", group: "result", values: lucroOperacional },
       { label: "Lucro operacional %", kind: "percent", group: "result", percentOf: "LUCRO OPERACIONAL", values: lucroOperacional },
       rowMap.get("section-expenses-non-operational"),
-      ...nonOperationalRows,
+      ...sortByTemplate(nonOperationalRows),
       { label: "Total de despesas nao operacionais", kind: "highlight", group: "result", values: nonOperationalTotal },
       { label: "RESULTADO OPERACIONAL", kind: "total", group: "result", values: resultado },
-      ...aporteRows,
+      ...sortByTemplate(aporteRows),
       { label: "TOTAL APORTES TERCEIROS", kind: "highlight", group: "result", values: aporteRows.reduce((acc, row) => addValues(acc, row.values), [...empty]) },
       { label: "SALDO ANTERIOR", group: "balance", values: saldoAnteriorValues },
       { label: "SALDO OPERACAO - (RO+SALDO ANT)", kind: "total", group: "balance", values: saldoOperacaoValues },
@@ -587,6 +612,7 @@ export function DREContent() {
   const [bankAccounts, setBankAccounts] = useState<SupabaseRow[]>([])
   const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const [closings, setClosings] = useState<SupabaseRow[]>([])
+  const [operationalTemplateRows, setOperationalTemplateRows] = useState<Array<{ label: string; groupName: string; rowType: string }>>([])
   const [importPreviews, setImportPreviews] = useState<DreImportPreview[]>([])
   const [importMode, setImportMode] = useState<DreImportMode>("operational")
   const [importOpen, setImportOpen] = useState(false)
@@ -616,7 +642,8 @@ export function DREContent() {
       getFinancialSelectOptions(),
       getLatestDreImportSnapshot(year),
       getDreImportSnapshots(year),
-    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult]) => {
+      getDreOperationalTemplateRows(year),
+    ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult, templateResult]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
@@ -632,6 +659,7 @@ export function DREContent() {
       setImportedRows(importResult.snapshot?.rows ? snapshotRowsToDreRows(importResult.snapshot.rows as SupabaseRow[]) : [])
       setImportHistory(importListResult.imports)
       setSelectedImportId(String(importResult.snapshot?.import?.id ?? importListResult.imports[0]?.id ?? ""))
+      setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
     })
   }, [year])
 
@@ -674,8 +702,9 @@ export function DREContent() {
       partnerEntries,
       bankAccounts,
       closings,
+      templateRows: operationalTemplateRows,
     }),
-    [adjustments, bankAccounts, clients, closings, dreCategories, financialEntries, partnerEntries, year]
+    [adjustments, bankAccounts, clients, closings, dreCategories, financialEntries, operationalTemplateRows, partnerEntries, year]
   )
 
   const usingImportedDre = dreView === "imported" && importedRows.length > 0
@@ -890,6 +919,23 @@ export function DREContent() {
           monthsSaved: savedMonths,
           ignoredRows: preview.ignoredRows.length,
         })
+
+        if (importMode === "operational") {
+          const templateResult = await replaceDreOperationalTemplateRows(yearFromSheetName(preview.sheetName, year), preview.rows.map((row) => ({
+            row_index: row.rowIndex,
+            group_name: row.groupName,
+            account_name: row.account,
+            row_type: row.rowType,
+            source_sheet: preview.sheetName,
+            active: true,
+          })))
+
+          if (templateResult.missingStructure) {
+            console.warn("[dre-template] Estrutura dre_operational_template_rows ausente. Execute supabase/gate-os-dre-operational-template.sql para usar a DRE 2026 como modelo operacional.")
+          } else {
+            setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
+          }
+        }
       }
 
       if (latestSnapshot) {
@@ -941,15 +987,17 @@ export function DREContent() {
         }
       } else if (cleanupMode === "imported-all") {
         const deletedAdjustments = await deleteDreImportedAdjustments()
-        const deletedSnapshots = await deleteDreImportSnapshots()
+        const deletedSnapshots = await deleteDreHistoryImportSnapshots()
+        const refreshedImports = await getDreImportSnapshots(year)
+        const nextImportId = String(refreshedImports.imports[0]?.id ?? "")
         setAdjustments((current) => current.filter((item) => {
           const reason = item.reason.toUpperCase()
           return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÇÃO EXCEL -")
         }))
         setImportedRows([])
         setImportedSnapshotInfo(null)
-        setImportHistory([])
-        setSelectedImportId("")
+        setImportHistory(refreshedImports.imports)
+        setSelectedImportId(nextImportId)
         setDreView("operational")
         if (deletedAdjustments.length || deletedSnapshots.length) {
           toast.success("Historicos importados da DRE removidos.")
@@ -1123,7 +1171,7 @@ export function DREContent() {
               <SelectContent>
                 {importHistory.map((item) => (
                   <SelectItem key={String(item.id)} value={String(item.id)}>
-                    {String(item.year ?? "-")} - {String(item.sheet_name ?? "Aba sem nome")} ({importKindLabel(item.import_kind)})
+                    {String(item.sheet_name ?? "Aba sem nome")} - {String(item.file_name ?? "arquivo sem nome")} ({String(item.year ?? "-")}, {importKindLabel(item.import_kind)})
                   </SelectItem>
                 ))}
               </SelectContent>

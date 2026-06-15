@@ -158,6 +158,58 @@ export async function getDreImportSnapshots(year?: string) {
   return { missingStructure: false as const, imports: data ?? [] }
 }
 
+export async function getDreOperationalTemplateRows(year?: string) {
+  const supabase = getDreSupabaseClient()
+  let query = supabase
+    .from("dre_operational_template_rows")
+    .select("*")
+    .eq("active", true)
+    .order("row_index", { ascending: true })
+
+  if (year) query = query.eq("year", Number(year))
+
+  const { data, error } = await query
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_operational_template_rows")) {
+      return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+    }
+    throw new Error(`dre_operational_template_rows: falha ao consultar template. ${error.message}`)
+  }
+
+  return { missingStructure: false as const, rows: data ?? [] }
+}
+
+export async function replaceDreOperationalTemplateRows(year: number, rows: SupabaseRow[]) {
+  const supabase = getDreSupabaseClient()
+  const { error: deleteError } = await supabase
+    .from("dre_operational_template_rows")
+    .delete()
+    .eq("year", year)
+
+  if (deleteError) {
+    if (deleteError.code === "42P01" || deleteError.code === "PGRST205" || deleteError.message.toLowerCase().includes("dre_operational_template_rows")) {
+      return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+    }
+    throw new Error(`dre_operational_template_rows: falha ao substituir template. ${deleteError.message}`)
+  }
+
+  if (!rows.length) return { missingStructure: false as const, rows: [] as SupabaseRow[] }
+
+  const { data, error } = await supabase
+    .from("dre_operational_template_rows")
+    .insert(rows.map((row) => ({ ...row, year })))
+    .select("*")
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205" || error.message.toLowerCase().includes("dre_operational_template_rows")) {
+      return { missingStructure: true as const, rows: [] as SupabaseRow[] }
+    }
+    throw new Error(`dre_operational_template_rows: falha ao salvar template. ${error.message}`)
+  }
+
+  return { missingStructure: false as const, rows: data ?? [] }
+}
+
 export async function getDreImportSnapshotById(importId: string) {
   const supabase = getDreSupabaseClient()
   const { data: dreImport, error } = await supabase
@@ -253,19 +305,31 @@ export async function createDreImportSnapshot(payload: {
   return { import: dreImport, rows: rowsResult.data ?? [] }
 }
 
-export async function deleteDreImportSnapshots() {
+export async function deleteDreHistoryImportSnapshots() {
   const supabase = getDreSupabaseClient()
-  const { data: imports, error: selectError } = await supabase.from("dre_imports").select("id")
+  const { data: imports, error: selectError } = await supabase.from("dre_imports").select("*")
 
   if (selectError) {
     if (selectError.code === "42P01" || selectError.code === "PGRST205" || selectError.message.toLowerCase().includes("dre_imports")) {
       return []
     }
-    throw new Error(`dre_imports: falha ao buscar importacoes. ${selectError.message}`)
+    throw new Error(`dre_imports: falha ao buscar historicos. ${selectError.message}`)
   }
 
-  const ids = (imports ?? []).map((row) => row.id).filter(Boolean)
+  const ids = (imports ?? [])
+    .filter((row) => {
+      const kind = String(row.import_kind ?? "").toLowerCase()
+      const sheet = String(row.sheet_name ?? "").toLowerCase()
+      return kind === "historico" || (!kind && !sheet.includes("2026"))
+    })
+    .map((row) => row.id)
+    .filter(Boolean)
   if (!ids.length) return []
+
+  const { error: rowsError } = await supabase.from("dre_import_rows").delete().in("import_id", ids)
+  if (rowsError && rowsError.code !== "42P01" && rowsError.code !== "PGRST205") {
+    throw new Error(`dre_import_rows: falha ao excluir linhas historicas. ${rowsError.message}`)
+  }
 
   const { data, error } = await supabase
     .from("dre_imports")
@@ -274,7 +338,7 @@ export async function deleteDreImportSnapshots() {
     .select("*")
 
   if (error) {
-    throw new Error(`dre_imports: falha ao excluir importacoes. ${error.message}`)
+    throw new Error(`dre_imports: falha ao excluir historicos. ${error.message}`)
   }
 
   return data ?? []
@@ -282,6 +346,15 @@ export async function deleteDreImportSnapshots() {
 
 export async function deleteDreImportSnapshot(importId: string) {
   const supabase = getDreSupabaseClient()
+  const { error: rowsError } = await supabase
+    .from("dre_import_rows")
+    .delete()
+    .eq("import_id", importId)
+
+  if (rowsError && rowsError.code !== "42P01" && rowsError.code !== "PGRST205") {
+    throw new Error(`dre_import_rows: falha ao excluir linhas da importacao. ${rowsError.message}`)
+  }
+
   const { data, error } = await supabase
     .from("dre_imports")
     .delete()
