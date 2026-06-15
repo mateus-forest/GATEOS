@@ -29,11 +29,13 @@ import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builder
 import {
   createDreManualAdjustment,
   createDreMonthlyClosing,
-  createDreCategory,
   deleteAllDreManualAdjustments,
   deleteDreImportedAdjustments,
+  deleteDreImportSnapshots,
   deleteDreManualAdjustment,
+  createDreImportSnapshot,
   getDreCategories,
+  getLatestDreImportSnapshot,
   getDreManualAdjustments,
   getDreMonthlyClosings,
 } from "@/lib/data/dre"
@@ -57,9 +59,12 @@ const empty = Array(12).fill(0)
 type RowKind = "section" | "normal" | "total" | "highlight" | "percent"
 
 type DreRow = {
+  id?: string
   label: string
   kind?: RowKind
   values: number[]
+  totalValue?: number | null
+  displayAsPercent?: boolean
   percentOf?: string
   categoryId?: string
   group: "revenue" | "expense" | "result" | "balance"
@@ -433,6 +438,58 @@ function rowClass(kind: RowKind = "normal") {
   return "bg-background"
 }
 
+function valuesFromImportedRow(row: SupabaseRow) {
+  return [
+    row.jan,
+    row.fev,
+    row.mar,
+    row.abr,
+    row.mai,
+    row.jun,
+    row.jul,
+    row.ago,
+    row.set,
+    row.out,
+    row.nov,
+    row.dez,
+  ].map((value) => Number(value ?? 0))
+}
+
+function kindFromImportedRow(rowType: unknown): RowKind {
+  const type = String(rowType ?? "")
+  if (type === "group") return "section"
+  if (type === "total") return "total"
+  if (type === "percent") return "percent"
+  if (type === "result") return "highlight"
+  return "normal"
+}
+
+function groupFromImportedRow(groupName: unknown): DreRow["group"] {
+  const normalized = normalizeTextKey(groupName)
+  if (normalized.includes("receita") || normalized.includes("aporte")) return "revenue"
+  if (normalized.includes("fechamento") || normalized.includes("saldo")) return "balance"
+  if (normalized.includes("resultado")) return "result"
+  return "expense"
+}
+
+function snapshotRowsToDreRows(rows: SupabaseRow[]) {
+  return rows.map((row) => ({
+    id: String(row.id ?? `${row.row_index}-${row.account_name}`),
+    label: String(row.account_name ?? row.raw_label ?? "Linha sem descricao"),
+    kind: kindFromImportedRow(row.row_type),
+    values: valuesFromImportedRow(row),
+    totalValue: row.total === null || row.total === undefined ? null : Number(row.total),
+    displayAsPercent: String(row.row_type ?? "") === "percent",
+    group: groupFromImportedRow(row.group_name),
+    groupName: String(row.group_name ?? ""),
+  })) satisfies DreRow[]
+}
+
+function findRowValues(rows: DreRow[], labelIncludes: string) {
+  const key = normalizeTextKey(labelIncludes)
+  return rows.find((row) => normalizeTextKey(row.label).includes(key))?.values ?? [...empty]
+}
+
 export function DREContent() {
   const [year, setYear] = useState("2026")
   const [closingMonth, setClosingMonth] = useState("mai-26")
@@ -457,6 +514,9 @@ export function DREContent() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [cleanupMode, setCleanupMode] = useState<"imported" | "manual" | null>(null)
   const [cleaning, setCleaning] = useState(false)
+  const [importedRows, setImportedRows] = useState<DreRow[]>([])
+  const [importedSnapshotInfo, setImportedSnapshotInfo] = useState<SupabaseRow | null>(null)
+  const [importStructureMissing, setImportStructureMissing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -467,7 +527,8 @@ export function DREContent() {
       getDreCategories(),
       getDreManualAdjustments(),
       getDreMonthlyClosings(),
-    ]).then(([contractRows, clientRows, entryRows, categoryRows, adjustmentRows, closingRows]) => {
+      getLatestDreImportSnapshot(year),
+    ]).then(([contractRows, clientRows, entryRows, categoryRows, adjustmentRows, closingRows, importResult]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
@@ -477,8 +538,11 @@ export function DREContent() {
       setDreCategories(categories)
       setAdjustments((adjustmentRows as SupabaseRow[]).map((item) => normalizeAdjustment(item, categoryById)))
       setClosings(closingRows as SupabaseRow[])
+      setImportStructureMissing(importResult.missingStructure)
+      setImportedSnapshotInfo(importResult.snapshot?.import ?? null)
+      setImportedRows(importResult.snapshot?.rows ? snapshotRowsToDreRows(importResult.snapshot.rows as SupabaseRow[]) : [])
     })
-  }, [])
+  }, [year])
 
   const {
     rows,
@@ -496,6 +560,18 @@ export function DREContent() {
     [adjustments, clients, contracts, dreCategories, financialEntries, year]
   )
 
+  const usingImportedDre = importedRows.length > 0
+  const activeRows = usingImportedDre ? importedRows : rows
+  const activeHasRealData = usingImportedDre || hasRealData
+  const activeReceitaTotal = usingImportedDre ? findRowValues(importedRows, "RECEITA TOTAL") : receitaTotal
+  const activeDespesasTotal = usingImportedDre ? findRowValues(importedRows, "Total de Despesas Operacionais") : despesasTotal
+  const activeResultado = usingImportedDre ? findRowValues(importedRows, "RESULTADO OPERACIONAL") : resultado
+  const activeLucroOperacional = usingImportedDre ? findRowValues(importedRows, "LUCRO OPERACIONAL") : lucroOperacional
+  const activeSaldoAnterior = usingImportedDre ? findRowValues(importedRows, "SALDO ANTERIOR") : saldoAnteriorValues
+  const activeSaldoOperacao = usingImportedDre ? findRowValues(importedRows, "SALDO OPERACAO") : saldoOperacaoValues
+  const activeSaldoBanco = usingImportedDre ? findRowValues(importedRows, "SALDO BANCO") : saldoBancoValues
+  const activeDiferenca = usingImportedDre ? findRowValues(importedRows, "DIFERENCA") : diferencaValues
+
   const monthIndex = months.indexOf(closingMonth)
   const safeMonthIndex = monthIndex >= 0 ? monthIndex : 0
   const selectedClosing = closings.find((closing) =>
@@ -506,10 +582,10 @@ export function DREContent() {
     .filter((closing) => Number(closing.year) === Number(year))
     .map((closing) => monthNumberToLabel(closing.month))
 
-  const saldoAnterior = saldoAnteriorValues
-  const saldoOperacao = saldoOperacaoValues
-  const saldoBanco = saldoBancoValues
-  const diferenca = diferencaValues
+  const saldoAnterior = activeSaldoAnterior
+  const saldoOperacao = activeSaldoOperacao
+  const saldoBanco = activeSaldoBanco
+  const diferenca = activeDiferenca
 
   const handleCloseMonth = async () => {
     try {
@@ -517,10 +593,10 @@ export function DREContent() {
       const created = await createDreMonthlyClosing({
         year: Number(year),
         month,
-        revenue_total: receitaTotal[safeMonthIndex] ?? 0,
-        expenses_total: despesasTotal[safeMonthIndex] ?? 0,
-        operational_profit: lucroOperacional[safeMonthIndex] ?? 0,
-        operational_result: resultado[safeMonthIndex] ?? 0,
+        revenue_total: activeReceitaTotal[safeMonthIndex] ?? 0,
+        expenses_total: activeDespesasTotal[safeMonthIndex] ?? 0,
+        operational_profit: activeLucroOperacional[safeMonthIndex] ?? 0,
+        operational_result: activeResultado[safeMonthIndex] ?? 0,
         previous_balance: saldoAnterior[safeMonthIndex] ?? 0,
         operation_balance: saldoOperacao[safeMonthIndex] ?? 0,
         bank_balance: saldoBanco[safeMonthIndex] ?? 0,
@@ -644,56 +720,39 @@ export function DREContent() {
 
     setImporting(true)
     try {
-      const categoriesByName = new Map(
-        dreCategories.map((category) => [normalizeTextKey(getCategoryName(category)), category])
-      )
-      const nextCategories = [...dreCategories]
-      const nextAdjustments: ManualAdjustment[] = []
+      const snapshot = await createDreImportSnapshot({
+        fileName: importPreview.fileName,
+        sheetName: importPreview.sheetName,
+        year: Number(year),
+        importedBy: responsible || "Sistema",
+        rows: importPreview.rows.map((row) => ({
+          row_index: row.rowIndex,
+          group_name: row.groupName,
+          account_name: row.account,
+          row_type: row.rowType,
+          jan: row.values[1] ?? null,
+          fev: row.values[2] ?? null,
+          mar: row.values[3] ?? null,
+          abr: row.values[4] ?? null,
+          mai: row.values[5] ?? null,
+          jun: row.values[6] ?? null,
+          jul: row.values[7] ?? null,
+          ago: row.values[8] ?? null,
+          set: row.values[9] ?? null,
+          out: row.values[10] ?? null,
+          nov: row.values[11] ?? null,
+          dez: row.values[12] ?? null,
+          total: row.total,
+          raw_label: row.rawLabel,
+        })),
+      })
 
-      for (const row of importPreview.rows) {
-        const hasValues = Object.values(row.values).some((value) => value !== 0)
-        if (!hasValues) continue
-
-        const key = normalizeTextKey(row.account)
-        let category = categoriesByName.get(key)
-        if (!category) {
-          category = await createDreCategory({
-            name: row.account,
-            group_name: row.groupName,
-            type: row.type,
-            sort_order: nextCategories.length + 1,
-            active: true,
-          }) as SupabaseRow
-          categoriesByName.set(key, category)
-          nextCategories.push(category)
-        }
-
-        const categoryId = String(category.id ?? "")
-        if (!categoryId) continue
-
-        for (const [monthText, value] of Object.entries(row.values)) {
-          const month = Number(monthText)
-          if (!month || value === 0) continue
-
-          const created = await createDreManualAdjustment({
-            year: Number(year),
-            month,
-            dre_category_id: categoryId,
-            previous_value: 0,
-            new_value: value,
-            reason: `IMPORTACAO_DRE: ${importPreview.sheetName} - ${row.account}`,
-            responsible: responsible || "Sistema",
-          }) as SupabaseRow
-
-          nextAdjustments.push(normalizeAdjustment(created, new Map(nextCategories.map((item) => [String(item.id ?? ""), item]))))
-        }
-      }
-
-      setDreCategories(nextCategories)
-      setAdjustments((current) => [...nextAdjustments, ...current])
+      setImportedSnapshotInfo(snapshot.import as SupabaseRow)
+      setImportedRows(snapshotRowsToDreRows(snapshot.rows as SupabaseRow[]))
+      setImportStructureMissing(false)
       setImportOpen(false)
       setImportPreview(null)
-      toast.success("Importacao DRE salva no Supabase.")
+      toast.success("DRE importada salva e exibida.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {
@@ -706,9 +765,19 @@ export function DREContent() {
     setCleaning(true)
     try {
       if (cleanupMode === "imported") {
-        await deleteDreImportedAdjustments()
-        setAdjustments((current) => current.filter((item) => !item.reason.toUpperCase().startsWith("IMPORTACAO_DRE:")))
-        toast.success("Importacoes da DRE removidas.")
+        const deletedAdjustments = await deleteDreImportedAdjustments()
+        const deletedSnapshots = await deleteDreImportSnapshots()
+        setAdjustments((current) => current.filter((item) => {
+          const reason = item.reason.toUpperCase()
+          return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÇÃO EXCEL -")
+        }))
+        setImportedRows([])
+        setImportedSnapshotInfo(null)
+        if (deletedAdjustments.length || deletedSnapshots.length) {
+          toast.success("Importacao da DRE removida.")
+        } else {
+          toast.info("Nenhuma importacao encontrada para limpar.")
+        }
       } else {
         await deleteAllDreManualAdjustments()
         setAdjustments([])
@@ -725,13 +794,19 @@ export function DREContent() {
   }
 
   const renderValue = (row: DreRow, month: number) => {
-    if (row.kind === "percent" && row.percentOf) {
-      const value = rows.find((item) => item.label === row.percentOf)?.values?.[month] ?? 0
-      const revenue = receitaTotal[month]
-      return revenue ? `${((value / revenue) * 100).toFixed(2)}%` : "-"
-    }
     const value = row.values?.[month] ?? 0
+    if (row.displayAsPercent) return value ? `${value.toFixed(2)}%` : "-"
+    if (row.kind === "percent" && row.percentOf) {
+      const percentValue = activeRows.find((item) => item.label === row.percentOf)?.values?.[month] ?? 0
+      const revenue = activeReceitaTotal[month]
+      return revenue ? `${((percentValue / revenue) * 100).toFixed(2)}%` : "-"
+    }
     return value ? formatCurrency(value) : "-"
+  }
+
+  const renderTotal = (row: DreRow) => {
+    if (row.kind === "percent" || row.displayAsPercent) return row.totalValue ? `${row.totalValue.toFixed(2)}%` : ""
+    return formatCurrency(row.totalValue ?? sum(row.values))
   }
 
   const exportDreRows = (filename: string) =>
@@ -744,11 +819,11 @@ export function DREContent() {
         ["Data de emissao", new Date().toLocaleDateString("pt-BR")],
       ],
       columns: ["Conta", ...months, "Total"],
-      rows: rows.length
-        ? rows.map((row) => [
+      rows: activeRows.length
+        ? activeRows.map((row) => [
             row.label,
             ...months.map((_, index) => renderValue(row, index)),
-            row.kind === "percent" ? "" : formatCurrency(sum(row.values)),
+            renderTotal(row),
           ])
         : [["Sem dados financeiros para o periodo selecionado.", ...months.map(() => "-"), formatCurrency(0)]],
     })
@@ -761,10 +836,10 @@ export function DREContent() {
       rows: [
         { indicador: "Mes", valor: closingMonth },
         { indicador: "Status", valor: isClosed ? "Fechado" : "Em conferencia" },
-        { indicador: "Receita do mes", valor: formatCurrency(receitaTotal[safeMonthIndex] ?? 0) },
-        { indicador: "Despesas do mes", valor: formatCurrency(despesasTotal[safeMonthIndex] ?? 0) },
-        { indicador: "Lucro operacional", valor: formatCurrency(lucroOperacional[safeMonthIndex] ?? 0) },
-        { indicador: "Resultado operacional", valor: formatCurrency(resultado[safeMonthIndex] ?? 0) },
+        { indicador: "Receita do mes", valor: formatCurrency(activeReceitaTotal[safeMonthIndex] ?? 0) },
+        { indicador: "Despesas do mes", valor: formatCurrency(activeDespesasTotal[safeMonthIndex] ?? 0) },
+        { indicador: "Lucro operacional", valor: formatCurrency(activeLucroOperacional[safeMonthIndex] ?? 0) },
+        { indicador: "Resultado operacional", valor: formatCurrency(activeResultado[safeMonthIndex] ?? 0) },
         { indicador: "Saldo anterior", valor: formatCurrency(saldoAnterior[safeMonthIndex] ?? 0) },
         { indicador: "Saldo operacao", valor: formatCurrency(saldoOperacao[safeMonthIndex] ?? 0) },
         { indicador: "Saldo banco", valor: formatCurrency(saldoBanco[safeMonthIndex] ?? 0) },
@@ -774,13 +849,13 @@ export function DREContent() {
 
   const exportDrePdf = () =>
     exportPdfReport(buildDreReport(
-      rows.length
-        ? rows.map((row) => ({
+      activeRows.length
+        ? activeRows.map((row) => ({
             name: row.label,
             jan: renderValue(row, 0),
             fev: renderValue(row, 1),
             mar: renderValue(row, 2),
-            total: row.kind === "percent" ? "" : formatCurrency(sum(row.values)),
+            total: renderTotal(row),
           }))
         : [{
             name: "Sem dados financeiros para o periodo selecionado.",
@@ -810,7 +885,11 @@ export function DREContent() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold">DRE Gerencial</h1>
-          <p className="text-muted-foreground">Controle mensal gerencial com dados reais do Supabase.</p>
+          <p className="text-muted-foreground">
+            {usingImportedDre
+              ? `Exibindo DRE importada de ${String(importedSnapshotInfo?.file_name ?? "planilha")} / ${String(importedSnapshotInfo?.sheet_name ?? "aba")}.`
+              : "Controle mensal gerencial com dados reais do Supabase."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={year} onValueChange={(value) => value && setYear(value)}>
@@ -823,6 +902,9 @@ export function DREContent() {
               <SelectItem value="2024">2024</SelectItem>
             </SelectContent>
           </Select>
+          <Badge variant={usingImportedDre ? "default" : "outline"}>
+            {usingImportedDre ? "DRE importada" : "DRE do sistema"}
+          </Badge>
           <input
             ref={fileInputRef}
             type="file"
@@ -861,19 +943,19 @@ export function DREContent() {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Receita Total</p>
-            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(sum(receitaTotal))}</p>
+            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(sum(activeReceitaTotal))}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Despesas Operacionais</p>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(sum(despesasTotal))}</p>
+            <p className="text-2xl font-bold text-red-600">{formatCurrency(sum(activeDespesasTotal))}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Resultado Operacional</p>
-            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(sum(resultado))}</p>
+            <p className="text-2xl font-bold text-emerald-600">{formatCurrency(sum(activeResultado))}</p>
           </CardContent>
         </Card>
         <Card>
@@ -928,10 +1010,10 @@ export function DREContent() {
         <CardContent>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             {[
-              ["Receita do mes", receitaTotal[safeMonthIndex] ?? 0, "text-emerald-600"],
-              ["Despesas do mes", despesasTotal[safeMonthIndex] ?? 0, "text-red-600"],
-              ["Lucro operacional", lucroOperacional[safeMonthIndex] ?? 0, ""],
-              ["Resultado operacional", resultado[safeMonthIndex] ?? 0, ""],
+              ["Receita do mes", activeReceitaTotal[safeMonthIndex] ?? 0, "text-emerald-600"],
+              ["Despesas do mes", activeDespesasTotal[safeMonthIndex] ?? 0, "text-red-600"],
+              ["Lucro operacional", activeLucroOperacional[safeMonthIndex] ?? 0, ""],
+              ["Resultado operacional", activeResultado[safeMonthIndex] ?? 0, ""],
               ["Saldo anterior", saldoAnterior[safeMonthIndex] ?? 0, ""],
               ["Saldo operacao", saldoOperacao[safeMonthIndex] ?? 0, ""],
               ["Saldo banco", saldoBanco[safeMonthIndex] ?? 0, ""],
@@ -949,10 +1031,17 @@ export function DREContent() {
       <Card>
         <CardHeader>
           <CardTitle>DRE Gerencial</CardTitle>
-          <CardDescription>Ano selecionado: {year}</CardDescription>
+          <CardDescription>
+            {usingImportedDre ? "Snapshot fiel da planilha importada, sem recalcular totais." : `Ano selecionado: ${year}`}
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          {!hasRealData ? (
+          {importStructureMissing && !usingImportedDre && (
+            <div className="border-b bg-amber-50 p-4 text-sm text-amber-800">
+              Estrutura de importacao integral da DRE ainda nao foi criada. Execute o SQL indicado em supabase/gate-os-dre-imported-snapshots.sql.
+            </div>
+          )}
+          {!activeHasRealData ? (
             <div className="p-10 text-center text-muted-foreground">
               {dreCategories.length === 0
                 ? "Cadastre categorias DRE ou execute o seed base para iniciar."
@@ -971,8 +1060,8 @@ export function DREContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.label} className={rowClass(row.kind)}>
+                  {activeRows.map((row, rowIndex) => (
+                    <tr key={row.id ?? `${row.label}-${rowIndex}`} className={rowClass(row.kind)}>
                       <td className={`sticky left-0 z-10 border px-3 py-1.5 ${rowClass(row.kind)}`}>{row.label}</td>
                       {months.map((month, currentMonthIndex) => (
                         <td key={`${row.label}-${month}`} className="relative border px-3 py-1.5 text-right">
@@ -997,7 +1086,7 @@ export function DREContent() {
                         </td>
                       ))}
                       <td className={`sticky right-0 z-10 border px-3 py-1.5 text-right ${rowClass(row.kind)}`}>
-                        {row.kind === "percent" ? "" : formatCurrency(sum(row.values))}
+                        {renderTotal(row)}
                       </td>
                     </tr>
                   ))}
@@ -1019,15 +1108,15 @@ export function DREContent() {
           <div className="grid gap-3">
             <div className="flex justify-between rounded-lg border p-3">
               <span>Receita</span>
-              <strong className="text-emerald-600">{formatCurrency(receitaTotal[safeMonthIndex] ?? 0)}</strong>
+              <strong className="text-emerald-600">{formatCurrency(activeReceitaTotal[safeMonthIndex] ?? 0)}</strong>
             </div>
             <div className="flex justify-between rounded-lg border p-3">
               <span>Despesas operacionais</span>
-              <strong className="text-red-600">{formatCurrency(despesasTotal[safeMonthIndex] ?? 0)}</strong>
+              <strong className="text-red-600">{formatCurrency(activeDespesasTotal[safeMonthIndex] ?? 0)}</strong>
             </div>
             <div className="flex justify-between rounded-lg border p-3">
               <span>Resultado operacional</span>
-              <strong>{formatCurrency(resultado[safeMonthIndex] ?? 0)}</strong>
+              <strong>{formatCurrency(activeResultado[safeMonthIndex] ?? 0)}</strong>
             </div>
           </div>
           <DialogFooter>
@@ -1113,7 +1202,7 @@ export function DREContent() {
           <DialogHeader>
             <DialogTitle>Preview da importacao DRE</DialogTitle>
             <DialogDescription>
-              Confira as linhas que serao salvas como ajustes reais em `dre_manual_adjustments`.
+              Confira os dados que serao importados para a DRE gerencial.
             </DialogDescription>
           </DialogHeader>
           {importPreview && (
@@ -1121,7 +1210,9 @@ export function DREContent() {
               <div className="rounded-lg border p-3 text-sm">
                 <p><strong>Arquivo:</strong> {importPreview.fileName}</p>
                 <p><strong>Aba:</strong> {importPreview.sheetName}</p>
-                <p><strong>Linhas importaveis:</strong> {importPreviewRows.length}</p>
+                <p><strong>Linhas lidas:</strong> {importPreview.totalRowsRead}</p>
+                <p><strong>Linhas que serao importadas:</strong> {importPreview.rows.length}</p>
+                <p><strong>Meses identificados:</strong> {importPreview.monthNumbers.map((month) => months[month - 1] ?? month).join(", ")}</p>
                 <p><strong>Linhas ignoradas:</strong> {importPreview.ignoredRows.length}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
@@ -1139,6 +1230,7 @@ export function DREContent() {
                       <th className="px-3 py-2 text-left">Conta</th>
                       <th className="px-3 py-2 text-left">Grupo</th>
                       <th className="px-3 py-2 text-left">Tipo</th>
+                      <th className="px-3 py-2 text-left">Tipo de linha</th>
                       <th className="px-3 py-2 text-left">Mes</th>
                       <th className="px-3 py-2 text-right">Valor</th>
                     </tr>
@@ -1149,7 +1241,8 @@ export function DREContent() {
                         <tr key={`${row.groupName}-${row.account}-${row.month}`} className="border-t">
                           <td className="px-3 py-2">{row.account}</td>
                           <td className="px-3 py-2">{row.groupName}</td>
-                          <td className="px-3 py-2">{row.type === "receita" ? "Receita" : "Despesa"}</td>
+                          <td className="px-3 py-2">{row.type === "receita" ? "Receita" : row.type === "despesa" ? "Despesa" : "Neutro"}</td>
+                          <td className="px-3 py-2">{importPreview.rows.find((item) => item.account === row.account && item.groupName === row.groupName)?.rowType ?? "linha"}</td>
                           <td className="px-3 py-2">{months[row.month - 1] ?? row.month}</td>
                           <td className="px-3 py-2 text-right font-semibold">{formatCurrency(row.value)}</td>
                         </tr>
@@ -1158,9 +1251,15 @@ export function DREContent() {
                 </table>
               </div>
               {importPreview.ignoredRows.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Totais, percentuais, cabecalhos e linhas vazias foram ignorados automaticamente.
-                </p>
+                <div className="rounded-lg border p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">Linhas ignoradas</p>
+                  <p>Foram ignoradas apenas linhas vazias, sem conta e sem valor.</p>
+                  <ul className="mt-2 max-h-24 overflow-auto">
+                    {importPreview.ignoredRows.slice(0, 10).map((row) => (
+                      <li key={`${row.rowIndex}-${row.reason}`}>Linha {row.rowIndex}: {row.reason}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           )}

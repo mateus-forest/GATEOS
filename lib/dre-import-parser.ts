@@ -1,15 +1,21 @@
 export type DreImportRow = {
   account: string
   groupName: string
-  type: "receita" | "despesa"
+  rowIndex: number
+  rowType: "group" | "account" | "total" | "percent" | "result"
+  type: "receita" | "despesa" | "neutro"
   values: Record<number, number>
+  total: number | null
+  rawLabel: string
 }
 
 export type DreImportPreview = {
   fileName: string
   sheetName: string
   rows: DreImportRow[]
-  ignoredRows: string[]
+  ignoredRows: Array<{ rowIndex: number; reason: string }>
+  monthNumbers: number[]
+  totalRowsRead: number
 }
 
 export type DreWorkbookSheet = {
@@ -23,7 +29,7 @@ const monthLabels = new Map([
   ["fevereiro", 2],
   ["mar", 3],
   ["marco", 3],
-  ["março", 3],
+  ["marco", 3],
   ["abr", 4],
   ["abril", 4],
   ["mai", 5],
@@ -44,36 +50,7 @@ const monthLabels = new Map([
   ["dezembro", 12],
 ])
 
-const accountHeaderCandidates = new Set([
-  "conta",
-  "categoria",
-  "descricao",
-  "item",
-])
-
-const ignoredExactRows = new Set([
-  "RECEITAS 2026",
-  "RECEITA TOTAL",
-  "CUSTO DO PRODUTO VENDIDO (CPV)",
-  "RECEITA LIQUIDA TOTAL",
-  "RECEITA LÍQUIDA TOTAL",
-  "TOTAL DESPESAS COM PESSOAL",
-  "TOTAL DESPESAS GERAIS",
-  "TOTAL DE DESPESAS FINANCEIRAS",
-  "TOTAL DE DESPESAS OPERACIONAIS",
-  "LUCRO OPERACIONAL",
-  "LUCRO OPERACIONAL %",
-  "OUTRAS DESPESAS NAO OPERACIONAIS",
-  "OUTRAS DESPESAS NÃO OPERACIONAIS",
-  "TOTAL DE DESPESAS NAO OPERACIONAIS",
-  "TOTAL DE DESPESAS NÃO OPERACIONAIS",
-  "RESULTADO OPERACIONAL",
-  "TOTAL APORTES TERCEIROS",
-  "SALDO OPERACAO -(RO+SALDO ANT)",
-  "SALDO OPERAÇÃO -(RO+SALDO ANT)",
-  "DIFERENCA",
-  "DIFERENÇA",
-])
+const accountHeaderCandidates = new Set(["conta", "categoria", "descricao", "item"])
 
 function normalizeText(value: unknown) {
   return String(value ?? "")
@@ -95,6 +72,7 @@ function parseNumber(value: unknown) {
     .replace(/\*/g, "")
     .replace(/#DIV\/0!/gi, "")
     .replace(/[R$\s]/g, "")
+    .replace(/%/g, "")
     .replace(/\./g, "")
     .replace(",", ".")
 
@@ -204,26 +182,31 @@ function detectAccountColumn(header: unknown[], monthColumns: Array<{ index: num
 
 function detectGroup(account: string, currentGroup: string) {
   const normalized = normalizeText(account).toUpperCase()
-  if (normalized === "RECEITAS 2026") return "Receitas"
-  if (normalized === "DESPESAS COM PESSOAL") return "Despesas com pessoal"
+  if (normalized.startsWith("RECEITAS")) return "Receitas"
+  if (normalized.includes("DESPESAS COM PESSOAL")) return "Despesas com pessoal"
   if (normalized === "DESPESAS OPERACIONAIS") return "Despesas operacionais"
-  if (normalized === "OUTRAS DESPESAS NAO OPERACIONAIS") return "Outras despesas nao operacionais"
-  if (normalized === "TOTAL APORTES TERCEIROS") return "Aportes"
+  if (normalized.includes("OUTRAS DESPESAS NAO OPERACIONAIS")) return "Outras despesas nao operacionais"
+  if (normalized.includes("APORTES")) return "Aportes"
+  if (normalized.includes("SALDO") || normalized.includes("DIFEREN")) return "Fechamento"
   return currentGroup
 }
 
 function typeForGroup(groupName: string) {
   const normalized = normalizeText(groupName).toLowerCase()
-  return normalized.includes("receita") || normalized.includes("aporte") ? "receita" : "despesa"
+  if (normalized.includes("receita") || normalized.includes("aporte")) return "receita"
+  if (normalized.includes("despesa") || normalized.includes("custo")) return "despesa"
+  return "neutro"
 }
 
-function isIgnoredRow(account: string) {
+function rowTypeForLabel(account: string, hasValues: boolean): DreImportRow["rowType"] {
   const normalized = normalizeText(account).toUpperCase()
-  if (!normalized) return true
-  if (normalized.includes("%")) return true
-  if (ignoredExactRows.has(normalized)) return true
-  if (normalized.startsWith("TOTAL ")) return true
-  return false
+  if (normalized.includes("%")) return "percent"
+  if (normalized.startsWith("TOTAL ") || normalized.includes("RECEITA TOTAL")) return "total"
+  if (normalized.includes("RESULTADO") || normalized.includes("LUCRO") || normalized.includes("DIFEREN")) return "result"
+  if (!hasValues || normalized.startsWith("RECEITAS") || normalized.includes("DESPESAS OPERACIONAIS") || normalized.includes("DESPESAS COM PESSOAL")) {
+    return "group"
+  }
+  return "account"
 }
 
 export async function parseDreImportFile(file: File, sheetName?: string): Promise<DreImportPreview> {
@@ -242,42 +225,39 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
 
   const headerRow = matrix[header.index]
   const accountIndex = detectAccountColumn(headerRow, header.monthColumns)
+  const totalColumnIndex = headerRow.findIndex((cell) => normalizeKey(cell) === "total")
   const rows: DreImportRow[] = []
-  const ignoredRows: string[] = []
+  const ignoredRows: Array<{ rowIndex: number; reason: string }> = []
   let currentGroup = "Receitas"
 
-  matrix.slice(header.index + 1).forEach((row) => {
+  matrix.slice(header.index + 1).forEach((row, offset) => {
+    const rowIndex = header.index + offset + 2
     const account = normalizeText(row[accountIndex])
-    if (!account) return
-
-    const nextGroup = detectGroup(account, currentGroup)
-    if (nextGroup !== currentGroup) {
-      currentGroup = nextGroup
-      ignoredRows.push(account)
-      return
-    }
-
-    if (isIgnoredRow(account)) {
-      ignoredRows.push(account)
-      return
-    }
-
     const values = header.monthColumns.reduce<Record<number, number>>((acc, column) => {
       const value = parseNumber(row[column.index])
       if (value !== 0) acc[column.month] = value
       return acc
     }, {})
+    const total = totalColumnIndex >= 0 ? parseNumber(row[totalColumnIndex]) : null
+    const hasValues = Object.keys(values).length > 0 || Boolean(total)
 
-    if (!Object.keys(values).length) {
-      ignoredRows.push(account)
+    if (!account && !hasValues) {
+      ignoredRows.push({ rowIndex, reason: "Linha vazia, sem conta e sem valor" })
       return
     }
 
+    const nextGroup = detectGroup(account, currentGroup)
+    if (nextGroup !== currentGroup) currentGroup = nextGroup
+
     rows.push({
-      account,
+      account: account || "Linha sem descricao",
       groupName: currentGroup,
+      rowIndex,
+      rowType: rowTypeForLabel(account, hasValues),
       type: typeForGroup(currentGroup),
       values,
+      total,
+      rawLabel: account,
     })
   })
 
@@ -285,5 +265,12 @@ export async function parseDreImportFile(file: File, sheetName?: string): Promis
     throw new Error("Nenhuma linha com valor financeiro foi encontrada para importar.")
   }
 
-  return { fileName: file.name, sheetName: sheetName ?? (extension === "csv" ? "CSV" : "Primeira aba"), rows, ignoredRows }
+  return {
+    fileName: file.name,
+    sheetName: sheetName ?? (extension === "csv" ? "CSV" : "Primeira aba"),
+    rows,
+    ignoredRows,
+    monthNumbers: header.monthColumns.map((column) => column.month),
+    totalRowsRead: Math.max(0, matrix.length - header.index - 1),
+  }
 }
