@@ -29,6 +29,7 @@ import { buildDreReport, buildGenericReport } from "@/lib/reports/report-builder
 import {
   createDreManualAdjustment,
   createDreMonthlyClosing,
+  createDreCategory,
   deleteAllDreManualAdjustments,
   deleteDreImportedAdjustments,
   deleteDreImportSnapshots,
@@ -43,6 +44,8 @@ import { formatCurrency } from "@/lib/utils"
 import { getContracts } from "@/lib/data/contracts"
 import { getFinancialEntries } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
+import { getFinancialSelectOptions } from "@/lib/data/financial"
+import { getPartnerEntries } from "@/lib/data/partners"
 import { getDreWorkbookSheets, parseDreImportFile, type DreImportPreview, type DreWorkbookSheet } from "@/lib/dre-import-parser"
 import { clientLabel } from "@/lib/data/display-labels"
 import {
@@ -103,7 +106,7 @@ function subtractValues(a: number[], b: number[]) {
   return a.map((value, index) => value - b[index])
 }
 
-function valuesForContract(contract: SupabaseRow, year: string) {
+function valuesForContract(contract: SupabaseRow, year: string, realizedContractMonths = new Set<string>()) {
   const values = [...empty]
   if (String(contract.status ?? "").toLowerCase() !== "ativo") return values
 
@@ -116,6 +119,7 @@ function valuesForContract(contract: SupabaseRow, year: string) {
   for (let index = 0; index < 12; index += 1) {
     const monthStart = new Date(`${year}-${String(index + 1).padStart(2, "0")}-01T00:00:00`)
     const monthEnd = new Date(Number(year), index + 1, 0)
+    if (realizedContractMonths.has(`${String(contract.id ?? "")}-${index + 1}`)) continue
     if (monthEnd >= start && monthStart <= end) values[index] += monthlyValue
   }
 
@@ -171,6 +175,30 @@ function categoryGroupKey(value: unknown) {
   return "operational"
 }
 
+function monthIndexFromDate(value: unknown, year: string) {
+  const date = String(value ?? "")
+  if (!date.startsWith(`${year}-`)) return -1
+  const index = Number(date.slice(5, 7)) - 1
+  return index >= 0 && index <= 11 ? index : -1
+}
+
+function partnerEntryConfig(type: unknown) {
+  const normalized = String(type ?? "").toLowerCase()
+  if (normalized === "distribuicao_lucro") {
+    return { key: "partner-distribuicao", label: "Distribuicao Lucros - Socios", groupName: "Outras despesas nao operacionais", group: "expense" as const }
+  }
+  if (normalized === "participacao_resultado") {
+    return { key: "partner-participacao", label: "Participacao Resultado", groupName: "Outras despesas nao operacionais", group: "expense" as const }
+  }
+  if (normalized === "aporte") {
+    return { key: "partner-aportes", label: "Aportes de Socios", groupName: "Aportes", group: "revenue" as const }
+  }
+  if (normalized === "devolucao") {
+    return { key: "partner-devolucao", label: "Devolucao de Emprestimos", groupName: "Outras despesas nao operacionais", group: "expense" as const }
+  }
+  return { key: "partner-fixo", label: "Outros Custos com Socios", groupName: "Despesas com pessoal", group: "expense" as const }
+}
+
 function normalizeAdjustment(item: SupabaseRow, categoryById: Map<string, SupabaseRow>): ManualAdjustment {
   const categoryId = String(item.dre_category_id ?? "")
   const monthNumber = Number(item.month ?? 1)
@@ -197,6 +225,9 @@ function buildRows({
   contracts,
   financialEntries,
   adjustments,
+  partnerEntries,
+  bankAccounts,
+  closings,
 }: {
   year: string
   categories: SupabaseRow[]
@@ -204,6 +235,9 @@ function buildRows({
   contracts: SupabaseRow[]
   financialEntries: SupabaseRow[]
   adjustments: ManualAdjustment[]
+  partnerEntries: SupabaseRow[]
+  bankAccounts: SupabaseRow[]
+  closings: SupabaseRow[]
 }) {
   const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
   const clientIdByName = new Map(
@@ -227,13 +261,18 @@ function buildRows({
 
   clients.forEach((client) => {
     const clientId = String(client.id ?? "")
+    const clientIncomeEntries = financialEntries
+      .filter((entry) => String(entry.client_id ?? "") === clientId && isIncomeEntry(entry) && getEntryMonthKey(entry).startsWith(`${year}-`))
+    const realizedContractMonths = new Set(
+      clientIncomeEntries
+        .filter((entry) => entry.contract_id)
+        .map((entry) => `${String(entry.contract_id)}-${Number(getEntryMonthKey(entry).slice(5, 7))}`)
+    )
     const values = contracts
       .filter((contract) => String(contract.client_id ?? "") === clientId)
-      .reduce((acc, contract) => addValues(acc, valuesForContract(contract, year)), [...empty])
+      .reduce((acc, contract) => addValues(acc, valuesForContract(contract, year, realizedContractMonths)), [...empty])
 
-    financialEntries
-      .filter((entry) => String(entry.client_id ?? "") === clientId && isIncomeEntry(entry) && getEntryMonthKey(entry).startsWith(`${year}-`))
-      .forEach((entry) => {
+    clientIncomeEntries.forEach((entry) => {
         const monthIndex = Number(getEntryMonthKey(entry).slice(5, 7)) - 1
         if (monthIndex >= 0 && monthIndex <= 11) values[monthIndex] += Math.abs(getEntryAmount(entry))
       })
@@ -310,6 +349,18 @@ function buildRows({
     row.values[monthIndex] += Math.abs(getEntryAmount(entry))
   })
 
+  partnerEntries.forEach((entry) => {
+    const monthIndex = monthIndexFromDate(entry.competence_date ?? entry.created_at, year)
+    if (monthIndex < 0) return
+    const config = partnerEntryConfig(entry.type)
+    const row = ensureRow(config.key, {
+      label: config.label,
+      group: config.group,
+      groupName: config.groupName,
+    })
+    row.values[monthIndex] += Math.abs(Number(entry.value ?? 0))
+  })
+
   adjustments.forEach((adjustment) => {
     const category = categoryById.get(adjustment.categoryId)
     if (!category) return
@@ -354,12 +405,23 @@ function buildRows({
   const despesasOperacionais = [peopleTotal, generalTotal, financialTotal].reduce((acc, values) => addValues(acc, values), [...empty])
   const lucroOperacional = subtractValues(receitaLiquida, despesasOperacionais)
   const resultado = subtractValues(lucroOperacional, nonOperationalTotal)
-  const saldoAnteriorValues = closingRows
+  const closingSaldoAnteriorValues = closingRows
     .filter((row) => normalizeTextKey(row.label).includes("saldo anterior"))
     .reduce((acc, row) => addValues(acc, row.values), [...empty])
-  const saldoBancoValues = closingRows
+  const manualSaldoBancoValues = closingRows
     .filter((row) => normalizeTextKey(row.label).includes("saldo banco"))
     .reduce((acc, row) => addValues(acc, row.values), [...empty])
+  const saldoAnteriorValues = closings.reduce((values, closing) => {
+    const closingYear = Number(closing.year)
+    const closingMonth = Number(closing.month)
+    if (closingYear !== Number(year) || closingMonth < 1 || closingMonth > 11) return values
+    values[closingMonth] = Number(closing.operation_balance ?? closing.bank_balance ?? 0)
+    return values
+  }, closingSaldoAnteriorValues)
+  const currentBankBalance = bankAccounts.reduce((total, account) => total + Number(account.current_balance ?? 0), 0)
+  const saldoBancoValues = manualSaldoBancoValues.some((value) => value !== 0)
+    ? manualSaldoBancoValues
+    : empty.map(() => currentBankBalance)
   const saldoOperacaoValues = addValues(resultado, saldoAnteriorValues)
   const diferencaValues = subtractValues(saldoOperacaoValues, saldoBancoValues)
 
@@ -503,6 +565,8 @@ export function DREContent() {
   const [contracts, setContracts] = useState<SupabaseRow[]>([])
   const [clients, setClients] = useState<SupabaseRow[]>([])
   const [financialEntries, setFinancialEntries] = useState<SupabaseRow[]>([])
+  const [partnerEntries, setPartnerEntries] = useState<SupabaseRow[]>([])
+  const [bankAccounts, setBankAccounts] = useState<SupabaseRow[]>([])
   const [dreCategories, setDreCategories] = useState<SupabaseRow[]>([])
   const [closings, setClosings] = useState<SupabaseRow[]>([])
   const [importPreview, setImportPreview] = useState<DreImportPreview | null>(null)
@@ -517,6 +581,7 @@ export function DREContent() {
   const [importedRows, setImportedRows] = useState<DreRow[]>([])
   const [importedSnapshotInfo, setImportedSnapshotInfo] = useState<SupabaseRow | null>(null)
   const [importStructureMissing, setImportStructureMissing] = useState(false)
+  const [dreView, setDreView] = useState<"operational" | "imported">("operational")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -527,14 +592,18 @@ export function DREContent() {
       getDreCategories(),
       getDreManualAdjustments(),
       getDreMonthlyClosings(),
+      getPartnerEntries(),
+      getFinancialSelectOptions(),
       getLatestDreImportSnapshot(year),
-    ]).then(([contractRows, clientRows, entryRows, categoryRows, adjustmentRows, closingRows, importResult]) => {
+    ]).then(([contractRows, clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult]) => {
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
       setContracts(contractRows as SupabaseRow[])
       setClients(clientRows as SupabaseRow[])
       setFinancialEntries(entryRows as SupabaseRow[])
+      setPartnerEntries(partnerEntryRows as SupabaseRow[])
+      setBankAccounts((financialOptions as { bankAccounts?: SupabaseRow[] }).bankAccounts ?? [])
       setDreCategories(categories)
       setAdjustments((adjustmentRows as SupabaseRow[]).map((item) => normalizeAdjustment(item, categoryById)))
       setClosings(closingRows as SupabaseRow[])
@@ -556,11 +625,21 @@ export function DREContent() {
     diferencaValues,
     hasRealData,
   } = useMemo(
-    () => buildRows({ year, categories: dreCategories, clients, contracts, financialEntries, adjustments }),
-    [adjustments, clients, contracts, dreCategories, financialEntries, year]
+    () => buildRows({
+      year,
+      categories: dreCategories,
+      clients,
+      contracts,
+      financialEntries,
+      adjustments,
+      partnerEntries,
+      bankAccounts,
+      closings,
+    }),
+    [adjustments, bankAccounts, clients, closings, contracts, dreCategories, financialEntries, partnerEntries, year]
   )
 
-  const usingImportedDre = importedRows.length > 0
+  const usingImportedDre = dreView === "imported" && importedRows.length > 0
   const activeRows = usingImportedDre ? importedRows : rows
   const activeHasRealData = usingImportedDre || hasRealData
   const activeReceitaTotal = usingImportedDre ? findRowValues(importedRows, "RECEITA TOTAL") : receitaTotal
@@ -747,12 +826,60 @@ export function DREContent() {
         })),
       })
 
+      const categoriesByName = new Map(
+        dreCategories.map((category) => [normalizeTextKey(getCategoryName(category)), category])
+      )
+      const nextCategories = [...dreCategories]
+      const nextAdjustments: ManualAdjustment[] = []
+      const categoryById = new Map(nextCategories.map((category) => [String(category.id ?? ""), category]))
+
+      for (const row of importPreview.rows) {
+        const hasOperationalValues = row.rowType === "account" && row.type !== "neutro" && Object.values(row.values).some((value) => value !== 0)
+        if (!hasOperationalValues) continue
+
+        const key = normalizeTextKey(row.account)
+        let category = categoriesByName.get(key)
+        if (!category) {
+          category = await createDreCategory({
+            name: row.account,
+            group_name: row.groupName,
+            type: row.type,
+            sort_order: nextCategories.length + 1,
+            active: true,
+          }) as SupabaseRow
+          categoriesByName.set(key, category)
+          nextCategories.push(category)
+          categoryById.set(String(category.id ?? ""), category)
+        }
+
+        const categoryId = String(category.id ?? "")
+        if (!categoryId) continue
+
+        for (const [monthText, value] of Object.entries(row.values)) {
+          const month = Number(monthText)
+          if (!month || value === 0) continue
+          const created = await createDreManualAdjustment({
+            year: Number(year),
+            month,
+            dre_category_id: categoryId,
+            previous_value: 0,
+            new_value: value,
+            reason: `IMPORTACAO_DRE: ${importPreview.sheetName} - ${row.account}`,
+            responsible: responsible || "Sistema",
+          }) as SupabaseRow
+          nextAdjustments.push(normalizeAdjustment(created, categoryById))
+        }
+      }
+
       setImportedSnapshotInfo(snapshot.import as SupabaseRow)
       setImportedRows(snapshotRowsToDreRows(snapshot.rows as SupabaseRow[]))
+      setDreCategories(nextCategories)
+      setAdjustments((current) => [...nextAdjustments, ...current])
       setImportStructureMissing(false)
+      setDreView("operational")
       setImportOpen(false)
       setImportPreview(null)
-      toast.success("DRE importada salva e exibida.")
+      toast.success("DRE importada salva como historico e base operacional.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a importacao.")
     } finally {
@@ -773,6 +900,7 @@ export function DREContent() {
         }))
         setImportedRows([])
         setImportedSnapshotInfo(null)
+        setDreView("operational")
         if (deletedAdjustments.length || deletedSnapshots.length) {
           toast.success("Importacao da DRE removida.")
         } else {
@@ -905,6 +1033,15 @@ export function DREContent() {
           <Badge variant={usingImportedDre ? "default" : "outline"}>
             {usingImportedDre ? "DRE importada" : "DRE do sistema"}
           </Badge>
+          <Select value={dreView} onValueChange={(value) => setDreView(value as "operational" | "imported")}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="operational">DRE operacional</SelectItem>
+              <SelectItem value="imported" disabled={!importedRows.length}>Historico importado</SelectItem>
+            </SelectContent>
+          </Select>
           <input
             ref={fileInputRef}
             type="file"
