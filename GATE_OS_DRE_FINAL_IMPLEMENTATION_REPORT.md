@@ -2,6 +2,51 @@
 
 Data: 2026-06-15
 
+## Correcao da leitura operacional 2026
+
+### Causa do problema
+
+A DRE operacional 2026 estava carregando a tabela `dre_operational_template_rows`, mas a transformacao da interface ainda tratava a estrutura como modelo importado/legado. O mapper nao preservava `row_index`, classificava grupos comparando chaves normalizadas com nomes que nao batiam e nao reconhecia `row_type` reais do banco como `header`, `detalhe`, `total/kpi`, `balance` e `result`.
+
+Com isso, a tela podia perder a ordem oficial da DRE 2026 e classificar linhas operacionais de forma incorreta na montagem/renderizacao.
+
+### Arquivos corrigidos
+
+- `lib/data/dre.ts`
+- `components/dre-content.tsx`
+
+### Campos corrigidos
+
+Para `2026`, a consulta operacional agora seleciona explicitamente somente os campos reais usados pela tela:
+
+- `year`
+- `row_index`
+- `group_name`
+- `account_name`
+- `row_type`
+- `active`
+
+A interface converte:
+
+- `row_index` -> ordem interna da linha
+- `group_name` -> grupo/secao visual
+- `account_name` -> nome da linha
+- `row_type` -> classificacao visual da linha
+
+A renderizacao nao exige quantidade fixa de linhas; qualquer linha ativa de `dre_operational_template_rows` para `year = 2026` entra na tabela em ordem de `row_index`, incluindo linhas finais de fechamento como `SALDO BANCO` e `DIFERENCA`.
+
+### Tratamento de erro
+
+O carregamento principal da DRE agora exibe erro real retornado pelas consultas em vez de deixar a tela parecer vazia silenciosamente. Nao foi criado fallback falso.
+
+### Validacoes executadas nesta correcao
+
+- `npm run lint`
+- `npm run build`
+- Consulta local com `NEXT_PUBLIC_SUPABASE_ANON_KEY` para `dre_operational_template_rows` em `2026` retornou `0` linhas e erro nulo neste ambiente, indicando que a validacao visual completa depende da policy/sessao autenticada do navegador.
+- O caminho historico `2022`-`2025` nao foi alterado; ele continua lendo `dre_historical_values`.
+- A exportacao permanece baseada em `activeRows`, portanto respeita a fonte ativa selecionada (`2026` operacional, `2022`-`2025` historica ou snapshot importado).
+
 ## Correcao da leitura historica na interface
 
 ### Causa do problema
@@ -92,7 +137,7 @@ DRE operacional 2026:
 - Fonte: `gate_dre_2026_operational_template_extracted.csv`
 - Registros no SQL: `74`
 - Chave de upsert: `year + row_index`
-- Estrutura preservada: `source_sheet`, `order_index`, `section`, `row_type`, `line_name`
+- Estrutura operacional: `year`, `row_index`, `group_name`, `account_name`, `row_type`, `active`
 
 DRE historica 2022-2025:
 

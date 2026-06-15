@@ -80,6 +80,14 @@ type DreRow = {
   groupName?: string
 }
 
+type OperationalTemplateRow = {
+  id: string
+  order: number
+  label: string
+  groupName: string
+  rowType: string
+}
+
 type RawHistoryCell = {
   columnIndex: number
   header: string
@@ -168,6 +176,7 @@ function isCategoryActive(category: SupabaseRow) {
 
 function categoryGroupKey(value: unknown) {
   const normalized = normalizeTextKey(value)
+  if (normalized.includes("receita")) return "revenue"
   if (normalized.includes("pessoal")) return "people"
   if (normalized.includes("financeira")) return "financial"
   if (normalized.includes("nao operacion")) return "non-operational"
@@ -263,33 +272,50 @@ function yearFromSheetName(sheetName: string, fallbackYear: string) {
 function templateRowsToDreRows(rows: SupabaseRow[]) {
   return rows
     .map((row) => ({
+      id: String(row.id ?? `template-${row.row_index ?? row.account_name ?? ""}`),
+      order: Number(row.row_index ?? 0),
       label: String(row.account_name ?? "").trim(),
       groupName: String(row.group_name ?? "").trim(),
       rowType: String(row.row_type ?? "").trim(),
     }))
     .filter((row) => row.label)
+    .sort((a, b) => a.order - b.order)
 }
 
-function templateRowGroup(row: { label: string; groupName: string; rowType: string }) {
+function templateRowType(row: { rowType: string }) {
+  return normalizeTextKey(row.rowType)
+}
+
+function templateRowGroup(row: OperationalTemplateRow): DreRow["group"] | "" {
   const label = normalizeTextKey(row.label)
   const group = categoryGroupKey(row.groupName)
   if (label.includes("aporte")) return "revenue"
-  if (label.includes("cpv") || label.includes("custo do produto")) return "cpv"
-  if (label.includes("salario") || label.includes("ferias") || label.includes("fgts") || label.includes("inss") || label.includes("pessoal")) return "people"
-  if (label.includes("tarifa") || label.includes("juros") || label.includes("emprestimo") || label.includes("financeira")) return "financial"
-  if (label.includes("investimento") || label.includes("distribuicao") || label.includes("devolucao")) return "non-operational"
-  if (group === "receita") return "revenue"
-  if (group === "cpv") return "cpv"
-  if (group === "pessoal") return "people"
-  if (group === "financeiro") return "financial"
-  if (group === "nao-operacional") return "non-operational"
-  if (row.rowType === "account") return "operational"
+  if (label.includes("saldo") || label.includes("diferenca") || group === "closing") return "balance"
+  if (group === "revenue") return "revenue"
+  if (["cpv", "people", "financial", "non-operational", "operational", "aporte"].includes(group)) return "expense"
+  if (label.includes("cpv") || label.includes("custo do produto")) return "expense"
+  if (label.includes("salario") || label.includes("ferias") || label.includes("fgts") || label.includes("inss") || label.includes("pessoal")) return "expense"
+  if (label.includes("tarifa") || label.includes("juros") || label.includes("emprestimo") || label.includes("financeira")) return "expense"
+  if (label.includes("investimento") || label.includes("distribuicao") || label.includes("devolucao")) return "expense"
+  if (["detalhe", "account"].includes(templateRowType(row))) return "expense"
   return ""
 }
 
-function shouldCreateTemplateOperationalRow(row: { label: string; groupName: string; rowType: string }) {
+function shouldCreateTemplateOperationalRow(row: OperationalTemplateRow) {
   const label = normalizeTextKey(row.label)
-  if (!row.label || ["total", "percent", "result", "balance", "section", "structural_blank"].includes(row.rowType)) return false
+  const type = templateRowType(row)
+  if (!row.label) return false
+  if (
+    type.includes("header") ||
+    type.includes("section") ||
+    type.includes("total") ||
+    type.includes("kpi") ||
+    type.includes("percent") ||
+    type.includes("percentual") ||
+    type.includes("result") ||
+    type.includes("balance") ||
+    type === "structural_blank"
+  ) return false
   return ![
     "receita total",
     "receita liquida total",
@@ -304,16 +330,17 @@ function shouldCreateTemplateOperationalRow(row: { label: string; groupName: str
   ].some((fixedLabel) => label.includes(fixedLabel))
 }
 
-function templateRowKind(row: { label: string; groupName: string; rowType: string }): RowKind {
+function templateRowKind(row: OperationalTemplateRow): RowKind {
   const label = normalizeTextKey(row.label)
-  if (row.rowType === "group" || label.startsWith("receitas ") || label.includes("despesas operacionais") || label.includes("despesas com pessoal") || label.includes("outras despesas")) {
+  const type = templateRowType(row)
+  if (type.includes("header") || type.includes("section") || type === "group" || label.startsWith("receitas ") || label.includes("despesas operacionais") || label.includes("despesas com pessoal") || label.includes("outras despesas")) {
     return "section"
   }
-  if (row.rowType === "percent" || label.includes("%")) return "percent"
-  if (row.rowType === "total" || row.rowType === "result" || label.includes("total") || label.includes("lucro operacional") || label.includes("resultado operacional") || label.includes("receita liquida")) {
+  if (type.includes("percent") || type.includes("percentual") || label.includes("%")) return "percent"
+  if (type.includes("total") || type.includes("kpi") || type.includes("result") || label.includes("total") || label.includes("lucro operacional") || label.includes("resultado operacional") || label.includes("receita liquida")) {
     return "total"
   }
-  if (row.rowType === "balance" || label.includes("saldo") || label.includes("diferenca")) return "highlight"
+  if (type.includes("balance") || label.includes("saldo") || label.includes("diferenca")) return "highlight"
   return "normal"
 }
 
@@ -345,7 +372,7 @@ function buildRows({
   partnerEntries: SupabaseRow[]
   bankAccounts: SupabaseRow[]
   closings: SupabaseRow[]
-  templateRows: Array<{ label: string; groupName: string; rowType: string }>
+  templateRows: OperationalTemplateRow[]
 }) {
   const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
   const clientIdByName = new Map(
@@ -516,7 +543,7 @@ function buildRows({
   const aporteRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "aporte")
   const closingRows = revenueRows.filter((row) => categoryGroupKey(row.groupName) === "closing")
   const ordinaryRevenueRows = revenueRows.filter((row) => !["aporte", "closing"].includes(categoryGroupKey(row.groupName)))
-  const templateOrder = new Map(templateRows.map((row, index) => [normalizeTextKey(row.label), index]))
+  const templateOrder = new Map(templateRows.map((row) => [normalizeTextKey(row.label), row.order]))
   const sortByTemplate = (items: DreRow[]) =>
     [...items].sort((a, b) => {
       const aIndex = templateOrder.get(normalizeTextKey(a.label)) ?? Number.MAX_SAFE_INTEGER
@@ -599,9 +626,10 @@ function buildRows({
     const templateRenderedRows = templateRows.map((templateRow) => {
       const matchedRow = rowLookup.get(normalizeTextKey(templateRow.label))
       return {
+        id: templateRow.id,
         label: templateRow.label,
         kind: matchedRow?.kind ?? templateRowKind(templateRow),
-        group: matchedRow?.group ?? (templateRowGroup(templateRow) || "template"),
+        group: matchedRow?.group ?? (templateRowGroup(templateRow) || "expense"),
         groupName: templateRow.groupName,
         values: matchedRow?.values ?? [...empty],
         percentOf: matchedRow?.percentOf,
@@ -840,7 +868,7 @@ export function DREContent() {
   const [closings, setClosings] = useState<SupabaseRow[]>([])
   const [historicalRows, setHistoricalRows] = useState<DreRow[]>([])
   const [historicalStructureMissing, setHistoricalStructureMissing] = useState(false)
-  const [operationalTemplateRows, setOperationalTemplateRows] = useState<Array<{ label: string; groupName: string; rowType: string }>>([])
+  const [operationalTemplateRows, setOperationalTemplateRows] = useState<OperationalTemplateRow[]>([])
   const [importPreviews, setImportPreviews] = useState<DreImportPreview[]>([])
   const [importMode, setImportMode] = useState<DreImportMode>("operational")
   const [importOpen, setImportOpen] = useState(false)
@@ -858,9 +886,12 @@ export function DREContent() {
   const [selectedImportId, setSelectedImportId] = useState("")
   const [importStructureMissing, setImportStructureMissing] = useState(false)
   const [dreView, setDreView] = useState<"operational" | "imported">("operational")
+  const [loadError, setLoadError] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    let active = true
+
     Promise.all([
       getClients(),
       getFinancialEntries(),
@@ -874,6 +905,8 @@ export function DREContent() {
       getDreOperationalTemplateRows(year),
       getDreHistoricalValues(year),
     ]).then(([clientRows, entryRows, categoryRows, adjustmentRows, closingRows, partnerEntryRows, financialOptions, importResult, importListResult, templateResult, historicalResult]) => {
+      if (!active) return
+      setLoadError("")
       const categories = categoryRows as SupabaseRow[]
       const categoryById = new Map(categories.map((category) => [String(category.id ?? ""), category]))
 
@@ -893,7 +926,16 @@ export function DREContent() {
       setOperationalTemplateRows(templateRowsToDreRows(templateResult.rows))
       setHistoricalStructureMissing(historicalResult.missingStructure)
       setHistoricalRows(buildHistoricalRows(historicalResult.rows))
+    }).catch((error) => {
+      if (!active) return
+      const message = error instanceof Error ? error.message : "Nao foi possivel carregar a DRE."
+      setLoadError(message)
+      toast.error(message)
     })
+
+    return () => {
+      active = false
+    }
   }, [year])
 
   useEffect(() => {
@@ -1607,6 +1649,11 @@ export function DREContent() {
           {usingStructuredHistory && historicalStructureMissing && (
             <div className="border-b bg-amber-50 p-4 text-sm text-amber-800">
               Tabela historica da DRE ainda nao foi criada. Execute o SQL indicado em supabase/gate-os-dre-historical-values-2022-2025-seed.sql.
+            </div>
+          )}
+          {loadError && (
+            <div className="border-b bg-red-50 p-4 text-sm text-red-800">
+              {loadError}
             </div>
           )}
           {!activeHasRealData ? (

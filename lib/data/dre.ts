@@ -162,7 +162,7 @@ export async function getDreOperationalTemplateRows(year?: string) {
   const supabase = getDreSupabaseClient()
   let query = supabase
     .from("dre_operational_template_rows")
-    .select("*")
+    .select("year,row_index,group_name,account_name,row_type,active")
     .eq("active", true)
     .order("row_index", { ascending: true })
 
