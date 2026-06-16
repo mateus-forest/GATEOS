@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, ChevronDown, LogOut, Search, Send, Sparkles, User, X } from "lucide-react"
+import { Bell, ChevronDown, LogOut, Search, Send, User, X } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -55,6 +56,20 @@ type SessionProfile = {
 
 function text(value: unknown) {
   return String(value ?? "")
+}
+
+function CosLogoMark({ className = "" }: { className?: string }) {
+  return (
+    <span className={`relative block overflow-hidden rounded-md ${className}`}>
+      <Image
+        src="/images/cos-logo-official.jpeg"
+        alt="COS"
+        fill
+        sizes="40px"
+        className="object-contain"
+      />
+    </span>
+  )
 }
 
 export function Header() {
@@ -271,7 +286,7 @@ export function Header() {
           onClick={() => setCosOpen(true)}
           className="h-11 rounded-2xl bg-neutral-950 px-3 text-white shadow-[0_14px_38px_rgba(15,23,42,0.24)] hover:bg-neutral-800 sm:px-4"
         >
-          <Sparkles className="h-4 w-4 sm:mr-2" />
+          <CosLogoMark className="h-4 w-4 sm:mr-2" />
           <span className="hidden sm:inline">Abrir no COS</span>
         </Button>
         <DropdownMenu>
@@ -369,7 +384,7 @@ export function Header() {
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-5">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
-                  <Sparkles className="h-4 w-4" />
+                  <CosLogoMark className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
                   <h2 id="cos-assistant-title" className="truncate text-base font-semibold text-foreground">
@@ -393,7 +408,7 @@ export function Header() {
               <div className="space-y-6">
                 <div className="flex items-start gap-3">
                   <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
-                    <Sparkles className="h-4 w-4" />
+                    <CosLogoMark className="h-5 w-5" />
                   </div>
                   <div className="rounded-3xl bg-muted px-5 py-4 text-sm leading-6 text-foreground">
                     Olá! Sou o COS, seu assistente da GATE Center. Como posso ajudar você hoje?
