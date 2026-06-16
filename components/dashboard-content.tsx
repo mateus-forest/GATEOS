@@ -583,7 +583,7 @@ export function DashboardContent() {
           change={loading ? "..." : "real"}
           changeType="neutral"
           icon={FileText}
-          description="base Supabase"
+          description="dados reais"
         />
         <MetricCard
           title="Clientes ativos"
@@ -591,7 +591,7 @@ export function DashboardContent() {
           change={loading ? "..." : "real"}
           changeType="neutral"
           icon={Users}
-          description="base Supabase"
+          description="dados reais"
         />
         <MetricCard
           title="Equipamentos locados"

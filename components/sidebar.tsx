@@ -54,7 +54,7 @@ const menuItems = [
     title: "Operacao",
     items: [
       { icon: Package, label: "Equipamentos", href: "/equipamentos" },
-      { icon: Wrench, label: "Manutencoes", href: "/manutencoes" },
+      { icon: Wrench, label: "Manutenções", href: "/manutencoes" },
       { icon: FolderOpen, label: "Documentos", href: "/documentos" },
     ],
   },

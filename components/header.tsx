@@ -5,18 +5,11 @@ import { createPortal } from "react-dom"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, ChevronDown, LogOut, Search, Send, User, X } from "lucide-react"
+import { Bell, ChevronDown, LogOut, Search, Send, X } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,7 +84,6 @@ const COS_SUGGESTIONS = [
 
 export function Header() {
   const router = useRouter()
-  const [profileOpen, setProfileOpen] = useState(false)
   const [cosOpen, setCosOpen] = useState(false)
   const [cosInput, setCosInput] = useState("")
   const [cosLoading, setCosLoading] = useState(false)
@@ -101,9 +93,9 @@ export function Header() {
   const [searchTerm, setSearchTerm] = useState("")
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [profile, setProfile] = useState<SessionProfile>({
-    name: "Usuario GATE",
+    name: "Usuário GATE",
     email: "",
-    role: "Usuario autenticado",
+    role: "Usuário autenticado",
   })
   const [searchData, setSearchData] = useState({
     clients: [] as SearchRecord[],
@@ -124,14 +116,14 @@ export function Header() {
       const name =
         String(metadata.full_name ?? metadata.name ?? "").trim() ||
         user.email?.split("@")[0] ||
-        "Usuario GATE"
+        "Usuário GATE"
 
       setProfile({
         name,
         email: user.email ?? "",
-        role: String(metadata.role ?? metadata.cargo ?? "Usuario autenticado"),
+        role: String(metadata.role ?? metadata.cargo ?? "Usuário autenticado"),
         avatar: typeof metadata.avatar_url === "string" ? metadata.avatar_url : undefined,
-        cargo: String(metadata.cargo ?? metadata.role ?? "Usuario autenticado"),
+        cargo: String(metadata.cargo ?? metadata.role ?? "Usuário autenticado"),
       })
     })
 
@@ -297,11 +289,11 @@ export function Header() {
     const supabase = createSupabaseBrowserClient()
     const { error } = supabase ? await supabase.auth.signOut() : { error: null }
     if (error) {
-      toast.error(error.message || "Nao foi possivel encerrar a sessao.")
+      toast.error(error.message || "Não foi possível encerrar a sessão.")
       return
     }
 
-    toast.success("Sessao encerrada")
+    toast.success("Sessão encerrada")
     router.replace("/login")
     router.refresh()
   }
@@ -416,15 +408,23 @@ export function Header() {
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
+          <DropdownMenuContent align="end" sideOffset={12} className="z-[80] w-72 rounded-2xl p-2 shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
+            <DropdownMenuLabel className="p-3">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={profile.avatar} />
+                  <AvatarFallback>{initials}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{profile.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">{profile.email || "Usuário autenticado"}</p>
+                  <p className="truncate text-xs text-muted-foreground">{profile.role || "Usuário autenticado"}</p>
+                </div>
+              </div>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setProfileOpen(true)}>
-              <User className="mr-2 h-4 w-4" />
-              Perfil
-            </DropdownMenuItem>
             <DropdownMenuItem
-              className="text-destructive"
+              className="cursor-pointer rounded-xl text-destructive focus:text-destructive"
               onClick={handleSignOut}
             >
               <LogOut className="mr-2 h-4 w-4" />
@@ -550,25 +550,6 @@ export function Header() {
         document.body
       )}
 
-      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Perfil</DialogTitle>
-            <DialogDescription>Informacoes do usuario atual</DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14">
-              <AvatarImage src={profile.avatar} />
-              <AvatarFallback>{initials}</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-semibold">{profile.name}</p>
-              <p className="text-sm text-muted-foreground">{profile.email}</p>
-              <p className="text-sm text-muted-foreground">{profile.cargo}</p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </header>
   )
 }

@@ -165,10 +165,10 @@ export function ManutencoesContent() {
             Exportar
           </Button>
           <MockCreateDialog
-            title="Nova Manutencao"
+            title="Nova manutenção"
             description="Preencha os dados da ordem de manutenção para salvar no Supabase."
-            triggerLabel="Nova Manutencao"
-            toastMessage="Manutencao salva com sucesso"
+            triggerLabel="Nova manutenção"
+            toastMessage="Manutenção salva com sucesso"
             sections={[
               {
                 title: "Vínculos",

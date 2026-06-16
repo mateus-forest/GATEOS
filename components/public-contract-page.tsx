@@ -86,12 +86,15 @@ function dateValue(row: Row, keys: string[]) {
 }
 
 function normalizeStatus(status: string) {
-  const lower = status.toLowerCase()
+  const lower = status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
   if (["active", "ativo"].includes(lower)) return "Ativo"
   if (["suspended", "suspenso"].includes(lower)) return "Suspenso"
   if (["overdue", "inadimplente"].includes(lower)) return "Inadimplente"
   if (["closed", "encerrado"].includes(lower)) return "Encerrado"
-  if (["paid", "pago"].includes(lower)) return "Pago"
+  if (["paid", "pago", "recebido", "received", "quitado"].includes(lower)) return "Pago"
   if (["pending", "pendente", "open"].includes(lower)) return "Pendente"
   if (["cancelled", "cancelado"].includes(lower)) return "Cancelado"
   return status || "-"
@@ -106,9 +109,14 @@ function statusClass(status: string) {
 }
 
 function isOverdue(installment: Row) {
-  const status = text(installment, ["status"], "").toLowerCase()
+  const status = text(installment, ["status"], "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
   const dueDate = text(installment, ["due_date", "vencimento"], "")
-  return status !== "paid" && status !== "pago" && Boolean(dueDate) && new Date(dueDate) < new Date()
+  const paidAt = text(installment, ["payment_date", "paid_at", "received_at", "data_pagamento"], "")
+  const isPaid = ["paid", "pago", "recebido", "received", "quitado", "cancelled", "cancelado"].includes(status) || Boolean(paidAt)
+  return !isPaid && Boolean(dueDate) && new Date(dueDate) < new Date()
 }
 
 async function loadPublicContract(token: string): Promise<PublicData> {
@@ -201,11 +209,17 @@ export function PublicContractPage({ token }: { token: string }) {
   }, [token])
 
   const overdueInstallments = useMemo(() => data?.installments.filter(isOverdue) ?? [], [data])
-  const overdueTotal = overdueInstallments.reduce((total, item) => total + numberValue(item, ["value", "amount", "valor", "installment_value"]), 0)
+  const installmentValueKeys = ["updated_value", "original_value", "installment_value", "value", "amount", "valor", "total", "total_amount"]
+  const overdueTotal = overdueInstallments.reduce((total, item) => total + numberValue(item, installmentValueKeys), 0)
   const nextInstallments = useMemo(
     () =>
       (data?.installments ?? [])
-        .filter((item) => !["paid", "pago", "cancelled", "cancelado"].includes(text(item, ["status"], "").toLowerCase()))
+        .filter((item) => !["paid", "pago", "recebido", "received", "quitado", "cancelled", "cancelado"].includes(
+          text(item, ["status"], "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+        ))
         .slice(0, 5),
     [data]
   )
@@ -337,7 +351,8 @@ export function PublicContractPage({ token }: { token: string }) {
                 <div>
                   <p className="font-semibold text-red-800">Existem parcelas vencidas neste contrato.</p>
                   <p className="text-sm text-red-700">
-                    {overdueInstallments.length} parcela(s) em aberto, totalizando {formatCurrency(overdueTotal)}.
+                    {overdueInstallments.length} {overdueInstallments.length === 1 ? "parcela vencida" : "parcelas vencidas"}
+                    {overdueTotal > 0 ? `, totalizando ${formatCurrency(overdueTotal)}.` : " com valor não informado no cadastro."}
                   </p>
                 </div>
               </div>
@@ -371,7 +386,7 @@ export function PublicContractPage({ token }: { token: string }) {
             <CardContent className="p-4">
               <CheckCircle2 className="mb-3 h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Situação financeira</p>
-              <p className="font-semibold">{overdueInstallments.length ? "Com pendências" : "Sem pendências vencidas"}</p>
+              <p className="font-semibold">{overdueInstallments.length ? "Com pendências" : "Sem pendências"}</p>
             </CardContent>
           </Card>
         </div>
@@ -423,7 +438,7 @@ export function PublicContractPage({ token }: { token: string }) {
                   return (
                     <div key={text(installment, ["id"], crypto.randomUUID())} className="flex items-center justify-between rounded-lg border bg-white p-3">
                       <div>
-                        <p className="font-medium">{formatCurrency(numberValue(installment, ["value", "amount", "valor", "installment_value"]))}</p>
+                        <p className="font-medium">{formatCurrency(numberValue(installment, installmentValueKeys))}</p>
                         <p className="text-xs text-muted-foreground">Vencimento: {dateValue(installment, ["due_date", "vencimento"])}</p>
                         <p className="text-xs text-muted-foreground">Pagamento: {dateValue(installment, ["payment_date", "paid_at", "data_pagamento"])}</p>
                       </div>

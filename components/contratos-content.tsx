@@ -88,6 +88,20 @@ type ContractEquipmentDraft = {
   quantity: string
 }
 
+function slugifyPublicTokenPart(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+function buildFriendlyPublicToken(...parts: string[]) {
+  const base = slugifyPublicTokenPart(parts.filter(Boolean).join("-")).slice(0, 84)
+  return `${base || "contrato"}-${crypto.randomUUID().slice(0, 8)}`
+}
+
 function normalizeContractStatus(status: unknown) {
   const value = String(status ?? "ativo")
   const map: Record<string, string> = {
@@ -292,8 +306,11 @@ function NewContractDialog({
     setErrorMessage("")
     let createdContractId = ""
     try {
-      const publicToken = crypto.randomUUID()
       const contractNumber = generateContractNumber(values.client_id, values.start_date)
+      const publicToken = buildFriendlyPublicToken(
+        clientOptions.find((client) => client.value === values.client_id)?.label ?? "cliente",
+        contractNumber
+      )
       const dueDate = new Date(`${values.due_date}T00:00:00`)
       const created = await createContract({
         client_id: values.client_id,
@@ -635,6 +652,10 @@ export function ContratosContent() {
 
   const getPublicContractUrl = (token: string) => `${window.location.origin}/cliente/contrato/${token}`
 
+  const buildPublicContractSlug = (contract: ContractWithPublicLink) => {
+    return buildFriendlyPublicToken(contract.clientName || "cliente", contract.number || contract.id)
+  }
+
   const generateContractNumber = (clientId: string, startDate: string) => {
     const clientLabel = clientOptions.find((client) => client.value === clientId)?.label ?? "CLIENTE"
     const safeClient = clientLabel
@@ -671,7 +692,7 @@ export function ContratosContent() {
       return
     }
 
-    const token = crypto.randomUUID()
+    const token = buildPublicContractSlug(contract)
     const { data, error } = await supabase
       .from("contracts")
       .update({
