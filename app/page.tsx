@@ -46,7 +46,7 @@ export default function LoginPage() {
           fill
           priority
           sizes="(min-width: 1024px) 58vw, 100vw"
-          className="object-cover object-[62%_center] xl:object-center"
+          className="object-cover object-[78%_center]"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background via-background/20 to-transparent" />
         <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-white/20 to-transparent" />
