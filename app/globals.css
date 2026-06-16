@@ -133,15 +133,24 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply bg-background font-sans;
+    font-family: var(--font-geist-sans), 'Geist', Arial, Helvetica, sans-serif;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background font-sans text-foreground;
+    font-family: var(--font-geist-sans), 'Geist', Arial, Helvetica, sans-serif;
     letter-spacing: 0;
   }
-  html {
-    @apply font-sans bg-background;
+  button,
+  input,
+  textarea,
+  select {
+    font-family: inherit;
   }
   h1 {
     @apply tracking-normal;
+    font-family: inherit;
   }
 }
 

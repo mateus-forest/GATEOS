@@ -57,7 +57,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="bg-background">
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${geistSans.className} min-h-screen bg-background antialiased`}>
         {children}
         <Toaster richColors position="top-right" />
         {process.env.NODE_ENV === 'production' && <Analytics />}

@@ -45,6 +45,13 @@ As referencias anexadas foram usadas apenas para inspiracao de layout, hierarqui
 - Hierarquia mais limpa, com titulos mais fortes e conteudo menos pesado.
 - Espacamento de letras mantido neutro.
 
+### Correcao global da fonte
+
+- O `body` passou a receber tambem `geistSans.className`, alem das variaveis do `next/font`.
+- `html`, `body`, `button`, `input`, `textarea`, `select` e titulos herdam explicitamente `var(--font-geist-sans)`.
+- Auditoria por busca confirmou ausencia de `font-serif`, `Times` e `Georgia` nos arquivos principais da interface.
+- A interface principal agora força Geist Sans como fonte global e evita fallback serifado.
+
 ### Paleta e tema
 
 - Tema claro premium baseado em branco, preto e cinzas.
