@@ -102,6 +102,15 @@ As referencias anexadas foram usadas apenas para inspiracao de layout, hierarqui
   - Resumo financeiro
 - Nao foi criada integracao de IA, backend ou API.
 
+### Correcao do modal COS
+
+- O painel do COS deixou de depender do `DialogContent` renderizado dentro do header.
+- O overlay agora usa posicao `fixed`, blur suave e z-index acima de header/sidebar.
+- O painel abre centralizado por `top: 50%`, `left: 50%` e `translate(-50%, -50%)`.
+- A largura ficou responsiva entre notebook e desktop, com limite visual de `520px`.
+- A altura maxima passou a ser `calc(100vh - 96px)`, com scroll interno quando necessario.
+- O cabecalho do COS, a mensagem inicial, as sugestoes e o input de rodape permanecem sempre visiveis dentro do painel.
+
 ### Dashboard
 
 - Cabecalho redesenhado com linguagem de controle executivo.

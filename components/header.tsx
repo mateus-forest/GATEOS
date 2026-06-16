@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, ChevronDown, LogOut, Search, Send, Sparkles, User } from "lucide-react"
+import { Bell, ChevronDown, LogOut, Search, Send, Sparkles, User, X } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -349,66 +349,93 @@ export function Header() {
         </DropdownMenu>
       </div>
 
-      <Dialog open={cosOpen} onOpenChange={setCosOpen}>
-        <DialogContent className="max-w-[440px] p-0">
-          <div className="border-b border-border px-6 py-5">
-            <DialogHeader className="mb-0 pr-0">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+      {cosOpen && (
+        <div className="fixed inset-0 z-[100]">
+          <button
+            type="button"
+            aria-label="Fechar COS"
+            className="absolute inset-0 bg-neutral-950/35 backdrop-blur-md"
+            onClick={() => setCosOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cos-assistant-title"
+            className="fixed left-1/2 top-1/2 z-[101] flex max-h-[calc(100vh-96px)] w-[min(calc(100vw-32px),520px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white shadow-[0_32px_120px_rgba(15,23,42,0.28)]"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
                   <Sparkles className="h-4 w-4" />
                 </div>
-                <div>
-                  <DialogTitle className="text-base">COS Assistant</DialogTitle>
-                  <DialogDescription>Inteligência da GATE</DialogDescription>
+                <div className="min-w-0">
+                  <h2 id="cos-assistant-title" className="truncate text-base font-semibold text-foreground">
+                    COS Assistant
+                  </h2>
+                  <p className="truncate text-sm text-muted-foreground">Inteligência da GATE</p>
                 </div>
               </div>
-            </DialogHeader>
-          </div>
-          <div className="space-y-6 px-6 py-6">
-            <div className="flex items-start gap-3">
-              <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div className="rounded-3xl bg-muted px-5 py-4 text-sm leading-6 text-foreground">
-                Olá! Sou o COS, seu assistente da GATE Center. Como posso ajudar você hoje?
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Fechar COS"
+                className="h-9 w-9 shrink-0 rounded-2xl"
+                onClick={() => setCosOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+              <div className="space-y-6">
+                <div className="flex items-start gap-3">
+                  <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div className="rounded-3xl bg-muted px-5 py-4 text-sm leading-6 text-foreground">
+                    Olá! Sou o COS, seu assistente da GATE Center. Como posso ajudar você hoje?
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Sugestões
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "Mostrar contratos ativos",
+                      "Clientes inadimplentes",
+                      "Receita deste mês",
+                      "Equipamentos disponíveis",
+                      "Abrir chamado",
+                      "Resumo financeiro",
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="rounded-full bg-muted px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-neutral-950 hover:text-white"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-            <div>
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Sugestões
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  "Mostrar contratos ativos",
-                  "Clientes inadimplentes",
-                  "Receita deste mês",
-                  "Equipamentos disponíveis",
-                  "Abrir chamado",
-                  "Resumo financeiro",
-                ].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="rounded-full bg-muted px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-neutral-950 hover:text-white"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
+            <div className="shrink-0 border-t border-border bg-white px-4 py-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  aria-label="Mensagem para o COS"
+                  placeholder="Pergunte algo ao COS..."
+                  className="h-10 rounded-2xl"
+                />
+                <Button type="button" size="icon" className="shrink-0 rounded-2xl">
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 border-t border-border px-4 py-4">
-            <Input
-              aria-label="Mensagem para o COS"
-              placeholder="Pergunte algo ao COS..."
-              className="h-10 rounded-2xl"
-            />
-            <Button type="button" size="icon" className="rounded-2xl">
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </section>
+        </div>
+      )}
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent>
