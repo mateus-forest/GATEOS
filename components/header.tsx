@@ -46,6 +46,11 @@ type NotificationItem = Record<string, unknown> & {
   time?: string
   link?: string
 }
+type CosChatMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+}
 type SessionProfile = {
   name: string
   email: string
@@ -72,10 +77,27 @@ function CosLogoMark({ className = "" }: { className?: string }) {
   )
 }
 
+const COS_INITIAL_MESSAGE =
+  "Olá! Sou o COS, seu assistente da GATE Center. Como posso ajudar você hoje?"
+
+const COS_SUGGESTIONS = [
+  "Mostrar contratos ativos",
+  "Clientes inadimplentes",
+  "Receita deste mês",
+  "Equipamentos disponíveis",
+  "Abrir chamado",
+  "Resumo financeiro",
+]
+
 export function Header() {
   const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
   const [cosOpen, setCosOpen] = useState(false)
+  const [cosInput, setCosInput] = useState("")
+  const [cosLoading, setCosLoading] = useState(false)
+  const [cosMessages, setCosMessages] = useState<CosChatMessage[]>([
+    { id: "cos-initial", role: "assistant", content: COS_INITIAL_MESSAGE },
+  ])
   const [searchTerm, setSearchTerm] = useState("")
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [profile, setProfile] = useState<SessionProfile>({
@@ -215,6 +237,53 @@ export function Header() {
       current.map((item) => (item.id === notification.id ? { ...item, read: true, lida: true } : item))
     )
     handleNavigate(notification.link ?? "/dashboard")
+  }
+
+  const sendCosMessage = async (rawMessage?: string) => {
+    const message = (rawMessage ?? cosInput).trim()
+    if (!message || cosLoading) return
+
+    const userMessage: CosChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: message,
+    }
+
+    setCosMessages((current) => [...current, userMessage])
+    setCosInput("")
+    setCosLoading(true)
+
+    try {
+      const response = await fetch("/api/cos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      })
+      const payload = (await response.json().catch(() => null)) as { answer?: string; error?: string } | null
+
+      const assistantMessage: CosChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        content:
+          response.ok && payload?.answer
+            ? payload.answer
+            : payload?.error || "Não consegui acessar esses dados no momento.",
+      }
+
+      setCosMessages((current) => [...current, assistantMessage])
+    } catch (error) {
+      console.error("[cos] Falha na chamada do assistente", error)
+      setCosMessages((current) => [
+        ...current,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          content: "Não consegui acessar esses dados no momento.",
+        },
+      ])
+    } finally {
+      setCosLoading(false)
+    }
   }
 
   const initials = profile.name
@@ -405,32 +474,48 @@ export function Header() {
               </Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-              <div className="space-y-6">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
-                    <CosLogoMark className="h-5 w-5" />
+              <div className="space-y-5">
+                {cosMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex items-start gap-3 ${message.role === "user" ? "justify-end" : ""}`}
+                  >
+                    {message.role === "assistant" && (
+                      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                        <CosLogoMark className="h-5 w-5" />
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[82%] rounded-3xl px-5 py-4 text-sm leading-6 ${
+                        message.role === "user" ? "bg-neutral-950 text-white" : "bg-muted text-foreground"
+                      }`}
+                    >
+                      {message.content}
+                    </div>
                   </div>
-                  <div className="rounded-3xl bg-muted px-5 py-4 text-sm leading-6 text-foreground">
-                    Olá! Sou o COS, seu assistente da GATE Center. Como posso ajudar você hoje?
+                ))}
+                {cosLoading && (
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                      <CosLogoMark className="h-5 w-5" />
+                    </div>
+                    <div className="rounded-3xl bg-muted px-5 py-4 text-sm leading-6 text-muted-foreground">
+                      Consultando dados reais do GATE OS...
+                    </div>
                   </div>
-                </div>
+                )}
                 <div>
                   <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     Sugestões
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {[
-                      "Mostrar contratos ativos",
-                      "Clientes inadimplentes",
-                      "Receita deste mês",
-                      "Equipamentos disponíveis",
-                      "Abrir chamado",
-                      "Resumo financeiro",
-                    ].map((suggestion) => (
+                    {COS_SUGGESTIONS.map((suggestion) => (
                       <button
                         key={suggestion}
                         type="button"
-                        className="rounded-full bg-muted px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-neutral-950 hover:text-white"
+                        disabled={cosLoading}
+                        className="rounded-full bg-muted px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-neutral-950 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => sendCosMessage(suggestion)}
                       >
                         {suggestion}
                       </button>
@@ -440,16 +525,25 @@ export function Header() {
               </div>
             </div>
             <div className="shrink-0 border-t border-border bg-white px-4 py-4">
-              <div className="flex items-center gap-2">
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  sendCosMessage()
+                }}
+              >
                 <Input
                   aria-label="Mensagem para o COS"
                   placeholder="Pergunte algo ao COS..."
                   className="h-10 rounded-2xl"
+                  value={cosInput}
+                  onChange={(event) => setCosInput(event.target.value)}
+                  disabled={cosLoading}
                 />
-                <Button type="button" size="icon" className="shrink-0 rounded-2xl">
+                <Button type="submit" size="icon" className="shrink-0 rounded-2xl" disabled={cosLoading || !cosInput.trim()}>
                   <Send className="h-4 w-4" />
                 </Button>
-              </div>
+              </form>
             </div>
           </section>
         </div>,
