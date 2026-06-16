@@ -86,6 +86,14 @@ As referencias anexadas foram usadas apenas para inspiracao de layout, hierarqui
 - Botao premium no canto superior direito:
   - "Abrir no COS"
 
+### Login
+
+- Aplicada a imagem premium enviada como arte visual principal da tela de login.
+- A imagem foi salva em `public/images/gate-login-hero.png`.
+- A arte ocupa a área lateral direita em desktop/notebook, preservando o card e o formulário de login existentes.
+- Em telas menores, a área visual permanece oculta para priorizar leitura e usabilidade do formulário.
+- Nenhum fluxo de autenticação, Supabase, senha, validação ou rota foi alterado.
+
 ### COS Assistant
 
 - Adicionado componente visual do COS no header.
