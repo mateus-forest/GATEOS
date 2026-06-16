@@ -39,16 +39,17 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="relative hidden flex-[1.15] overflow-hidden bg-sky-50 lg:block">
+      <div className="relative hidden min-w-[52vw] flex-[1.35] overflow-hidden bg-[#f4f9ff] lg:block">
         <Image
-          src="/images/gate-login-hero.png"
+          src="/images/gate-login-hero-3d.png"
           alt="Arte visual premium GATE OS"
           fill
           priority
-          sizes="(min-width: 1024px) 56vw, 100vw"
-          className="object-cover object-center"
+          sizes="(min-width: 1024px) 58vw, 100vw"
+          className="object-cover object-[62%_center] xl:object-center"
         />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background/10 via-transparent to-white/10" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background via-background/20 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-white/20 to-transparent" />
       </div>
     </div>
   )
