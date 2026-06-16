@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -77,8 +77,8 @@ const activeContracts = 0
 const totalClients = 0
 const totalEquipments = 0
 const bankBalances = [
-  { name: "Saldo Banco ItaÃº CNPJ", amount: 0 },
-  { name: "Saldo AplicaÃ§Ã£o", amount: 0 },
+  { name: "Saldo Banco Itaú CNPJ", amount: 0 },
+  { name: "Saldo Aplicação", amount: 0 },
   { name: "Saldo Caixa", amount: 0 },
 ]
 const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
@@ -134,7 +134,7 @@ function formatActivityTime(value: string) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).replace(",", " Ã s")
+  }).replace(",", " às")
 }
 
 function isCurrentMonth(value: unknown) {
@@ -557,7 +557,7 @@ export function DashboardContent() {
                 {loading ? "Carregando contratos..." : `${expiringContracts} contratos vencem nos proximos 30 dias`}
               </p>
               <p className="text-xs text-amber-600">
-                Revise os contratos e inicie o processo de renovaÃ§Ã£o
+                Revise os contratos e inicie o processo de renovação
               </p>
             </div>
             <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => router.push("/contratos")}>
@@ -599,7 +599,7 @@ export function DashboardContent() {
           change={equipmentInMaintenance.toString()}
           changeType={equipmentInMaintenance > 0 ? "negative" : "neutral"}
           icon={Package}
-          description="em manutenÃ§Ã£o"
+          description="em manutenção"
         />
       </div>
 
@@ -633,9 +633,9 @@ export function DashboardContent() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Landmark className="h-5 w-5 text-primary" />
-              Saldo BancÃ¡rio
+              Saldo Bancário
             </CardTitle>
-            <CardDescription>PosiÃ§Ã£o consolidada</CardDescription>
+            <CardDescription>Posição consolidada</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {bankBalances.length > 0 ? (
@@ -659,21 +659,21 @@ export function DashboardContent() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>DistribuiÃ§Ã£o de Lucros</CardTitle>
-            <CardDescription>SimulaÃ§Ã£o do resultado distribuÃ­vel do mÃªs</CardDescription>
+            <CardTitle>Distribuição de Lucros</CardTitle>
+            <CardDescription>Simulação do resultado distribuível do mês</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {[
-                ["Receita do mÃªs", profitDistribution.revenue],
+                ["Receita do mês", profitDistribution.revenue],
                 ["Custos/despesas", profitDistribution.costs],
                 ["Lucro operacional", operatingProfit],
-                ["Resultado distribuÃ­vel", distributableResult],
+                ["Resultado distribuível", distributableResult],
                 ["Carlos a receber", carlosReceivable],
                 ["Renan a receber", renanReceivable],
                 ["Mateus fixo", profitDistribution.mateusFixed],
-                ["Mateus participaÃ§Ã£o 8%", mateusShare],
-                ["Total distribuÃ­do", totalDistributed],
+                ["Mateus participação 8%", mateusShare],
+                ["Total distribuído", totalDistributed],
                 ["Lucro retido", retainedProfit],
               ].map(([label, value]) => (
                 <div key={String(label)} className="flex items-center justify-between rounded-2xl bg-muted/45 p-4">
@@ -695,8 +695,8 @@ export function DashboardContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>EvoluÃ§Ã£o da Receita</CardTitle>
-                <CardDescription>Receita mensal dos Ãºltimos 12 meses</CardDescription>
+                <CardTitle>Evolução da Receita</CardTitle>
+                <CardDescription>Receita mensal dos últimos 12 meses</CardDescription>
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">
@@ -760,7 +760,7 @@ export function DashboardContent() {
         <Card>
           <CardHeader>
             <CardTitle>Contratos por Status</CardTitle>
-            <CardDescription>DistribuiÃ§Ã£o atual</CardDescription>
+            <CardDescription>Distribuição atual</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -816,7 +816,7 @@ export function DashboardContent() {
         <Card>
           <CardHeader>
             <CardTitle>Atividades Recentes</CardTitle>
-            <CardDescription>Ãšltimas atualizaÃ§Ãµes do sistema</CardDescription>
+            <CardDescription>Últimas atualizações do sistema</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="divide-y">
@@ -836,8 +836,8 @@ export function DashboardContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>PrÃ³ximos Pagamentos</CardTitle>
-                <CardDescription>Vencimentos dos prÃ³ximos 7 dias</CardDescription>
+                <CardTitle>Próximos Pagamentos</CardTitle>
+                <CardDescription>Vencimentos dos próximos 7 dias</CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={() => router.push("/financeiro")}>
                 Ver todos
@@ -886,7 +886,7 @@ export function DashboardContent() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Taxa de RenovaÃ§Ã£o</h3>
+              <h3 className="font-semibold">Taxa de Renovação</h3>
               <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">Base real</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
@@ -900,7 +900,7 @@ export function DashboardContent() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">Ticket MÃ©dio</h3>
+              <h3 className="font-semibold">Ticket Médio</h3>
               <Badge variant="secondary">Mensal</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
@@ -914,8 +914,8 @@ export function DashboardContent() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">InadimplÃªncia</h3>
-              <Badge variant="secondary" className="bg-amber-100 text-amber-700">AtenÃ§Ã£o</Badge>
+              <h3 className="font-semibold">Inadimplência</h3>
+              <Badge variant="secondary" className="bg-amber-100 text-amber-700">Atenção</Badge>
             </div>
             <div className="flex items-end gap-2 mb-2">
               <span className="text-4xl font-bold">{delinquencyRate.toFixed(1)}%</span>

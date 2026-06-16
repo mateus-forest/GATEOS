@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
@@ -737,7 +737,7 @@ export function ContratosContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Contratos</h1>
-          <p className="text-muted-foreground">GestÃ£o de contratos e renovaÃ§Ãµes</p>
+          <p className="text-muted-foreground">Gestão de contratos e renovações</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildContractsReport(filteredContracts.map((contract) => ({
@@ -795,10 +795,10 @@ export function ContratosContent() {
               <AlertCircle className="h-5 w-5 text-amber-600" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-amber-800">
-                  {expiringContracts} contratos vencem nos prÃ³ximos 30 dias
+                  {expiringContracts} contratos vencem nos próximos 30 dias
                 </p>
                 <p className="text-xs text-amber-600">
-                  Inicie o processo de renovaÃ§Ã£o para manter a continuidade dos serviÃ§os
+                  Inicie o processo de renovação para manter a continuidade dos serviços
                 </p>
               </div>
               <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100">
@@ -873,7 +873,7 @@ export function ContratosContent() {
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="ativos">Ativos</TabsTrigger>
           <TabsTrigger value="vencendo">Vencendo</TabsTrigger>
-          <TabsTrigger value="renovacoes">RenovaÃ§Ãµes</TabsTrigger>
+          <TabsTrigger value="renovacoes">Renovações</TabsTrigger>
         </TabsList>
 
         <TabsContent value="todos" className="space-y-4">
@@ -884,7 +884,7 @@ export function ContratosContent() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por nÃºmero ou cliente..."
+                    placeholder="Buscar por número ou cliente..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -908,9 +908,9 @@ export function ContratosContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os tipos</SelectItem>
-                    <SelectItem value="locacao">LocaÃ§Ã£o</SelectItem>
+                    <SelectItem value="locacao">Locação</SelectItem>
                     <SelectItem value="venda">Venda</SelectItem>
-                    <SelectItem value="servico">ServiÃ§o</SelectItem>
+                    <SelectItem value="servico">Serviço</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -926,7 +926,7 @@ export function ContratosContent() {
                     <TableHead>Contrato</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Tipo</TableHead>
-                    <TableHead>VigÃªncia</TableHead>
+                    <TableHead>Vigência</TableHead>
                     <TableHead>Progresso</TableHead>
                     <TableHead>Valor Mensal</TableHead>
                     <TableHead>Status</TableHead>
@@ -954,7 +954,7 @@ export function ContratosContent() {
                       <TableCell>
                         <div className="text-sm">
                           <p>{formatDate(contract.startDate)}</p>
-                          <p className="text-muted-foreground">atÃ© {formatDate(contract.endDate)}</p>
+                          <p className="text-muted-foreground">até {formatDate(contract.endDate)}</p>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -964,7 +964,7 @@ export function ContratosContent() {
                             className="h-2"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            {calculateProgress(contract.startDate, contract.endDate).toFixed(0)}% concluÃ­do
+                            {calculateProgress(contract.startDate, contract.endDate).toFixed(0)}% concluído
                           </p>
                         </div>
                       </TableCell>
@@ -1006,7 +1006,7 @@ export function ContratosContent() {
                       <TableCell colSpan={8} className="h-28 text-center">
                         <div className="space-y-1">
                           <p className="font-medium">Nenhum contrato cadastrado ainda.</p>
-                          <p className="text-sm text-muted-foreground">Clique em Novo Contrato para comeÃ§ar.</p>
+                          <p className="text-sm text-muted-foreground">Clique em Novo Contrato para começar.</p>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1036,7 +1036,7 @@ export function ContratosContent() {
         <TabsContent value="renovacoes">
           <Card>
             <CardContent className="p-6">
-              <p className="text-muted-foreground">Mostrando contratos em processo de renovaÃ§Ã£o...</p>
+              <p className="text-muted-foreground">Mostrando contratos em processo de renovação...</p>
             </CardContent>
           </Card>
         </TabsContent>

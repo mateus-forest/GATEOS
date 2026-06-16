@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -136,7 +136,7 @@ export function PatrimonioContent() {
       case "active":
         return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
       case "maintenance":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">ManutenÃ§Ã£o</Badge>
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Manutenção</Badge>
       case "disposed":
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Alienado</Badge>
       case "inactive":
@@ -164,8 +164,8 @@ export function PatrimonioContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">PatrimÃ´nio</h1>
-          <p className="text-muted-foreground">GestÃ£o de ativos e bens patrimoniais</p>
+          <h1 className="text-3xl font-bold">Patrimônio</h1>
+          <p className="text-muted-foreground">Gestão de ativos e bens patrimoniais</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildAssetsReport(filteredAssets.map((asset) => ({
@@ -192,7 +192,7 @@ export function PatrimonioContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">PatrimÃ´nio Total</p>
+                <p className="text-sm text-muted-foreground">Patrimônio Total</p>
                 <p className="text-2xl font-bold">{formatCurrency(totalPatrimonio)}</p>
               </div>
               <div className="p-3 rounded-xl bg-primary/10">
@@ -234,7 +234,7 @@ export function PatrimonioContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Em ManutenÃ§Ã£o</p>
+                <p className="text-sm text-muted-foreground">Em Manutenção</p>
                 <p className="text-2xl font-bold text-amber-600">
                   {maintenanceEquipmentQuantity}
                 </p>
@@ -251,7 +251,7 @@ export function PatrimonioContent() {
         {/* Asset Distribution Chart */}
         <Card>
           <CardHeader>
-            <CardTitle>DistribuiÃ§Ã£o por Categoria</CardTitle>
+            <CardTitle>Distribuição por Categoria</CardTitle>
             <CardDescription>Valor total por tipo de ativo</CardDescription>
           </CardHeader>
           <CardContent>
@@ -312,7 +312,7 @@ export function PatrimonioContent() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por nome ou cÃ³digo..."
+                  placeholder="Buscar por nome ou código..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -324,10 +324,10 @@ export function PatrimonioContent() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="imovel">ImÃ³vel</SelectItem>
-                  <SelectItem value="veiculo">VeÃ­culo</SelectItem>
+                  <SelectItem value="imovel">Imóvel</SelectItem>
+                  <SelectItem value="veiculo">Veículo</SelectItem>
                   <SelectItem value="equipamento">Equipamento</SelectItem>
-                  <SelectItem value="movel">MÃ³vel</SelectItem>
+                  <SelectItem value="movel">Móvel</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -343,7 +343,7 @@ export function PatrimonioContent() {
                       <p className="font-medium">{asset.name}</p>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="font-mono">{asset.code}</span>
-                        <span>â€¢</span>
+                        <span>•</span>
                         <span>{asset.location}</span>
                       </div>
                     </div>
@@ -352,7 +352,7 @@ export function PatrimonioContent() {
                     <div className="text-right">
                       <p className="font-semibold">{formatCurrency(asset.currentValue)}</p>
                       <p className="text-xs text-muted-foreground">
-                        AquisiÃ§Ã£o: {formatCurrency(asset.acquisitionValue)}
+                        Aquisição: {formatCurrency(asset.acquisitionValue)}
                       </p>
                     </div>
                     {getStatusBadge(asset.status)}

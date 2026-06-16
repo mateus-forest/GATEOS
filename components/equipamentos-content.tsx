@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import {
@@ -138,7 +138,7 @@ export function EquipamentosContent() {
         return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Reservado</Badge>
       case "manutencao":
       case "maintenance":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">ManutenÃ§Ã£o</Badge>
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Manutenção</Badge>
       case "vendido":
         return <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Vendido</Badge>
       case "baixado":
@@ -171,7 +171,7 @@ export function EquipamentosContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Equipamentos</h1>
-          <p className="text-muted-foreground">GestÃ£o de equipamentos e inventÃ¡rio</p>
+          <p className="text-muted-foreground">Gestão de equipamentos e inventário</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildEquipmentReport(filteredEquipments.map((equipment) => ({
@@ -194,7 +194,7 @@ export function EquipamentosContent() {
             toastMessage="Equipamento salvo com sucesso"
             sections={[
               {
-                title: "IdentificaÃ§Ã£o",
+                title: "Identificação",
                 fields: [
                   { name: "name", label: "Nome do equipamento", required: true },
                   {
@@ -208,11 +208,11 @@ export function EquipamentosContent() {
                       { label: "Impressora", value: "impressora" },
                       { label: "Rede", value: "rede" },
                       { label: "Telefonia", value: "telefonia" },
-                      { label: "SeguranÃ§a", value: "seguranca" },
+                      { label: "Segurança", value: "seguranca" },
                       { label: "Outro", value: "outro" },
                     ],
                   },
-                  { name: "description", label: "ObservaÃ§Ãµes", type: "textarea" },
+                  { name: "description", label: "Observações", type: "textarea" },
                 ],
               },
               {
@@ -230,15 +230,15 @@ export function EquipamentosContent() {
                     type: "select",
                     required: true,
                     options: [
-                      { label: "DisponÃ­vel", value: "disponivel" },
+                      { label: "Disponível", value: "disponivel" },
                       { label: "Locado", value: "locado" },
                       { label: "Reservado", value: "reservado" },
-                      { label: "ManutenÃ§Ã£o", value: "manutencao" },
+                      { label: "Manutenção", value: "manutencao" },
                       { label: "Vendido", value: "vendido" },
                       { label: "Baixado", value: "baixado" },
                     ],
                   },
-                  { name: "notes", label: "ObservaÃ§Ãµes internas", type: "textarea" },
+                  { name: "notes", label: "Observações internas", type: "textarea" },
                 ],
               },
             ]}
@@ -336,7 +336,7 @@ export function EquipamentosContent() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome, nÃºmero de sÃ©rie ou cliente..."
+                placeholder="Buscar por nome, número de série ou cliente..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -364,7 +364,7 @@ export function EquipamentosContent() {
                 <SelectItem value="disponivel">Disponivel</SelectItem>
                 <SelectItem value="locado">Locado</SelectItem>
                 <SelectItem value="reservado">Reservado</SelectItem>
-                <SelectItem value="manutencao">ManutenÃ§Ã£o</SelectItem>
+                <SelectItem value="manutencao">Manutenção</SelectItem>
                 <SelectItem value="vendido">Vendido</SelectItem>
                 <SelectItem value="baixado">Baixado</SelectItem>
               </SelectContent>
@@ -380,8 +380,8 @@ export function EquipamentosContent() {
             <TableHeader>
               <TableRow>
                 <TableHead>Equipamento</TableHead>
-                <TableHead>NÃºmero de SÃ©rie</TableHead>
-                <TableHead>Cliente / LocalizaÃ§Ã£o</TableHead>
+                <TableHead>Número de Série</TableHead>
+                <TableHead>Cliente / Localização</TableHead>
                 <TableHead>Contrato</TableHead>
                 <TableHead>Estoque</TableHead>
                 <TableHead>Valor</TableHead>
@@ -436,7 +436,7 @@ export function EquipamentosContent() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => { window.location.href = "/manutencoes" }}>
                           <Wrench className="mr-2 h-4 w-4" />
-                          Registrar manutenÃ§Ã£o
+                          Registrar manutenção
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -448,7 +448,7 @@ export function EquipamentosContent() {
                   <TableCell colSpan={8} className="h-28 text-center">
                     <div className="space-y-1">
                       <p className="font-medium">Nenhum equipamento cadastrado ainda.</p>
-                      <p className="text-sm text-muted-foreground">Clique em Novo Equipamento para comeÃ§ar.</p>
+                      <p className="text-sm text-muted-foreground">Clique em Novo Equipamento para começar.</p>
                     </div>
                   </TableCell>
                 </TableRow>

@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import {
@@ -122,7 +122,7 @@ export function ManutencoesContent() {
       case "in_progress":
         return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Em Andamento</Badge>
       case "completed":
-        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">ConcluÃ­do</Badge>
+        return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Concluído</Badge>
       case "cancelled":
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Cancelado</Badge>
       default:
@@ -135,7 +135,7 @@ export function ManutencoesContent() {
       case "high":
         return <Badge variant="destructive">Alta</Badge>
       case "medium":
-        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">MÃ©dia</Badge>
+        return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Média</Badge>
       case "low":
         return <Badge variant="secondary">Baixa</Badge>
       default:
@@ -148,8 +148,8 @@ export function ManutencoesContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">ManutenÃ§Ãµes</h1>
-          <p className="text-muted-foreground">GestÃ£o de chamados e ordens de serviÃ§o</p>
+          <h1 className="text-3xl font-bold">Manutenções</h1>
+          <p className="text-muted-foreground">Gestão de chamados e ordens de serviço</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => exportPdfReport(buildMaintenanceReport(filteredMaintenances.map((maintenance) => ({
@@ -166,12 +166,12 @@ export function ManutencoesContent() {
           </Button>
           <MockCreateDialog
             title="Nova Manutencao"
-            description="Preencha os dados da ordem de manutenÃ§Ã£o para salvar no Supabase."
+            description="Preencha os dados da ordem de manutenção para salvar no Supabase."
             triggerLabel="Nova Manutencao"
             toastMessage="Manutencao salva com sucesso"
             sections={[
               {
-                title: "VÃ­nculos",
+                title: "Vínculos",
                 fields: [
                   { name: "client_id", label: "Cliente", type: "select", required: true, options: relationshipOptions.clients },
                   { name: "contract_id", label: "Contrato", type: "select", options: relationshipOptions.contracts },
@@ -198,9 +198,9 @@ export function ManutencoesContent() {
                     required: true,
                     options: [
                       { label: "Baixa", value: "low" },
-                      { label: "MÃ©dia", value: "medium" },
+                      { label: "Média", value: "medium" },
                       { label: "Alta", value: "high" },
-                      { label: "CrÃ­tica", value: "critical" },
+                      { label: "Crítica", value: "critical" },
                     ],
                   },
                   {
@@ -211,16 +211,16 @@ export function ManutencoesContent() {
                     options: [
                       { label: "Aberto", value: "open" },
                       { label: "Em andamento", value: "in_progress" },
-                      { label: "ConcluÃ­do", value: "completed" },
+                      { label: "Concluído", value: "completed" },
                       { label: "Cancelado", value: "cancelled" },
                     ],
                   },
                 ],
               },
               {
-                title: "DescriÃ§Ã£o",
+                title: "Descrição",
                 fields: [
-                  { name: "problem", label: "DescriÃ§Ã£o", type: "textarea", required: true },
+                  { name: "problem", label: "Descrição", type: "textarea", required: true },
                 ],
               },
               {
@@ -288,7 +288,7 @@ export function ManutencoesContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">ConcluÃ­dos (mÃªs)</p>
+                <p className="text-sm text-muted-foreground">Concluídos (mês)</p>
                 <p className="text-2xl font-bold text-emerald-600">{completedThisMonth}</p>
               </div>
               <div className="p-3 rounded-xl bg-emerald-100">
@@ -302,7 +302,7 @@ export function ManutencoesContent() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Tempo MÃ©dio</p>
+                <p className="text-sm text-muted-foreground">Tempo Médio</p>
                 <p className="text-2xl font-bold">{avgResponseTime}</p>
               </div>
               <div className="p-3 rounded-xl bg-blue-100">
@@ -318,7 +318,7 @@ export function ManutencoesContent() {
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="abertos">Em Aberto</TabsTrigger>
           <TabsTrigger value="andamento">Em Andamento</TabsTrigger>
-          <TabsTrigger value="concluidos">ConcluÃ­dos</TabsTrigger>
+          <TabsTrigger value="concluidos">Concluídos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="todos" className="space-y-4">
@@ -343,7 +343,7 @@ export function ManutencoesContent() {
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="open">Aberto</SelectItem>
                     <SelectItem value="in_progress">Em Andamento</SelectItem>
-                    <SelectItem value="completed">ConcluÃ­do</SelectItem>
+                    <SelectItem value="completed">Concluído</SelectItem>
                     <SelectItem value="cancelled">Cancelado</SelectItem>
                   </SelectContent>
                 </Select>
@@ -355,7 +355,7 @@ export function ManutencoesContent() {
                     <SelectItem value="all">Todos os tipos</SelectItem>
                     <SelectItem value="preventiva">Preventiva</SelectItem>
                     <SelectItem value="corretiva">Corretiva</SelectItem>
-                    <SelectItem value="instalacao">InstalaÃ§Ã£o</SelectItem>
+                    <SelectItem value="instalacao">Instalação</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -373,7 +373,7 @@ export function ManutencoesContent() {
                     <TableHead>Cliente</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Prioridade</TableHead>
-                    <TableHead>TÃ©cnico</TableHead>
+                    <TableHead>Técnico</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -437,7 +437,7 @@ export function ManutencoesContent() {
         <TabsContent value="concluidos">
           <Card>
             <CardContent className="p-6">
-              <p className="text-muted-foreground">Mostrando chamados concluÃ­dos...</p>
+              <p className="text-muted-foreground">Mostrando chamados concluídos...</p>
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Bell, ChevronDown, LogOut, Search, Send, Sparkles, User, X } from "lucide-react"
@@ -349,8 +350,10 @@ export function Header() {
         </DropdownMenu>
       </div>
 
-      {cosOpen && (
-        <div className="fixed inset-0 z-[100]">
+      {cosOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+        <div className="fixed inset-0 z-[999]">
           <button
             type="button"
             aria-label="Fechar COS"
@@ -361,7 +364,7 @@ export function Header() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="cos-assistant-title"
-            className="fixed left-1/2 top-1/2 z-[101] flex max-h-[calc(100vh-96px)] w-[min(calc(100vw-32px),520px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white shadow-[0_32px_120px_rgba(15,23,42,0.28)]"
+            className="fixed left-1/2 top-1/2 z-[1000] flex max-h-[calc(100vh-96px)] w-[min(calc(100vw-32px),520px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white shadow-[0_32px_120px_rgba(15,23,42,0.28)]"
           >
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-5">
               <div className="flex min-w-0 items-center gap-3">
@@ -434,7 +437,8 @@ export function Header() {
               </div>
             </div>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>

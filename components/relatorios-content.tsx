@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,7 +29,7 @@ import type { SupabaseRow } from "@/lib/supabase/types"
 const relatoriosPredefinidos = [
   {
     id: 1,
-    nome: "RelatÃ³rio Financeiro Mensal",
+    nome: "Relatório Financeiro Mensal",
     descricao: "Resumo completo de receitas, despesas e lucro",
     categoria: "Financeiro",
     icon: BarChart3,
@@ -38,8 +38,8 @@ const relatoriosPredefinidos = [
   },
   {
     id: 2,
-    nome: "DRE - DemonstraÃ§Ã£o de Resultados",
-    descricao: "DemonstraÃ§Ã£o do resultado do exercÃ­cio",
+    nome: "DRE - Demonstração de Resultados",
+    descricao: "Demonstração do resultado do exercício",
     categoria: "Financeiro",
     icon: TrendingUp,
     cor: "text-blue-500",
@@ -47,7 +47,7 @@ const relatoriosPredefinidos = [
   },
   {
     id: 3,
-    nome: "RelatÃ³rio de Clientes",
+    nome: "Relatório de Clientes",
     descricao: "Lista completa de clientes e status",
     categoria: "Comercial",
     icon: Users,
@@ -65,8 +65,8 @@ const relatoriosPredefinidos = [
   },
   {
     id: 5,
-    nome: "InventÃ¡rio de Equipamentos",
-    descricao: "Lista completa do patrimÃ´nio da empresa",
+    nome: "Inventário de Equipamentos",
+    descricao: "Lista completa do patrimônio da empresa",
     categoria: "Operacional",
     icon: Package,
     cor: "text-orange-500",
@@ -74,8 +74,8 @@ const relatoriosPredefinidos = [
   },
   {
     id: 6,
-    nome: "ManutenÃ§Ãµes Realizadas",
-    descricao: "HistÃ³rico de manutenÃ§Ãµes por perÃ­odo",
+    nome: "Manutenções Realizadas",
+    descricao: "Histórico de manutenções por período",
     categoria: "Operacional",
     icon: FileSpreadsheet,
     cor: "text-yellow-500",
@@ -83,7 +83,7 @@ const relatoriosPredefinidos = [
   },
   {
     id: 7,
-    nome: "AnÃ¡lise de InadimplÃªncia",
+    nome: "Análise de Inadimplência",
     descricao: "Clientes com parcelas em atraso",
     categoria: "Financeiro",
     icon: PieChart,
@@ -93,7 +93,7 @@ const relatoriosPredefinidos = [
   {
     id: 8,
     nome: "Performance de Vendas",
-    descricao: "MÃ©tricas de vendas e conversÃ£o",
+    descricao: "Métricas de vendas e conversão",
     categoria: "Comercial",
     icon: TrendingUp,
     cor: "text-emerald-500",
@@ -175,8 +175,8 @@ export function RelatoriosContent() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">RelatÃ³rios</h1>
-          <p className="text-muted-foreground">GeraÃ§Ã£o e exportaÃ§Ã£o de relatÃ³rios do sistema</p>
+          <h1 className="text-2xl font-bold text-foreground">Relatórios</h1>
+          <p className="text-muted-foreground">Geração e exportação de relatórios do sistema</p>
         </div>
       </div>
 
@@ -184,11 +184,11 @@ export function RelatoriosContent() {
         <TabsList>
           <TabsTrigger value="gerar">
             <FileText className="h-4 w-4 mr-2" />
-            Gerar RelatÃ³rio
+            Gerar Relatório
           </TabsTrigger>
           <TabsTrigger value="historico">
             <Clock className="h-4 w-4 mr-2" />
-            HistÃ³rico
+            Histórico
           </TabsTrigger>
           <TabsTrigger value="agendados">
             <CalendarIcon className="h-4 w-4 mr-2" />
@@ -197,16 +197,16 @@ export function RelatoriosContent() {
         </TabsList>
 
         <TabsContent value="gerar" className="space-y-4">
-          {/* Filtros de PerÃ­odo */}
+          {/* Filtros de Período */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">PerÃ­odo do RelatÃ³rio</CardTitle>
-              <CardDescription>Selecione o intervalo de datas para geraÃ§Ã£o</CardDescription>
+              <CardTitle className="text-base">Período do Relatório</CardTitle>
+              <CardDescription>Selecione o intervalo de datas para geração</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-4">
                 <div className="space-y-2">
-                  <Label>Data InÃ­cio</Label>
+                  <Label>Data Início</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" className={cn("w-[200px] justify-start text-left font-normal", !dataInicio && "text-muted-foreground")}>
@@ -251,7 +251,7 @@ export function RelatoriosContent() {
             </CardContent>
           </Card>
 
-          {/* Grid de RelatÃ³rios */}
+          {/* Grid de Relatórios */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {relatoriosFiltrados.map((relatorio) => {
               const Icon = relatorio.icon
@@ -289,10 +289,10 @@ export function RelatoriosContent() {
             })}
           </div>
 
-          {/* OpÃ§Ãµes de ExportaÃ§Ã£o */}
+          {/* Opções de Exportação */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">OpÃ§Ãµes de ExportaÃ§Ã£o</CardTitle>
+              <CardTitle className="text-base">Opções de Exportação</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-6">
@@ -320,8 +320,8 @@ export function RelatoriosContent() {
         <TabsContent value="historico" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>RelatÃ³rios Recentes</CardTitle>
-              <CardDescription>HistÃ³rico de relatÃ³rios gerados</CardDescription>
+              <CardTitle>Relatórios Recentes</CardTitle>
+              <CardDescription>Histórico de relatórios gerados</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="rounded-lg border border-dashed p-8 text-center">
@@ -339,8 +339,8 @@ export function RelatoriosContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>RelatÃ³rios Agendados</CardTitle>
-                <CardDescription>GeraÃ§Ã£o automÃ¡tica de relatÃ³rios</CardDescription>
+                <CardTitle>Relatórios Agendados</CardTitle>
+                <CardDescription>Geração automática de relatórios</CardDescription>
               </div>
               <Button disabled>
                 <CalendarIcon className="h-4 w-4 mr-2" />

@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -29,15 +29,15 @@ type DocumentoView = {
 
 type SelectOption = { label: string; value: string }
 
-const categorias = ["Todos", "Contratos", "Notas Fiscais", "RelatÃ³rios", "Propostas", "Termos", "Imagens", "Laudos", "Controles"]
+const categorias = ["Todos", "Contratos", "Notas Fiscais", "Relatórios", "Propostas", "Termos", "Imagens", "Laudos", "Controles"]
 const documentTypeOptions = [
   { label: "Contrato", value: "contrato" },
   { label: "Boleto", value: "boleto" },
   { label: "Recibo", value: "recibo" },
   { label: "Nota fiscal", value: "nota_fiscal" },
   { label: "Comprovante", value: "comprovante" },
-  { label: "PetiÃ§Ã£o", value: "peticao" },
-  { label: "SentenÃ§a", value: "sentenca" },
+  { label: "Petição", value: "peticao" },
+  { label: "Sentença", value: "sentenca" },
   { label: "Acordo", value: "acordo" },
   { label: "Documento interno", value: "documento_interno" },
   { label: "Outro", value: "outro" },
@@ -187,7 +187,7 @@ export function DocumentosContent() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Documentos</h1>
-          <p className="text-muted-foreground">GestÃ£o de arquivos e documentos da empresa</p>
+          <p className="text-muted-foreground">Gestão de arquivos e documentos da empresa</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -267,8 +267,8 @@ export function DocumentosContent() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>ObservaÃ§Ãµes</Label>
-                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="ObservaÃ§Ãµes sobre o documento" />
+                  <Label>Observações</Label>
+                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observações sobre o documento" />
                 </div>
                 {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
               </div>
@@ -281,7 +281,7 @@ export function DocumentosContent() {
         </Dialog>
       </div>
 
-      {/* EstatÃ­sticas */}
+      {/* Estatísticas */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="p-4">
@@ -304,7 +304,7 @@ export function DocumentosContent() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{estatisticas.tamanhoTotal}</p>
-                <p className="text-xs text-muted-foreground">EspaÃ§o utilizado</p>
+                <p className="text-xs text-muted-foreground">Espaço utilizado</p>
               </div>
             </div>
           </CardContent>
@@ -317,7 +317,7 @@ export function DocumentosContent() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{estatisticas.ultimoUpload}</p>
-                <p className="text-xs text-muted-foreground">Ãšltimo upload</p>
+                <p className="text-xs text-muted-foreground">Último upload</p>
               </div>
             </div>
           </CardContent>
@@ -421,7 +421,7 @@ export function DocumentosContent() {
                     <th className="text-left p-4 font-medium text-muted-foreground">Cliente</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Tamanho</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Data</th>
-                    <th className="text-left p-4 font-medium text-muted-foreground">UsuÃ¡rio</th>
+                    <th className="text-left p-4 font-medium text-muted-foreground">Usuário</th>
                   </tr>
                 </thead>
                 <tbody>

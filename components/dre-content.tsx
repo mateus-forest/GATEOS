@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Download, FileSpreadsheet, History, Lock, Trash2 } from "lucide-react"
@@ -1331,7 +1331,7 @@ export function DREContent() {
         const nextImportId = String(refreshedImports.imports[0]?.id ?? "")
         setAdjustments((current) => current.filter((item) => {
           const reason = item.reason.toUpperCase()
-          return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÃ‡ÃƒO EXCEL -")
+          return !reason.startsWith("IMPORTACAO_DRE:") && !reason.startsWith("IMPORTACAO EXCEL -") && !reason.startsWith("IMPORTAÇÃO EXCEL -")
         }))
         setImportedRows([])
         setImportedRawRows([])
@@ -1434,7 +1434,7 @@ export function DREContent() {
       ? exportPdfReport(buildGenericReport({
           title: "Historico DRE importado",
           subtitle: String(importedSnapshotInfo?.sheet_name ?? "Snapshot historico"),
-          description: "Snapshot preservado da planilha importada, sem recÃ¡lculo ou remapeamento de meses.",
+          description: "Snapshot preservado da planilha importada, sem recálculo ou remapeamento de meses.",
           rows: rawHistoryTable.rows.map((row) => {
             const cellMap = new Map(row.cells.map((cell) => [cell.columnIndex, cell.value]))
             return Object.fromEntries(rawHistoryTable.columns.map((column) => [
@@ -1711,7 +1711,7 @@ export function DREContent() {
             <div className="p-10 text-center text-muted-foreground">
               {dreCategories.length === 0
                 ? "Cadastre categorias DRE ou execute o seed base para iniciar."
-                : "Sem dados financeiros para o perÃ­odo selecionado."}
+                : "Sem dados financeiros para o período selecionado."}
             </div>
           ) : rawHistoryTable ? (
             <div className="overflow-x-auto">
@@ -1838,7 +1838,7 @@ export function DREContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajuste manual do DRE</DialogTitle>
-            <DialogDescription>CorreÃ§Ã£o persistida em `dre_manual_adjustments`.</DialogDescription>
+            <DialogDescription>Correção persistida em `dre_manual_adjustments`.</DialogDescription>
           </DialogHeader>
           {editTarget && (
             <div className="grid gap-4">
