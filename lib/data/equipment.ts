@@ -1,8 +1,8 @@
-import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getEquipment() {
-  return selectRows("equipment", [])
+  return selectRowsStrict("equipment")
 }
 
 export async function createEquipment(payload: SupabaseRow) {

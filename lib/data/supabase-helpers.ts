@@ -6,6 +6,7 @@ type QueryOptions = {
   ascending?: boolean
   limit?: number
   eq?: SupabaseRow
+  strict?: boolean
 }
 
 const writableColumnsByTable: Record<string, Set<string>> = {
@@ -384,6 +385,40 @@ export async function selectRows<T>(
   }
 
   return (data ?? fallback) as T[]
+}
+
+export async function selectRowsStrict<T>(
+  table: string,
+  options: Omit<QueryOptions, "strict"> = {}
+) {
+  if (!isSupabaseConfigured()) {
+    throw new Error(`${table}: Supabase nao esta configurado. A consulta nao foi executada.`)
+  }
+
+  const supabase = createSupabaseBrowserClient()
+  if (!supabase) {
+    throw new Error(`${table}: nao foi possivel iniciar a conexao com o Supabase.`)
+  }
+
+  let query = supabase.from(table).select("*")
+  if (options.eq) {
+    Object.entries(options.eq).forEach(([key, value]) => {
+      query = query.eq(key, value)
+    })
+  }
+  if (options.orderBy) {
+    query = query.order(options.orderBy, { ascending: options.ascending ?? true })
+  }
+  if (options.limit) {
+    query = query.limit(options.limit)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    throw new Error(`${table}: falha ao consultar Supabase. ${describeSupabaseError(error)}`)
+  }
+
+  return (data ?? []) as T[]
 }
 
 export async function insertRow<T>(

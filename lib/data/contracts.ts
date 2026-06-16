@@ -1,11 +1,11 @@
-import { deleteRows, insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { deleteRows, insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 import { getEquipment, getEquipmentTotalQuantity, updateEquipment } from "@/lib/data/equipment"
 
 export async function getContracts() {
   const [summaryRows, contractRows] = await Promise.all([
-    selectRows<SupabaseRow>("v_contracts_summary", []),
-    selectRows<SupabaseRow>("contracts", []),
+    selectRowsStrict<SupabaseRow>("v_contracts_summary"),
+    selectRowsStrict<SupabaseRow>("contracts"),
   ])
   const contractsById = new Map(contractRows.map((contract) => [String(contract.id ?? ""), contract]))
 
@@ -53,7 +53,7 @@ function splitContractNumber(value: string) {
 
 async function getNextContractNumber(requestedNumber: string) {
   const { prefix, sequence } = splitContractNumber(requestedNumber)
-  const contracts = await selectRows<SupabaseRow>("contracts", [])
+  const contracts = await selectRowsStrict<SupabaseRow>("contracts")
   const usedNumbers = new Set(contracts.map((contract) => String(contract.contract_number ?? "").trim().toUpperCase()))
 
   if (sequence > 0 && !usedNumbers.has(`${prefix}-${String(sequence).padStart(3, "0")}`)) {
@@ -87,9 +87,8 @@ export async function prepareInstallmentsForContract(contractId: string) {
 }
 
 export async function getContractEquipment(contractId?: string) {
-  return selectRows<SupabaseRow>(
+  return selectRowsStrict<SupabaseRow>(
     "contract_equipment",
-    [],
     contractId ? { eq: { contract_id: contractId } } : {}
   )
 }

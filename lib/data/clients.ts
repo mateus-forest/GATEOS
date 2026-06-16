@@ -1,12 +1,12 @@
-import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getClients() {
-  return selectRows("clients", [], { orderBy: "created_at", ascending: false })
+  return selectRowsStrict("clients", { orderBy: "created_at", ascending: false })
 }
 
 export async function getClientById(id: string) {
-  const rows = await selectRows("clients", [], { eq: { id } })
+  const rows = await selectRowsStrict("clients", { eq: { id } })
   return rows[0] ?? null
 }
 

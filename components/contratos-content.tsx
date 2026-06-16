@@ -65,7 +65,7 @@ import { createContract, createContractEquipment, deleteContract, getContracts, 
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { createInstallment } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
-import { isContratoEmJuridico } from "@/lib/juridico-data"
+import { getLegalCases } from "@/lib/data/legal"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { exportPdfReport } from "@/lib/cta-actions"
@@ -582,11 +582,18 @@ export function ContratosContent() {
   const [contracts, setContracts] = useState<ContractWithPublicLink[]>([])
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([])
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([])
+  const [legalContractIds, setLegalContractIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    Promise.all([getContracts(), getClients()]).then(([contractRows, clientRows]) => {
+    Promise.all([getContracts(), getClients(), getLegalCases()]).then(([contractRows, clientRows, legalCases]) => {
       const clients = clientRows as SupabaseRow[]
       setContracts(contractRows.map((item) => normalizeContract(item as Record<string, unknown>, clients)))
+      setLegalContractIds(new Set(
+        (legalCases as SupabaseRow[])
+          .filter((item) => !["encerrado", "perdido"].includes(String(item.status ?? "").toLowerCase()))
+          .map((item) => String(item.contract_id ?? ""))
+          .filter(Boolean)
+      ))
       setClientOptions(
         clients.map((item) => {
           const record = item as Record<string, unknown>
@@ -730,6 +737,8 @@ export function ContratosContent() {
         return <Clock className="h-4 w-4 text-blue-600" />
     }
   }
+
+  const hasLegalCase = (contract: ContractWithPublicLink) => legalContractIds.has(contract.id)
 
   const calculateProgress = (startDate: string, endDate: string) => {
     const start = new Date(startDate).getTime()
@@ -983,7 +992,7 @@ export function ContratosContent() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           {getStatusBadge(contract.status)}
-                          {isContratoEmJuridico(contract.number) && (
+                          {hasLegalCase(contract) && (
                             <Badge className="w-fit bg-red-100 text-red-700 hover:bg-red-100">Em JurÃ­dico</Badge>
                           )}
                         </div>
@@ -1010,7 +1019,7 @@ export function ContratosContent() {
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Gerar/regenerar link
                             </DropdownMenuItem>
-                            {isContratoEmJuridico(contract.number) ? (
+                            {hasLegalCase(contract) ? (
                               <DropdownMenuItem onClick={() => { window.location.href = "/juridico" }}>
                                 <Scale className="mr-2 h-4 w-4" />
                                 Ver caso jurÃ­dico

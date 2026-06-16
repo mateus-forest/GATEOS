@@ -97,12 +97,6 @@ import {
   paymentMethods,
 } from "@/lib/dre-store"
 
-const bankConnections = [
-  { name: "Banco ItaÃº CNPJ", balance: 0, status: "Pendente", lastSync: "Sem sincronizaÃ§Ã£o" },
-  { name: "AplicaÃ§Ã£o", balance: 0, status: "Pendente", lastSync: "Sem sincronizaÃ§Ã£o" },
-  { name: "Caixa", balance: 0, status: "Manual", lastSync: "Sem sincronizaÃ§Ã£o" },
-]
-
 const financialTypeOptions = [
   { label: "Receita", value: "receita" },
   { label: "Despesa", value: "despesa" },
@@ -171,6 +165,23 @@ function normalizeFinancialEntryWithLabels(item: SupabaseRow, categories: Supaba
 
 function getInstallmentAmount(item: SupabaseRow) {
   return Number(item.updated_value ?? item.original_value ?? item.installment_value ?? item.amount ?? item.value ?? 0)
+}
+
+function getBankConnectionStatus(account: SupabaseRow) {
+  if (account.open_finance_connected === true) return "Conectado"
+  if (account.is_active === false) return "Inativa"
+  return "Manual"
+}
+
+function getBankConnectionBalance(account: SupabaseRow) {
+  const value = account.current_balance ?? account.opening_balance ?? 0
+  const number = Number(value)
+  return Number.isFinite(number) ? number : 0
+}
+
+function getBankLastSync(account: SupabaseRow) {
+  const value = String(account.last_sync_at ?? "")
+  return value ? new Date(value).toLocaleString("pt-BR") : "Sem sincronizacao"
 }
 
 function isOpenInstallment(item: SupabaseRow) {
@@ -509,6 +520,7 @@ export function FinanceiroContent() {
   const [contracts, setContracts] = useState<SupabaseRow[]>([])
   const [clients, setClients] = useState<SupabaseRow[]>([])
   const [installments, setInstallments] = useState<SupabaseRow[]>([])
+  const [bankAccounts, setBankAccounts] = useState<SupabaseRow[]>([])
 
   const loadFinanceData = async () => {
     const [entries, contractRows, installmentRows, clientRows, options] = await Promise.all([
@@ -524,6 +536,7 @@ export function FinanceiroContent() {
     setContracts(contractRows as SupabaseRow[])
     setInstallments(installmentRows as SupabaseRow[])
     setClients(clientRows as SupabaseRow[])
+    setBankAccounts((options.bankAccounts ?? []) as SupabaseRow[])
   }
 
   useEffect(() => {
@@ -807,33 +820,46 @@ export function FinanceiroContent() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {bankConnections.map((connection) => (
-              <div key={connection.name} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{connection.name}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Ãšltima sincronizaÃ§Ã£o: {connection.lastSync}
-                    </p>
+          {bankAccounts.length > 0 ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {bankAccounts.map((account) => {
+                const status = getBankConnectionStatus(account)
+                return (
+                  <div key={String(account.id ?? bankAccountLabel(account))} className="rounded-lg border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{bankAccountLabel(account)}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Ultima sincronizacao: {getBankLastSync(account)}
+                        </p>
+                      </div>
+                      <Badge
+                        className={
+                          status === "Conectado"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : status === "Inativa"
+                              ? "bg-gray-100 text-gray-700"
+                              : "bg-blue-100 text-blue-700"
+                        }
+                      >
+                        {status}
+                      </Badge>
+                    </div>
+                    <p className="mt-4 text-2xl font-bold">{formatCurrency(getBankConnectionBalance(account))}</p>
+                    <p className="text-xs text-muted-foreground">Status da conexao</p>
                   </div>
-                  <Badge
-                    className={
-                      connection.status === "Conectado"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : connection.status === "Pendente"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-blue-100 text-blue-700"
-                    }
-                  >
-                    {connection.status}
-                  </Badge>
-                </div>
-                <p className="mt-4 text-2xl font-bold">{formatCurrency(connection.balance)}</p>
-                <p className="text-xs text-muted-foreground">Status da conexÃ£o</p>
-              </div>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed p-8 text-center">
+              <Landmark className="mx-auto h-8 w-8 text-muted-foreground" />
+              <h3 className="mt-3 font-semibold text-foreground">Nenhuma conta bancaria cadastrada.</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Cadastre uma conta manual para acompanhar saldos reais do sistema.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

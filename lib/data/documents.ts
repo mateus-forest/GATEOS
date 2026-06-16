@@ -1,11 +1,11 @@
-import { insertRow, selectRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict } from "@/lib/data/supabase-helpers"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export const documentBuckets = ["gate-documents", "gate-contracts", "gate-legal"] as const
 
 export async function getDocuments() {
-  return selectRows("documents", [])
+  return selectRowsStrict("documents")
 }
 
 export async function createDocumentRecord(payload: SupabaseRow) {

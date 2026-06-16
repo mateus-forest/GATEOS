@@ -1,16 +1,16 @@
-import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getPartners() {
-  return selectRows("partners", [])
+  return selectRowsStrict("partners")
 }
 
 export async function getPartnerEntries() {
-  return selectRows("partner_entries", [])
+  return selectRowsStrict("partner_entries")
 }
 
 export async function getProfitDistribution() {
-  return selectRows("v_profit_distribution_current_month", [])
+  return selectRowsStrict("v_profit_distribution_current_month")
 }
 
 export async function createPartnerEntry(payload: SupabaseRow) {

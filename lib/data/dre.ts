@@ -1,14 +1,14 @@
-import { callRpc, deleteRows, insertRow, selectRows } from "@/lib/data/supabase-helpers"
+import { callRpc, deleteRows, insertRow, selectRowsStrict } from "@/lib/data/supabase-helpers"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getDreMonthly(year?: string) {
-  const rows = await selectRows("v_dre_monthly", [])
+  const rows = await selectRowsStrict("v_dre_monthly")
   return year ? rows.filter((row) => String(row.year ?? row.reference_year ?? "").includes(year)) : rows
 }
 
 export async function getDreMonthlyClosings() {
-  return selectRows("dre_monthly_closings", [])
+  return selectRowsStrict("dre_monthly_closings")
 }
 
 export async function getDreCategories() {
@@ -28,7 +28,7 @@ export async function getDreCategories() {
 }
 
 export async function getDreManualAdjustments() {
-  return selectRows("dre_manual_adjustments", [])
+  return selectRowsStrict("dre_manual_adjustments")
 }
 
 export async function createDreManualAdjustment(payload: SupabaseRow) {

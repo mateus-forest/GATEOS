@@ -1,12 +1,12 @@
-import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getLegalCases() {
-  return selectRows("legal_cases", [])
+  return selectRowsStrict("legal_cases")
 }
 
 export async function getLegalSummary() {
-  return selectRows("v_legal_summary", [])
+  return selectRowsStrict("v_legal_summary")
 }
 
 export async function createLegalCase(payload: SupabaseRow) {

@@ -1,41 +1,41 @@
-import { selectRows } from "@/lib/data/supabase-helpers"
+import { selectRowsStrict } from "@/lib/data/supabase-helpers"
 
 export async function getDashboardFinancial() {
-  return selectRows("v_dashboard_financial", [])
+  return selectRowsStrict("v_dashboard_financial")
 }
 
 export async function getBankBalances() {
-  return selectRows("v_bank_balances", [])
+  return selectRowsStrict("v_bank_balances")
 }
 
 export async function getContractsSummary() {
-  return selectRows("v_contracts_summary", [])
+  return selectRowsStrict("v_contracts_summary")
 }
 
 export async function getOverdueInstallmentsSummary() {
-  return selectRows("v_overdue_installments", [])
+  return selectRowsStrict("v_overdue_installments")
 }
 
 export async function getAssetsSummary() {
-  return selectRows("v_assets_summary", [])
+  return selectRowsStrict("v_assets_summary")
 }
 
 export async function getEquipmentSummary() {
-  return selectRows("v_equipment_summary", [])
+  return selectRowsStrict("v_equipment_summary")
 }
 
 export async function getLegalSummary() {
-  return selectRows("v_legal_summary", [])
+  return selectRowsStrict("v_legal_summary")
 }
 
 export async function getProfitDistribution() {
-  return selectRows("v_profit_distribution_current_month", [])
+  return selectRowsStrict("v_profit_distribution_current_month")
 }
 
 export async function getDashboardNotifications() {
-  return selectRows("notifications", [])
+  return selectRowsStrict("notifications")
 }
 
 export async function getRevenueData() {
-  return selectRows("v_dashboard_financial", [])
+  return selectRowsStrict("v_dashboard_financial")
 }

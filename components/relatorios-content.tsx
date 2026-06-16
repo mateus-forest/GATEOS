@@ -9,9 +9,8 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Download, Printer, Mail, Calendar as CalendarIcon, Clock, BarChart3, PieChart, TrendingUp, Users, Package, FileSpreadsheet, Loader2 } from "lucide-react"
+import { FileText, Download, Calendar as CalendarIcon, Clock, BarChart3, PieChart, TrendingUp, Users, Package, FileSpreadsheet, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { exportPdfReport } from "@/lib/cta-actions"
@@ -102,20 +101,6 @@ const relatoriosPredefinidos = [
   },
 ]
 
-const relatoriosRecentes = [
-  { id: 1, nome: "RelatÃ³rio Financeiro Mensal", data: "2024-02-20 14:30", formato: "PDF", tamanho: "1.2 MB" },
-  { id: 2, nome: "InventÃ¡rio de Equipamentos", data: "2024-02-19 10:15", formato: "XLSX", tamanho: "856 KB" },
-  { id: 3, nome: "Contratos Ativos", data: "2024-02-18 16:45", formato: "PDF", tamanho: "2.4 MB" },
-  { id: 4, nome: "DRE - Janeiro 2024", data: "2024-02-15 09:00", formato: "PDF", tamanho: "980 KB" },
-  { id: 5, nome: "AnÃ¡lise de InadimplÃªncia", data: "2024-02-12 11:30", formato: "PDF", tamanho: "654 KB" },
-]
-
-const agendados = [
-  { id: 1, nome: "RelatÃ³rio Financeiro Mensal", frequencia: "Mensal", proximaExecucao: "01/03/2024", destino: "admin@gate.com" },
-  { id: 2, nome: "InventÃ¡rio de Equipamentos", frequencia: "Semanal", proximaExecucao: "26/02/2024", destino: "operacoes@gate.com" },
-  { id: 3, nome: "AnÃ¡lise de InadimplÃªncia", frequencia: "Semanal", proximaExecucao: "25/02/2024", destino: "financeiro@gate.com" },
-]
-
 export function RelatoriosContent() {
   const [dataInicio, setDataInicio] = useState<Date>()
   const [dataFim, setDataFim] = useState<Date>()
@@ -185,22 +170,6 @@ export function RelatoriosContent() {
     }
     setGerando(null)
   }
-
-  const handleHistoricoDownload = (relatorio: (typeof relatoriosRecentes)[number]) =>
-    exportPdfReport(buildGenericReport({
-      title: relatorio.nome,
-      subtitle: "HistÃ³rico de relatÃ³rio",
-      description: "Registro histÃ³rico de relatÃ³rio gerado no GATE OS.",
-      rows: [relatorio],
-    }))
-
-  const handlePrint = (relatorio: (typeof relatoriosRecentes)[number]) =>
-    exportPdfReport(buildGenericReport({
-      title: relatorio.nome,
-      subtitle: "Impressao de relatorio",
-      description: "Arquivo gerado no template universal do GATE OS para impressao limpa.",
-      rows: [relatorio],
-    }))
 
   return (
     <div className="space-y-6">
@@ -355,37 +324,13 @@ export function RelatoriosContent() {
               <CardDescription>HistÃ³rico de relatÃ³rios gerados</CardDescription>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-3">
-                  {relatoriosRecentes.map((rel) => (
-                    <div key={rel.id} className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2 bg-primary/10 rounded-lg">
-                          <FileText className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-foreground">{rel.nome}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(rel.data).toLocaleString("pt-BR")} - {rel.tamanho}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{rel.formato}</Badge>
-                        <Button variant="ghost" size="icon" onClick={() => handleHistoricoDownload(rel)}>
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handlePrint(rel)}>
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" disabled>
-                          <Mail className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h3 className="mt-3 font-semibold text-foreground">Nenhum relatório gerado ainda.</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Os relatórios exportados nesta tela ainda não possuem histórico persistido.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -403,30 +348,12 @@ export function RelatoriosContent() {
               </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {agendados.map((ag) => (
-                  <div key={ag.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="p-2 bg-green-500/10 rounded-lg">
-                        <Clock className="h-5 w-5 text-green-500" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">{ag.nome}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {ag.frequencia} - PrÃ³xima: {ag.proximaExecucao}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Destino</p>
-                        <p className="text-sm text-foreground">{ag.destino}</p>
-                      </div>
-                      <Badge variant="secondary" className="bg-green-500/10 text-green-600">Ativo</Badge>
-                      <Button variant="outline" size="sm" disabled>Editar indisponível</Button>
-                    </div>
-                  </div>
-                ))}
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <Clock className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h3 className="mt-3 font-semibold text-foreground">Nenhum agendamento configurado.</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  A criação de agendamentos permanece indisponível até existir persistência real.
+                </p>
               </div>
             </CardContent>
           </Card>

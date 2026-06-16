@@ -1,12 +1,12 @@
-import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getAssets() {
-  return selectRows("assets", [])
+  return selectRowsStrict("assets")
 }
 
 export async function getAssetsSummary() {
-  return selectRows("v_assets_summary", [])
+  return selectRowsStrict("v_assets_summary")
 }
 
 export async function createAsset(payload: SupabaseRow) {

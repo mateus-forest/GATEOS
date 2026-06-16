@@ -1,8 +1,8 @@
-import { insertRow, selectRows, updateRows } from "@/lib/data/supabase-helpers"
+import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getMaintenanceOrders() {
-  return selectRows("maintenance_orders", [])
+  return selectRowsStrict("maintenance_orders")
 }
 
 export async function createMaintenanceOrder(payload: SupabaseRow) {
