@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { FinanceiroContent } from "@/components/financeiro-content"
+import { redirect } from "next/navigation"
 
 export default function LancamentosPage() {
-  return (
-    <InternalLayout>
-      <FinanceiroContent />
-    </InternalLayout>
-  )
+  redirect("/financeiro")
 }

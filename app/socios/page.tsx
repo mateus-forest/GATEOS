@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { SociosContent } from "@/components/socios-content"
+import { redirect } from "next/navigation"
 
 export default function SociosPage() {
-  return (
-    <InternalLayout>
-      <SociosContent />
-    </InternalLayout>
-  )
+  redirect("/dashboard")
 }

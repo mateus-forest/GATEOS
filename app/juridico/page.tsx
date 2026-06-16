@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { JuridicoContent } from "@/components/juridico-content"
+import { redirect } from "next/navigation"
 
 export default function JuridicoPage() {
-  return (
-    <InternalLayout>
-      <JuridicoContent />
-    </InternalLayout>
-  )
+  redirect("/dashboard")
 }

@@ -11,14 +11,12 @@ import {
   Users,
   Package,
   AlertCircle,
-  Calendar,
   ArrowUpRight,
   ArrowDownRight,
   Clock,
   CheckCircle2,
   XCircle,
   MoreHorizontal,
-  Scale,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -51,13 +49,11 @@ import { exportPdfReport } from "@/lib/cta-actions"
 import { buildDashboardReport } from "@/lib/reports/report-builders"
 import { formatCurrency } from "@/lib/utils"
 import {
-  getAssetsSummary,
   getBankBalances,
   getContractsSummary,
   getDashboardFinancial,
   getDashboardNotifications,
   getEquipmentSummary,
-  getLegalSummary,
   getOverdueInstallmentsSummary,
   getProfitDistribution,
 } from "@/lib/data/dashboard"
@@ -80,11 +76,6 @@ const monthlyRevenue = 0
 const activeContracts = 0
 const totalClients = 0
 const totalEquipments = 0
-const activeLegalCases = 0
-const legalCollectionValue = 0
-const brokenAgreements = 0
-const agreementsDue = 0
-const legalContracts = activeLegalCases
 const bankBalances = [
   { name: "Saldo Banco ItaÃº CNPJ", amount: 0 },
   { name: "Saldo AplicaÃ§Ã£o", amount: 0 },
@@ -260,9 +251,7 @@ export function DashboardContent() {
     bankBalanceRows: [] as Row[],
     contractSummaryRows: [] as Row[],
     overdueRows: [] as Row[],
-    assetSummaryRows: [] as Row[],
     equipmentSummaryRows: [] as Row[],
-    legalSummaryRows: [] as Row[],
     profitRows: [] as Row[],
     notifications: [] as Row[],
     clients: [] as Row[],
@@ -286,9 +275,7 @@ export function DashboardContent() {
           bankBalanceRows,
           contractSummaryRows,
           overdueRows,
-          assetSummaryRows,
           equipmentSummaryRows,
-          legalSummaryRows,
           profitRows,
           notifications,
           clients,
@@ -303,9 +290,7 @@ export function DashboardContent() {
           getBankBalances(),
           getContractsSummary(),
           getOverdueInstallmentsSummary(),
-          getAssetsSummary(),
           getEquipmentSummary(),
-          getLegalSummary(),
           getProfitDistribution(),
           getDashboardNotifications(),
           getClients(),
@@ -323,9 +308,7 @@ export function DashboardContent() {
           bankBalanceRows: asRows(bankBalanceRows),
           contractSummaryRows: asRows(contractSummaryRows),
           overdueRows: asRows(overdueRows),
-          assetSummaryRows: asRows(assetSummaryRows),
           equipmentSummaryRows: asRows(equipmentSummaryRows),
-          legalSummaryRows: asRows(legalSummaryRows),
           profitRows: asRows(profitRows),
           notifications: asRows(notifications),
           clients: asRows(clients),
@@ -352,9 +335,7 @@ export function DashboardContent() {
 
   const dashboard = useMemo(() => {
     const financial = data.financialSummary[0]
-    const legal = data.legalSummaryRows[0]
     const equipmentSummary = data.equipmentSummaryRows[0]
-    const assetSummary = data.assetSummaryRows[0]
     const profit = data.profitRows[0]
     const currentMonthExpensesFromEntries = sumRows(
       data.financialEntries,
@@ -462,11 +443,6 @@ export function DashboardContent() {
         ["in_maintenance", "maintenance_equipment", "maintenance", "em_manutencao"],
         data.maintenanceOrders.filter((row) => !["closed", "concluido", "finalizado"].includes(text(row, ["status"]).toLowerCase())).length
       ),
-      activeLegalCases: num(legal, ["active_cases", "casos_ativos"], 0),
-      legalCollectionValue: num(legal, ["collection_value", "total_in_collection", "valor_cobranca"], 0),
-      brokenAgreements: num(legal, ["broken_agreements", "acordos_quebrados"], 0),
-      agreementsDue: num(legal, ["agreements_due", "acordos_vencendo"], 0),
-      legalContracts: num(legal, ["legal_contracts", "contratos_juridico"], num(legal, ["active_cases", "casos_ativos"], 0)),
       totalBankBalance,
       bankBalances,
       profitDistribution,
@@ -494,7 +470,6 @@ export function DashboardContent() {
         ["amount", "valor", "value"],
         (row) => ["despesa", "expense", "saida"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase()) && !row.paid_at && !row.payment_date
       ),
-      assetsValue: num(assetSummary, ["total_value", "total_assets_value", "patrimonio", "asset_value"], 0),
       expiringContracts: data.contracts.filter((row) => {
         const endDate = new Date(String(row.end_date ?? row.data_fim ?? ""))
         const limit = new Date()
@@ -513,11 +488,6 @@ export function DashboardContent() {
     totalClients,
     totalEquipments,
     equipmentInMaintenance,
-    activeLegalCases,
-    legalCollectionValue,
-    brokenAgreements,
-    agreementsDue,
-    legalContracts,
     totalBankBalance,
     bankBalances,
     profitDistribution,
@@ -537,7 +507,6 @@ export function DashboardContent() {
     delinquencyRate,
     receivableAmount,
     payableAmount,
-    assetsValue,
     expiringContracts,
     mrr,
     arr,
@@ -566,10 +535,6 @@ export function DashboardContent() {
           <p className="text-muted-foreground">VisÃ£o geral do sistema GATE OS</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" disabled>
-            <Calendar className="mr-2 h-4 w-4" />
-            Último mês indisponível
-          </Button>
           <Button onClick={handleExportReport}>
             Exportar RelatÃ³rio
           </Button>
@@ -598,32 +563,6 @@ export function DashboardContent() {
             <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => router.push("/contratos")}>
               Ver contratos
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Scale className="h-5 w-5 text-primary" />
-            JurÃ­dico
-          </CardTitle>
-          <CardDescription>Resumo compacto de cobranÃ§as e acordos</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-            {[
-              ["Casos jurÃ­dicos ativos", activeLegalCases],
-              ["Valor em cobranÃ§a jurÃ­dica", formatCurrency(legalCollectionValue)],
-              ["Acordos vencendo", agreementsDue],
-              ["Acordos quebrados", brokenAgreements],
-              ["Contratos em jurÃ­dico", legalContracts],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="mt-1 font-semibold">{value}</p>
-              </div>
-            ))}
           </div>
         </CardContent>
       </Card>
@@ -679,7 +618,6 @@ export function DashboardContent() {
               ["MRR", formatCurrency(mrr)],
               ["ARR", formatCurrency(arr)],
               ["Inadimplencia", `${delinquencyRate.toFixed(1)}%`],
-              ["Patrimonio", formatCurrency(assetsValue)],
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
                 <p className="text-xs text-muted-foreground">{label}</p>
@@ -877,15 +815,8 @@ export function DashboardContent() {
         {/* Recent Activities */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Atividades Recentes</CardTitle>
-                <CardDescription>Ãšltimas atualizaÃ§Ãµes do sistema</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => router.push("/relatorios")}>
-                Ver todas
-              </Button>
-            </div>
+            <CardTitle>Atividades Recentes</CardTitle>
+            <CardDescription>Ãšltimas atualizaÃ§Ãµes do sistema</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="divide-y">

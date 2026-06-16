@@ -12,10 +12,7 @@ import {
   MapPin,
   MoreHorizontal,
   Eye,
-  Edit,
-  Trash2,
   FileText,
-  ExternalLink,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -403,17 +400,9 @@ export function ClientesContent() {
                               Ver detalhes
                             </DropdownMenuItem>
                           </DialogTrigger>
-                          <DropdownMenuItem disabled>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar indisponível
-                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { window.location.href = "/contratos" }}>
                             <FileText className="mr-2 h-4 w-4" />
                             Ver contratos
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive" disabled>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir indisponível
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { ConfiguracoesContent } from "@/components/configuracoes-content"
+import { redirect } from "next/navigation"
 
 export default function ConfiguracoesPage() {
-  return (
-    <InternalLayout>
-      <ConfiguracoesContent />
-    </InternalLayout>
-  )
+  redirect("/dashboard")
 }

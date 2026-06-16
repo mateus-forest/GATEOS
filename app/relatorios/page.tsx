@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { RelatoriosContent } from "@/components/relatorios-content"
+import { redirect } from "next/navigation"
 
 export default function RelatoriosPage() {
-  return (
-    <InternalLayout>
-      <RelatoriosContent />
-    </InternalLayout>
-  )
+  redirect("/dashboard")
 }

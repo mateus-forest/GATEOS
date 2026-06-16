@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Download, FileSpreadsheet, History, Lock, RotateCcw, Trash2 } from "lucide-react"
+import { Download, FileSpreadsheet, History, Lock, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -1649,17 +1649,11 @@ export function DREContent() {
               <Badge className={isClosed ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}>
                 {isClosed ? "Fechado" : "Em conferencia"}
               </Badge>
-              <Button variant="outline" disabled>
-                Divergências indisponíveis
-              </Button>
               <Button variant="outline" onClick={exportClosingRows} disabled={usingStructuredHistory}>
                 Exportar fechamento
               </Button>
               {isClosed ? (
-                <Button variant="outline" disabled>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reabrir indisponível
-                </Button>
+                null
               ) : (
                 <Button onClick={() => setCloseOpen(true)} disabled={usingStructuredHistory}>
                   <Lock className="mr-2 h-4 w-4" />

@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { PatrimonioContent } from "@/components/patrimonio-content"
+import { redirect } from "next/navigation"
 
 export default function PatrimonioPage() {
-  return (
-    <InternalLayout>
-      <PatrimonioContent />
-    </InternalLayout>
-  )
+  redirect("/dashboard")
 }

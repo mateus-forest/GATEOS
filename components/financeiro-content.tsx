@@ -7,8 +7,6 @@ import {
   Filter,
   Download,
   Landmark,
-  Upload,
-  RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
   TrendingUp,
@@ -16,10 +14,6 @@ import {
   DollarSign,
   CreditCard,
   Wallet,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  Trash2,
   CheckCircle2,
   Clock,
   XCircle,
@@ -36,12 +30,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Select,
   SelectContent,
@@ -795,29 +783,11 @@ export function FinanceiroContent() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Landmark className="h-5 w-5 text-primary" />
-                ConexÃµes bancÃ¡rias
-              </CardTitle>
-              <CardDescription>IntegraÃ§Ã£o futura para importaÃ§Ã£o e conciliaÃ§Ã£o.</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" disabled>
-                <Landmark className="mr-2 h-4 w-4" />
-                Conectar banco
-              </Button>
-              <Button variant="outline" disabled>
-                <Upload className="mr-2 h-4 w-4" />
-                Importar OFX/CSV
-              </Button>
-              <Button variant="outline" disabled>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Conciliar lanÃ§amentos
-              </Button>
-            </div>
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <Landmark className="h-5 w-5 text-primary" />
+            Contas bancarias
+          </CardTitle>
+          <CardDescription>Contas cadastradas manualmente no financeiro.</CardDescription>
         </CardHeader>
         <CardContent>
           {bankAccounts.length > 0 ? (
@@ -921,7 +891,6 @@ export function FinanceiroContent() {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
-                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -953,20 +922,6 @@ export function FinanceiroContent() {
                       }`}>
                         {transaction.type === "income" ? "+" : "-"}
                         {formatCurrency(transaction.amount)}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem disabled>`r`n                              <Eye className="mr-2 h-4 w-4" />`r`n                              Detalhes indisponíveis`r`n                            </DropdownMenuItem>
-                            <DropdownMenuItem disabled>`r`n                              <Edit className="mr-2 h-4 w-4" />`r`n                              Editar indisponível`r`n                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive" disabled>`r`n                              <Trash2 className="mr-2 h-4 w-4" />`r`n                              Excluir indisponível`r`n                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}

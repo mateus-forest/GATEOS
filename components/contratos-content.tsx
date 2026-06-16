@@ -13,11 +13,9 @@ import {
   XCircle,
   MoreHorizontal,
   Eye,
-  Edit,
   Trash2,
   RefreshCw,
   Copy,
-  Scale,
   Plus,
   Package,
 } from "lucide-react"
@@ -47,7 +45,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -65,7 +62,6 @@ import { createContract, createContractEquipment, deleteContract, getContracts, 
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { createInstallment } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
-import { getLegalCases } from "@/lib/data/legal"
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { exportPdfReport } from "@/lib/cta-actions"
@@ -100,7 +96,8 @@ function normalizeContractStatus(status: unknown) {
     cancelled: "cancelado",
     expired: "encerrado",
     overdue: "inadimplente",
-    legal: "juridico",
+    legal: "inadimplente",
+    juridico: "inadimplente",
     expiring: "ativo",
     draft: "ativo",
   }
@@ -427,7 +424,6 @@ function NewContractDialog({
                     <SelectItem value="encerrado">Encerrado</SelectItem>
                     <SelectItem value="cancelado">Cancelado</SelectItem>
                     <SelectItem value="inadimplente">Inadimplente</SelectItem>
-                    <SelectItem value="juridico">Juridico</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -582,18 +578,11 @@ export function ContratosContent() {
   const [contracts, setContracts] = useState<ContractWithPublicLink[]>([])
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([])
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([])
-  const [legalContractIds, setLegalContractIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    Promise.all([getContracts(), getClients(), getLegalCases()]).then(([contractRows, clientRows, legalCases]) => {
+    Promise.all([getContracts(), getClients()]).then(([contractRows, clientRows]) => {
       const clients = clientRows as SupabaseRow[]
       setContracts(contractRows.map((item) => normalizeContract(item as Record<string, unknown>, clients)))
-      setLegalContractIds(new Set(
-        (legalCases as SupabaseRow[])
-          .filter((item) => !["encerrado", "perdido"].includes(String(item.status ?? "").toLowerCase()))
-          .map((item) => String(item.contract_id ?? ""))
-          .filter(Boolean)
-      ))
       setClientOptions(
         clients.map((item) => {
           const record = item as Record<string, unknown>
@@ -715,8 +704,6 @@ export function ContratosContent() {
         return <Badge className="bg-gray-100 text-gray-700 hover:bg-gray-100">Encerrado</Badge>
       case "cancelado":
         return <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Cancelado</Badge>
-      case "juridico":
-        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Juridico</Badge>
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
@@ -729,16 +716,12 @@ export function ContratosContent() {
       case "inadimplente":
         return <AlertCircle className="h-4 w-4 text-amber-600" />
       case "cancelado":
-      case "juridico":
-        return <XCircle className="h-4 w-4 text-red-600" />
       case "encerrado":
         return <XCircle className="h-4 w-4 text-gray-600" />
       default:
         return <Clock className="h-4 w-4 text-blue-600" />
     }
   }
-
-  const hasLegalCase = (contract: ContractWithPublicLink) => legalContractIds.has(contract.id)
 
   const calculateProgress = (startDate: string, endDate: string) => {
     const start = new Date(startDate).getTime()
@@ -917,7 +900,6 @@ export function ContratosContent() {
                     <SelectItem value="encerrado">Encerrado</SelectItem>
                     <SelectItem value="cancelado">Cancelado</SelectItem>
                     <SelectItem value="inadimplente">Inadimplente</SelectItem>
-                    <SelectItem value="juridico">Juridico</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -992,9 +974,6 @@ export function ContratosContent() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           {getStatusBadge(contract.status)}
-                          {hasLegalCase(contract) && (
-                            <Badge className="w-fit bg-red-100 text-red-700 hover:bg-red-100">Em JurÃ­dico</Badge>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1009,8 +988,6 @@ export function ContratosContent() {
                               <Eye className="mr-2 h-4 w-4" />
                               Ver detalhes
                             </DropdownMenuItem>
-                            <DropdownMenuItem disabled>`r`n                              <Edit className="mr-2 h-4 w-4" />`r`n                              Editar indisponível`r`n                            </DropdownMenuItem>
-                            <DropdownMenuItem disabled>`r`n                              <Copy className="mr-2 h-4 w-4" />`r`n                              Duplicar indisponível`r`n                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleCopyClientLink(contract)}>
                               <Copy className="mr-2 h-4 w-4" />
                               Copiar link do cliente
@@ -1019,18 +996,6 @@ export function ContratosContent() {
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Gerar/regenerar link
                             </DropdownMenuItem>
-                            {hasLegalCase(contract) ? (
-                              <DropdownMenuItem onClick={() => { window.location.href = "/juridico" }}>
-                                <Scale className="mr-2 h-4 w-4" />
-                                Ver caso jurÃ­dico
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem disabled>`r`n                                <Scale className="mr-2 h-4 w-4" />`r`n                                Enviar para jurídico indisponível`r`n                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem disabled>`r`n                              <RefreshCw className="mr-2 h-4 w-4" />`r`n                              Renovar indisponível`r`n                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" disabled>`r`n                              <Trash2 className="mr-2 h-4 w-4" />`r`n                              Cancelar indisponível`r`n                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

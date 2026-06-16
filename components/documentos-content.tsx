@@ -10,8 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen, Download, Trash2, Eye, Grid, List, Plus, Filter, MoreVertical, Clock, User } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Search, Upload, FileText, File, FileImage, FileSpreadsheet, FolderOpen, Grid, List, Plus, Filter, Clock, User } from "lucide-react"
 import { getDocuments, uploadDocumentFile } from "@/lib/data/documents"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
@@ -392,18 +391,6 @@ export function DocumentosContent() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-4">
                   {getFileIcon(doc.tipo)}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem disabled>`r`n                        <Eye className="h-4 w-4 mr-2" />`r`n                        Visualização indisponível`r`n                      </DropdownMenuItem>
-                      <DropdownMenuItem disabled>`r`n                        <Download className="h-4 w-4 mr-2" />`r`n                        Download indisponível`r`n                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" disabled>`r`n                        <Trash2 className="h-4 w-4 mr-2" />`r`n                        Excluir indisponível`r`n                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
                 <h3 className="font-medium text-foreground text-sm truncate mb-1" title={doc.nome}>
                   {doc.nome}
@@ -435,7 +422,6 @@ export function DocumentosContent() {
                     <th className="text-left p-4 font-medium text-muted-foreground">Tamanho</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">Data</th>
                     <th className="text-left p-4 font-medium text-muted-foreground">UsuÃ¡rio</th>
-                    <th className="text-right p-4 font-medium text-muted-foreground">AÃ§Ãµes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -458,19 +444,6 @@ export function DocumentosContent() {
                         {new Date(doc.dataUpload).toLocaleDateString("pt-BR")}
                       </td>
                       <td className="p-4 text-sm text-muted-foreground">{doc.usuario}</td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" disabled>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
                     </tr>
                   ))}
                 </tbody>

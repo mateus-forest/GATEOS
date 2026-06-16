@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, ChevronDown, LogOut, Search, Settings, User } from "lucide-react"
+import { Bell, ChevronDown, LogOut, Search, User } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -326,11 +326,6 @@ export function Header() {
               <User className="mr-2 h-4 w-4" />
               Perfil
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleNavigate("/configuracoes")}>
-              <Settings className="mr-2 h-4 w-4" />
-              Configuracoes
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive"
               onClick={handleSignOut}

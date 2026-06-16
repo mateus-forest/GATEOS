@@ -4,20 +4,14 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import Image from "next/image"
 import {
-  Building2,
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  FileBarChart,
   FileText,
   FolderOpen,
-  Scale,
   LayoutDashboard,
   Package,
   PieChart,
-  Settings,
-  TrendingUp,
-  UserCircle,
   Users,
   Wrench,
 } from "lucide-react"
@@ -43,36 +37,25 @@ const menuItems = [
     items: [{ icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" }],
   },
   {
-    title: "Gestão",
+    title: "Gestao",
     items: [
       { icon: Users, label: "Clientes", href: "/clientes" },
       { icon: FileText, label: "Contratos", href: "/contratos" },
-      { icon: Scale, label: "Jurídico", href: "/juridico" },
     ],
   },
   {
     title: "Financeiro",
     items: [
-      { icon: CreditCard, label: "Lançamentos", href: "/lancamentos" },
+      { icon: CreditCard, label: "Financeiro", href: "/financeiro" },
       { icon: PieChart, label: "DRE", href: "/dre" },
-      { icon: TrendingUp, label: "Análise", href: "/analise" },
     ],
   },
   {
-    title: "Ativos",
+    title: "Operacao",
     items: [
       { icon: Package, label: "Equipamentos", href: "/equipamentos" },
-      { icon: Building2, label: "Patrimônio", href: "/patrimonio" },
-      { icon: Wrench, label: "Manutenções", href: "/manutencoes" },
-    ],
-  },
-  {
-    title: "Sistema",
-    items: [
-      { icon: UserCircle, label: "Sócios", href: "/socios" },
+      { icon: Wrench, label: "Manutencoes", href: "/manutencoes" },
       { icon: FolderOpen, label: "Documentos", href: "/documentos" },
-      { icon: FileBarChart, label: "Relatórios", href: "/relatorios" },
-      { icon: Settings, label: "Configurações", href: "/configuracoes" },
     ],
   },
 ]

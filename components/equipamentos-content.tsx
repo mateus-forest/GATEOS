@@ -12,12 +12,8 @@ import {
   AlertCircle,
   XCircle,
   MoreHorizontal,
-  Eye,
-  Edit,
-  Trash2,
   Wrench,
   MapPin,
-  QrCode,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +31,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -179,10 +174,6 @@ export function EquipamentosContent() {
           <p className="text-muted-foreground">GestÃ£o de equipamentos e inventÃ¡rio</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" disabled>
-            <QrCode className="mr-2 h-4 w-4" />
-            Etiquetas indisponíveis
-          </Button>
           <Button variant="outline" onClick={() => exportPdfReport(buildEquipmentReport(filteredEquipments.map((equipment) => ({
             id: equipment.id,
             name: equipment.name,
@@ -443,14 +434,10 @@ export function EquipamentosContent() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem disabled>`r`n                          <Eye className="mr-2 h-4 w-4" />`r`n                          Detalhes indisponíveis`r`n                        </DropdownMenuItem>
-                        <DropdownMenuItem disabled>`r`n                          <Edit className="mr-2 h-4 w-4" />`r`n                          Editar indisponível`r`n                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { window.location.href = "/manutencoes" }}>
                           <Wrench className="mr-2 h-4 w-4" />
                           Registrar manutenÃ§Ã£o
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive" disabled>`r`n                          <Trash2 className="mr-2 h-4 w-4" />`r`n                          Descartar indisponível`r`n                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

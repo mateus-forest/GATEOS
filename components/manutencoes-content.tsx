@@ -9,10 +9,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Calendar,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  User,
   MapPin,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,12 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Select,
   SelectContent,
@@ -385,7 +375,6 @@ export function ManutencoesContent() {
                     <TableHead>Prioridade</TableHead>
                     <TableHead>TÃ©cnico</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -421,20 +410,6 @@ export function ManutencoesContent() {
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(maintenance.status)}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem disabled>`r`n                              <Eye className="mr-2 h-4 w-4" />`r`n                              Detalhes indisponíveis`r`n                            </DropdownMenuItem>
-                            <DropdownMenuItem disabled>`r`n                              <Edit className="mr-2 h-4 w-4" />`r`n                              Editar indisponível`r`n                            </DropdownMenuItem>
-                            <DropdownMenuItem disabled>`r`n                              <User className="mr-2 h-4 w-4" />`r`n                              Atribuir técnico indisponível`r`n                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

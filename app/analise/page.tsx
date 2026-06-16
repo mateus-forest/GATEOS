@@ -1,10 +1,5 @@
-import { InternalLayout } from "@/components/internal-layout"
-import { AnaliseContent } from "@/components/analise-content"
+import { redirect } from "next/navigation"
 
 export default function AnalisePage() {
-  return (
-    <InternalLayout>
-      <AnaliseContent />
-    </InternalLayout>
-  )
+  redirect("/dashboard")
 }
