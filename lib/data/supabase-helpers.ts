@@ -256,6 +256,13 @@ const writableColumnsByTable: Record<string, Set<string>> = {
     "result_participation_percentage",
     "active",
   ]),
+  partner_distribution_rules: new Set([
+    "name",
+    "rule_type",
+    "percentage",
+    "fixed_amount",
+    "is_active",
+  ]),
   dre_manual_adjustments: new Set([
     "year",
     "month",

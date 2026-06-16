@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import {
   TrendingUp,
   TrendingDown,
@@ -17,10 +18,14 @@ import {
   CheckCircle2,
   XCircle,
   MoreHorizontal,
+  Settings,
+  Plus,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -29,6 +34,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   LineChart,
   Line,
@@ -68,6 +88,12 @@ import {
   calculateMonthlyRevenueMetrics,
   getContractMonthlyValue,
 } from "@/lib/data/recurring-revenue"
+import {
+  createProfitDistributionRule,
+  getProfitDistributionRules,
+  updateProfitDistributionRule,
+  type ProfitDistributionRule,
+} from "@/lib/data/profit-distribution"
 
 const COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#EF4444", "#8B5CF6"]
 
@@ -100,6 +126,47 @@ type RevenuePoint = { month: string; revenue: number; target: number }
 type StatusPoint = { name: string; value: number }
 type Activity = { id: string; type: string; title: string; description: string; time: string; status: string }
 type Payment = { id: string; client: string; dueDate: string; amount: number; status: string }
+type DistributionBase = "gross_revenue" | "net_revenue" | "operational_result"
+type EditableDistributionRule = {
+  id?: string
+  name: string
+  rule_type: "partner" | "extra_percentage" | "fixed_amount"
+  percentage: string
+  fixed_amount: string
+  is_active: boolean
+}
+
+const distributionBaseLabels: Record<DistributionBase, string> = {
+  gross_revenue: "Receita Bruta",
+  net_revenue: "Receita Líquida",
+  operational_result: "Resultado Operacional",
+}
+
+function normalizeDistributionRule(rule: ProfitDistributionRule): EditableDistributionRule {
+  return {
+    id: rule.id ? String(rule.id) : undefined,
+    name: String(rule.name ?? ""),
+    rule_type: String(rule.rule_type ?? "partner") as EditableDistributionRule["rule_type"],
+    percentage: String(rule.percentage ?? 0),
+    fixed_amount: String(rule.fixed_amount ?? 0),
+    is_active: rule.is_active !== false,
+  }
+}
+
+function newDistributionRule(): EditableDistributionRule {
+  return {
+    name: "",
+    rule_type: "partner",
+    percentage: "0",
+    fixed_amount: "0",
+    is_active: true,
+  }
+}
+
+function toSafeNumber(value: string | number | null | undefined) {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
 
 function asRows(value: unknown): Row[] {
   return Array.isArray(value) ? (value as Row[]) : []
@@ -246,6 +313,11 @@ export function DashboardContent() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [dashboardError, setDashboardError] = useState("")
+  const [distributionOpen, setDistributionOpen] = useState(false)
+  const [distributionSaving, setDistributionSaving] = useState(false)
+  const [distributionError, setDistributionError] = useState("")
+  const [distributionBase, setDistributionBase] = useState<DistributionBase>("operational_result")
+  const [distributionRules, setDistributionRules] = useState<EditableDistributionRule[]>([])
   const [data, setData] = useState({
     financialSummary: [] as Row[],
     bankBalanceRows: [] as Row[],
@@ -319,6 +391,20 @@ export function DashboardContent() {
           installments: asRows(installments),
           maintenanceOrders: asRows(maintenanceOrders),
         })
+
+        getProfitDistributionRules()
+          .then((rules) => {
+            setDistributionRules(rules.map(normalizeDistributionRule))
+            setDistributionError("")
+          })
+          .catch((error) => {
+            setDistributionRules([])
+            setDistributionError(
+              error instanceof Error
+                ? error.message
+                : "Não foi possível carregar as regras de distribuição."
+            )
+          })
       } catch (error) {
         if (!active) return
         setDashboardError(error instanceof Error ? error.message : "Nao foi possivel carregar o dashboard.")
@@ -420,15 +506,55 @@ export function DashboardContent() {
       mateusFixed: num(profit, ["mateus_fixed", "mateus_fixo"]),
     }
     const operatingProfit = num(financial, ["monthly_profit", "profit_month", "profit", "lucro_mensal"], profitDistribution.revenue - profitDistribution.costs)
-    const distributableResult = Math.max(0, num(profit, ["distributable_result", "resultado_distribuivel"], operatingProfit))
-    const mateusShare = num(profit, ["mateus_share", "mateus_participation"], distributableResult * 0.08)
-    const carlosReceivable = num(profit, ["carlos_receivable", "carlos_a_receber"], distributableResult * 0.65)
-    const renanReceivable = num(profit, ["renan_receivable", "renan_a_receber"], distributableResult * 0.35)
-    const totalDistributed = num(
-      profit,
-      ["total_distributed", "total_distribuido"],
-      carlosReceivable + renanReceivable + profitDistribution.mateusFixed + mateusShare
+    const activeDistributionRules = distributionRules.filter((rule) => rule.is_active)
+    const distributionBaseValue =
+      distributionBase === "gross_revenue"
+        ? profitDistribution.revenue
+        : distributionBase === "net_revenue"
+        ? Math.max(0, profitDistribution.revenue - profitDistribution.costs)
+        : operatingProfit
+    const distributableResult = Math.max(
+      0,
+      activeDistributionRules.length > 0
+        ? distributionBaseValue
+        : num(profit, ["distributable_result", "resultado_distribuivel"], operatingProfit)
     )
+    const ruleAmount = (rule: EditableDistributionRule) =>
+      rule.rule_type === "fixed_amount"
+        ? toSafeNumber(rule.fixed_amount)
+        : distributableResult * (toSafeNumber(rule.percentage) / 100)
+    const configuredDistributionLines = activeDistributionRules.map((rule) => ({
+      label:
+        rule.rule_type === "fixed_amount"
+          ? `${rule.name} fixo`
+          : rule.rule_type === "extra_percentage"
+          ? `${rule.name} participação ${toSafeNumber(rule.percentage)}%`
+          : `${rule.name} a receber`,
+      value: ruleAmount(rule),
+    }))
+    const findConfiguredAmount = (name: string, type?: EditableDistributionRule["rule_type"]) =>
+      activeDistributionRules
+        .filter((rule) => rule.name.toLowerCase() === name.toLowerCase() && (!type || rule.rule_type === type))
+        .reduce((sum, rule) => sum + ruleAmount(rule), 0)
+    const mateusFixed = activeDistributionRules.length > 0
+      ? findConfiguredAmount("Mateus", "fixed_amount")
+      : profitDistribution.mateusFixed
+    const mateusShare = activeDistributionRules.length > 0
+      ? findConfiguredAmount("Mateus", "extra_percentage")
+      : num(profit, ["mateus_share", "mateus_participation"], distributableResult * 0.08)
+    const carlosReceivable = activeDistributionRules.length > 0
+      ? findConfiguredAmount("Carlos")
+      : num(profit, ["carlos_receivable", "carlos_a_receber"], distributableResult * 0.65)
+    const renanReceivable = activeDistributionRules.length > 0
+      ? findConfiguredAmount("Renan")
+      : num(profit, ["renan_receivable", "renan_a_receber"], distributableResult * 0.35)
+    const totalDistributed = activeDistributionRules.length > 0
+      ? configuredDistributionLines.reduce((sum, line) => sum + line.value, 0)
+      : num(
+          profit,
+          ["total_distributed", "total_distribuido"],
+          carlosReceivable + renanReceivable + profitDistribution.mateusFixed + mateusShare
+        )
 
     return {
       monthlyRevenue,
@@ -446,6 +572,8 @@ export function DashboardContent() {
       totalBankBalance,
       bankBalances,
       profitDistribution,
+      distributionBaseValue,
+      configuredDistributionLines,
       operatingProfit,
       distributableResult,
       mateusShare,
@@ -477,7 +605,7 @@ export function DashboardContent() {
         return Boolean(row.end_date ?? row.data_fim) && endDate >= new Date() && endDate <= limit
       }).length,
     }
-  }, [data])
+  }, [data, distributionBase, distributionRules])
 
   const {
     monthlyRevenue,
@@ -491,6 +619,8 @@ export function DashboardContent() {
     totalBankBalance,
     bankBalances,
     profitDistribution,
+    distributionBaseValue,
+    configuredDistributionLines,
     operatingProfit,
     distributableResult,
     mateusShare,
@@ -525,6 +655,82 @@ export function DashboardContent() {
       { indicador: "Lucro retido", valor: dashboard.retainedProfit },
     ]))
   }
+
+  const updateDistributionRuleDraft = (index: number, patch: Partial<EditableDistributionRule>) => {
+    setDistributionRules((current) =>
+      current.map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, ...patch } : rule))
+    )
+  }
+
+  const addDistributionRuleDraft = () => {
+    setDistributionRules((current) => [...current, newDistributionRule()])
+  }
+
+  const validateDistributionRules = () => {
+    for (const rule of distributionRules) {
+      if (!rule.name.trim()) return "Informe o nome de todos os participantes."
+      const percentage = toSafeNumber(rule.percentage)
+      const fixedAmount = toSafeNumber(rule.fixed_amount)
+      if (percentage < 0 || percentage > 100) return "A participação percentual deve estar entre 0% e 100%."
+      if (fixedAmount < 0) return "O valor fixo não pode ser negativo."
+      if (rule.rule_type !== "fixed_amount" && percentage <= 0 && rule.is_active) {
+        return "Participantes percentuais ativos precisam ter participação maior que 0%."
+      }
+    }
+    return ""
+  }
+
+  const handleSaveDistributionRules = async () => {
+    const validationError = validateDistributionRules()
+    if (validationError) {
+      setDistributionError(validationError)
+      return
+    }
+
+    setDistributionSaving(true)
+    setDistributionError("")
+    try {
+      for (const rule of distributionRules) {
+        const payload = {
+          name: rule.name.trim(),
+          rule_type: rule.rule_type,
+          percentage: toSafeNumber(rule.percentage),
+          fixed_amount: toSafeNumber(rule.fixed_amount),
+          is_active: rule.is_active,
+        }
+        if (rule.id) {
+          await updateProfitDistributionRule(rule.id, payload)
+        } else {
+          await createProfitDistributionRule(payload)
+        }
+      }
+      const refreshed = await getProfitDistributionRules()
+      setDistributionRules(refreshed.map(normalizeDistributionRule))
+      toast.success("Configuração da distribuição salva.")
+      setDistributionOpen(false)
+    } catch (error) {
+      setDistributionError(error instanceof Error ? error.message : "Não foi possível salvar a distribuição.")
+    } finally {
+      setDistributionSaving(false)
+    }
+  }
+
+  const modalDistributionLines = distributionRules
+    .filter((rule) => rule.is_active)
+    .map((rule) => ({
+      label:
+        rule.rule_type === "fixed_amount"
+          ? `${rule.name} fixo`
+          : rule.rule_type === "extra_percentage"
+          ? `${rule.name} participação ${toSafeNumber(rule.percentage)}%`
+          : `${rule.name} a receber`,
+      value:
+        rule.rule_type === "fixed_amount"
+          ? toSafeNumber(rule.fixed_amount)
+          : Math.max(0, distributionBaseValue) * (toSafeNumber(rule.percentage) / 100),
+    }))
+  const modalTotalDistributed = modalDistributionLines.reduce((sum, line) => sum + line.value, 0)
+  const modalRetainedProfit = Math.max(0, distributionBaseValue) - modalTotalDistributed
 
   return (
     <div className="space-y-9">
@@ -659,8 +865,22 @@ export function DashboardContent() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Distribuição de Lucros</CardTitle>
-            <CardDescription>Simulação do resultado distribuível do mês</CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle>Distribuição de Lucros</CardTitle>
+                <CardDescription>Simulação do resultado distribuível do mês</CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 rounded-xl"
+                aria-label="Configurar distribuição de resultados"
+                onClick={() => setDistributionOpen(true)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -668,11 +888,15 @@ export function DashboardContent() {
                 ["Receita do mês", profitDistribution.revenue],
                 ["Custos/despesas", profitDistribution.costs],
                 ["Lucro operacional", operatingProfit],
-                ["Resultado distribuível", distributableResult],
-                ["Carlos a receber", carlosReceivable],
-                ["Renan a receber", renanReceivable],
-                ["Mateus fixo", profitDistribution.mateusFixed],
-                ["Mateus participação 8%", mateusShare],
+                [distributionBaseLabels[distributionBase], distributableResult],
+                ...(configuredDistributionLines.length > 0
+                  ? configuredDistributionLines.map((line) => [line.label, line.value] as [string, number])
+                  : [
+                      ["Carlos a receber", carlosReceivable],
+                      ["Renan a receber", renanReceivable],
+                      ["Mateus fixo", profitDistribution.mateusFixed],
+                      ["Mateus participação 8%", mateusShare],
+                    ]),
                 ["Total distribuído", totalDistributed],
                 ["Lucro retido", retainedProfit],
               ].map(([label, value]) => (
@@ -687,6 +911,172 @@ export function DashboardContent() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={distributionOpen} onOpenChange={setDistributionOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Configuração da Distribuição de Resultados</DialogTitle>
+            <DialogDescription>
+              Configure participantes, percentuais, valores fixos e base de cálculo usados na simulação do Dashboard.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {distributionError && (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                {distributionError}
+              </div>
+            )}
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Participantes</h3>
+                  <p className="text-xs text-muted-foreground">Edite sem excluir fisicamente registros.</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addDistributionRuleDraft}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar participante
+                </Button>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-muted/60 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Nome</th>
+                      <th className="px-4 py-3 font-medium">Tipo</th>
+                      <th className="px-4 py-3 font-medium">Participação %</th>
+                      <th className="px-4 py-3 font-medium">Valor fixo</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {distributionRules.map((rule, index) => (
+                      <tr key={rule.id ?? `draft-${index}`} className="border-t">
+                        <td className="px-4 py-3">
+                          <Input
+                            value={rule.name}
+                            onChange={(event) => updateDistributionRuleDraft(index, { name: event.target.value })}
+                            placeholder="Nome"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select
+                            value={rule.rule_type}
+                            onValueChange={(value) =>
+                              updateDistributionRuleDraft(index, {
+                                rule_type: (value ?? "partner") as EditableDistributionRule["rule_type"],
+                              })
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="partner">Sócio</SelectItem>
+                              <SelectItem value="extra_percentage">Participação extra</SelectItem>
+                              <SelectItem value="fixed_amount">Valor fixo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={rule.percentage}
+                            disabled={rule.rule_type === "fixed_amount"}
+                            onChange={(event) => updateDistributionRuleDraft(index, { percentage: event.target.value })}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={rule.fixed_amount}
+                            onChange={(event) => updateDistributionRuleDraft(index, { fixed_amount: event.target.value })}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Button
+                            type="button"
+                            variant={rule.is_active ? "outline" : "secondary"}
+                            size="sm"
+                            onClick={() => updateDistributionRuleDraft(index, { is_active: !rule.is_active })}
+                          >
+                            {rule.is_active ? "Desativar" : "Ativar"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {distributionRules.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                          Nenhuma regra cadastrada. Aplique o SQL da tabela e adicione participantes para persistir a configuração.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+              <div className="space-y-3 rounded-2xl border p-4">
+                <h3 className="text-sm font-semibold">Base de cálculo</h3>
+                <div className="space-y-2">
+                  {(Object.keys(distributionBaseLabels) as DistributionBase[]).map((base) => (
+                    <Label key={base} className="flex cursor-pointer items-center gap-3 rounded-xl border p-3">
+                      <input
+                        type="radio"
+                        name="distribution-base"
+                        checked={distributionBase === base}
+                        onChange={() => setDistributionBase(base)}
+                      />
+                      {distributionBaseLabels[base]}
+                    </Label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border p-4">
+                <h3 className="text-sm font-semibold">Simulação</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    ["Receita", profitDistribution.revenue],
+                    ["Custos", profitDistribution.costs],
+                    ["Resultado", Math.max(0, distributionBaseValue)],
+                    ...modalDistributionLines.map((line) => [line.label, line.value] as [string, number]),
+                    ["Lucro retido", modalRetainedProfit],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="flex items-center justify-between rounded-xl bg-muted/45 p-3">
+                      <span className="text-xs text-muted-foreground">{label}</span>
+                      <span className={`text-sm font-semibold ${Number(value) < 0 ? "text-destructive" : ""}`}>
+                        {formatCurrency(Number(value))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Total distribuído: {formatCurrency(modalTotalDistributed)}
+                </p>
+              </div>
+            </section>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDistributionOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleSaveDistributionRules} disabled={distributionSaving}>
+              {distributionSaving ? "Salvando..." : "Salvar configuração"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
