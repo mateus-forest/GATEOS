@@ -105,7 +105,7 @@ function DialogContent({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
@@ -113,7 +113,7 @@ function DialogContent({
         aria-describedby={descriptionId}
         data-slot="dialog-content"
         className={cn(
-          "relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-background p-6 text-foreground shadow-lg",
+          "relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border/80 bg-background p-8 text-foreground shadow-[0_30px_100px_rgba(15,23,42,0.22)]",
           className
         )}
         {...props}
@@ -122,7 +122,7 @@ function DialogContent({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute right-3 top-3"
+          className="absolute right-4 top-4"
           onClick={() => setOpen(false)}
           aria-label="Fechar"
         >
@@ -138,7 +138,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("mb-4 flex flex-col gap-1.5 pr-8", className)}
+      className={cn("mb-6 flex flex-col gap-2 pr-10", className)}
       {...props}
     />
   )
@@ -148,7 +148,7 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-footer"
-      className={cn("mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      className={cn("mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end", className)}
       {...props}
     />
   )
@@ -161,7 +161,7 @@ function DialogTitle({ className, ...props }: React.ComponentProps<"h2">) {
     <h2
       id={titleId}
       data-slot="dialog-title"
-      className={cn("text-lg font-semibold", className)}
+      className={cn("text-xl font-semibold tracking-normal", className)}
       {...props}
     />
   )

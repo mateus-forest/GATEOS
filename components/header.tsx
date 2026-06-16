@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, ChevronDown, LogOut, Search, User } from "lucide-react"
+import { Bell, ChevronDown, LogOut, Search, Send, Sparkles, User } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +59,7 @@ function text(value: unknown) {
 export function Header() {
   const router = useRouter()
   const [profileOpen, setProfileOpen] = useState(false)
+  const [cosOpen, setCosOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [profile, setProfile] = useState<SessionProfile>({
@@ -156,11 +157,11 @@ export function Header() {
         })),
       },
       {
-        group: "Lancamentos",
+        group: "Financeiro",
         items: searchData.transactions.map((item) => ({
           label: text(item.description ?? item.descricao),
           description: text(item.category ?? item.categoria ?? item.dre_category_name),
-          href: "/lancamentos",
+          href: "/financeiro",
         })),
       },
       {
@@ -221,18 +222,21 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-border bg-card px-3 sm:px-6">
-      <div className="flex min-w-0 flex-1 items-center gap-4">
-        <div className="relative w-full max-w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-xl sm:px-7 lg:px-10">
+      <div className="flex min-w-0 flex-1 justify-center">
+        <div className="relative w-full max-w-[620px]">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Buscar clientes, contratos, DRE, documentos..."
-            className="pl-10 bg-background"
+            placeholder="Buscar clientes, contratos, equipamentos..."
+            className="h-12 rounded-2xl border-border/80 bg-card pl-11 pr-12 shadow-[0_10px_35px_rgba(15,23,42,0.05)]"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
+          <span className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground sm:inline-flex">
+            ⌘K
+          </span>
           {searchTerm && (
-            <div className="absolute left-0 top-11 z-50 w-full rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-md">
+            <div className="absolute left-0 top-14 z-50 w-full rounded-2xl border border-border bg-popover p-2 text-popover-foreground shadow-[0_24px_80px_rgba(15,23,42,0.16)]">
               {searchResults.length > 0 ? (
                 <div className="max-h-96 overflow-auto">
                   {searchResults.map((group) => (
@@ -242,7 +246,7 @@ export function Header() {
                         <button
                           key={`${group.group}-${item.label}-${item.href}`}
                           type="button"
-                          className="flex w-full flex-col rounded-md px-2 py-2 text-left hover:bg-accent hover:text-accent-foreground"
+                          className="flex w-full flex-col rounded-xl px-3 py-2.5 text-left hover:bg-accent hover:text-accent-foreground"
                           onClick={() => handleNavigate(item.href)}
                         >
                           <span className="text-sm font-medium">{item.label}</span>
@@ -261,9 +265,17 @@ export function Header() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <Button
+          type="button"
+          onClick={() => setCosOpen(true)}
+          className="h-11 rounded-2xl bg-neutral-950 px-3 text-white shadow-[0_14px_38px_rgba(15,23,42,0.24)] hover:bg-neutral-800 sm:px-4"
+        >
+          <Sparkles className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Abrir no COS</span>
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon" className="relative rounded-2xl">
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
                 <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-destructive">
@@ -307,7 +319,7 @@ export function Header() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 px-2">
+            <Button variant="ghost" className="flex h-11 items-center gap-2 rounded-2xl px-2">
               <Avatar className="h-8 w-8">
                 <AvatarImage src={profile.avatar} />
                 <AvatarFallback>{initials}</AvatarFallback>
@@ -336,6 +348,67 @@ export function Header() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <Dialog open={cosOpen} onOpenChange={setCosOpen}>
+        <DialogContent className="max-w-[440px] p-0">
+          <div className="border-b border-border px-6 py-5">
+            <DialogHeader className="mb-0 pr-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base">COS Assistant</DialogTitle>
+                  <DialogDescription>Inteligência da GATE</DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+          </div>
+          <div className="space-y-6 px-6 py-6">
+            <div className="flex items-start gap-3">
+              <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="rounded-3xl bg-muted px-5 py-4 text-sm leading-6 text-foreground">
+                Olá! Sou o COS, seu assistente da GATE Center. Como posso ajudar você hoje?
+              </div>
+            </div>
+            <div>
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Sugestões
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Mostrar contratos ativos",
+                  "Clientes inadimplentes",
+                  "Receita deste mês",
+                  "Equipamentos disponíveis",
+                  "Abrir chamado",
+                  "Resumo financeiro",
+                ].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="rounded-full bg-muted px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-neutral-950 hover:text-white"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 border-t border-border px-4 py-4">
+            <Input
+              aria-label="Mensagem para o COS"
+              placeholder="Pergunte algo ao COS..."
+              className="h-10 rounded-2xl"
+            />
+            <Button type="button" size="icon" className="rounded-2xl">
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
         <DialogContent>

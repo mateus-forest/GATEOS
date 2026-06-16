@@ -527,16 +527,16 @@ export function DashboardContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-9">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">VisÃ£o geral do sistema GATE OS</p>
+          <h1 className="text-4xl font-bold tracking-normal">Visão Geral</h1>
+          <p className="mt-2 text-base text-muted-foreground">Controle executivo da operação GATE OS.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={handleExportReport}>
-            Exportar RelatÃ³rio
+          <Button onClick={handleExportReport} className="rounded-2xl">
+            Exportar relatório
           </Button>
         </div>
       </div>
@@ -548,8 +548,8 @@ export function DashboardContent() {
       )}
 
       {/* Alerts */}
-      <Card className="border-amber-200 bg-amber-50/50">
-        <CardContent className="p-4">
+      <Card className="border-amber-200/70 bg-amber-50/45 shadow-none">
+        <CardContent className="p-5">
           <div className="flex items-center gap-4">
             <AlertCircle className="h-5 w-5 text-amber-600" />
             <div className="flex-1">
@@ -568,9 +568,9 @@ export function DashboardContent() {
       </Card>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          title="Receita Realizada Mensal"
+          title="Receita"
           value={formatCurrency(monthlyRevenue)}
           change={formatCurrency(monthlyProfit)}
           changeType={monthlyProfit >= 0 ? "positive" : "negative"}
@@ -578,7 +578,7 @@ export function DashboardContent() {
           description="recebida no mes"
         />
         <MetricCard
-          title="Contratos Ativos"
+          title="Contratos ativos"
           value={activeContracts.toString()}
           change={loading ? "..." : "real"}
           changeType="neutral"
@@ -586,7 +586,7 @@ export function DashboardContent() {
           description="base Supabase"
         />
         <MetricCard
-          title="Clientes"
+          title="Clientes ativos"
           value={totalClients.toString()}
           change={loading ? "..." : "real"}
           changeType="neutral"
@@ -594,7 +594,7 @@ export function DashboardContent() {
           description="base Supabase"
         />
         <MetricCard
-          title="Equipamentos"
+          title="Equipamentos locados"
           value={totalEquipments.toString()}
           change={equipmentInMaintenance.toString()}
           changeType={equipmentInMaintenance > 0 ? "negative" : "neutral"}
@@ -609,7 +609,7 @@ export function DashboardContent() {
           <CardDescription>Indicadores derivados de views e tabelas financeiras</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4 xl:grid-cols-7">
             {[
               ["Receita prevista", formatCurrency(forecastRevenue)],
               ["Despesas mensais", formatCurrency(monthlyExpenses)],
@@ -619,7 +619,7 @@ export function DashboardContent() {
               ["ARR", formatCurrency(arr)],
               ["Inadimplencia", `${delinquencyRate.toFixed(1)}%`],
             ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-lg bg-muted/50 p-3">
+                <div key={String(label)} className="rounded-2xl bg-muted/45 p-4">
                 <p className="text-xs text-muted-foreground">{label}</p>
                 <p className="mt-1 font-semibold">{value}</p>
               </div>
@@ -628,7 +628,7 @@ export function DashboardContent() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -640,7 +640,7 @@ export function DashboardContent() {
           <CardContent className="space-y-3">
             {bankBalances.length > 0 ? (
               bankBalances.map((balance) => (
-                <div key={balance.name} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                <div key={balance.name} className="flex items-center justify-between rounded-2xl bg-muted/45 p-4">
                   <span className="text-sm text-muted-foreground">{balance.name}</span>
                   <span className="font-semibold">{formatCurrency(balance.amount)}</span>
                 </div>
@@ -650,7 +650,7 @@ export function DashboardContent() {
                 Nenhum saldo bancario retornado por v_bank_balances.
               </p>
             )}
-            <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="flex items-center justify-between rounded-2xl border border-border/80 p-4">
               <span className="font-medium">Saldo total consolidado</span>
               <span className="text-lg font-bold text-emerald-600">{formatCurrency(totalBankBalance)}</span>
             </div>
@@ -676,7 +676,7 @@ export function DashboardContent() {
                 ["Total distribuÃ­do", totalDistributed],
                 ["Lucro retido", retainedProfit],
               ].map(([label, value]) => (
-                <div key={String(label)} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                <div key={String(label)} className="flex items-center justify-between rounded-2xl bg-muted/45 p-4">
                   <span className="text-sm text-muted-foreground">{label}</span>
                   <span className={`font-semibold ${Number(value) < 0 ? "text-destructive" : ""}`}>
                     {formatCurrency(Number(value))}
@@ -689,7 +689,7 @@ export function DashboardContent() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Revenue Chart */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -711,17 +711,17 @@ export function DashboardContent() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
+            <div className="h-[380px]">
               {revenueData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <AreaChart data={revenueData}>
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22B8CF" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#22B8CF" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#111827" stopOpacity={0.18} />
+                      <stop offset="95%" stopColor="#111827" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <CartesianGrid strokeDasharray="0" vertical={false} className="stroke-muted" />
                   <XAxis dataKey="month" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis
                     className="text-xs"
@@ -739,8 +739,8 @@ export function DashboardContent() {
                   <Area
                     type="monotone"
                     dataKey="revenue"
-                    stroke="#22B8CF"
-                    strokeWidth={2}
+                    stroke="#111827"
+                    strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#colorRevenue)"
                   />

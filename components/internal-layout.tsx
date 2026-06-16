@@ -27,7 +27,7 @@ export function InternalLayout({ children }: InternalLayoutProps) {
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-background">
           <Header />
-          <main className="flex-1 bg-background p-4 sm:p-5 lg:p-6">
+          <main className="flex-1 bg-background px-5 py-7 sm:px-7 lg:px-10 lg:py-9">
             {children}
           </main>
         </div>
