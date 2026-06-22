@@ -1,6 +1,72 @@
 import * as XLSX from "xlsx"
+import { inflateRawSync } from "node:zlib"
 
 type TabularRow = Record<string, unknown>
+
+export type CosExtractedClient = {
+  legalName?: string
+  documentNumber?: string
+  address?: string
+  city?: string
+  state?: string
+  postalCode?: string
+  representative?: string
+  guarantor?: string
+}
+
+export type CosExtractedContract = {
+  contractType?: string
+  lessor?: string
+  lessee?: string
+  signatureDate?: string
+  probableStartDate?: string
+  termMonths?: number
+  calculatedEndDate?: string
+  monthlyDueDay?: number
+  monthlyValue?: number
+  depositValue?: number
+  adjustmentIndex?: string
+  terminationFine?: string
+  venue?: string
+  suggestedStatus?: string
+}
+
+export type CosExtractedEquipment = {
+  quantity?: number
+  description: string
+  unitValue?: number
+  totalValue?: number
+  suggestedCategory?: string
+  suggestedStatus?: string
+  contractLink?: string
+}
+
+export type CosExtractedFinancialEntry = {
+  type: string
+  description: string
+  value?: number
+  dueDay?: number
+  installments?: number
+  firstCompetence?: string
+  lastCompetence?: string
+  source: string
+}
+
+export type CosContractExtractionPreview = {
+  sourceFile: string
+  extractedClient?: CosExtractedClient
+  extractedContract?: CosExtractedContract
+  extractedEquipment: CosExtractedEquipment[]
+  extractedFinancialEntries: CosExtractedFinancialEntry[]
+  extractedDocument: {
+    fileName: string
+    type: string
+    suggestedNotes: string
+  }
+  confidence: number
+  warnings: string[]
+  textSample: string
+}
 
 export type CosFileSheetPreview = {
   name: string
@@ -20,6 +86,7 @@ export type CosFilePreview = {
   size: number
   sheets: CosFileSheetPreview[]
   notes: string[]
+  contractExtraction?: CosContractExtractionPreview
 }
 
 export type CosFileAnalysisPreview = {
@@ -28,6 +95,7 @@ export type CosFileAnalysisPreview = {
   financialEntries: TabularRow[]
   clients: TabularRow[]
   equipment: TabularRow[]
+  contractExtractions: CosContractExtractionPreview[]
   warnings: string[]
 }
 
@@ -85,6 +153,19 @@ const DRE_TERMS = [
   "cpv",
 ]
 
+const CONTRACT_TERMS = [
+  "contrato",
+  "locacao",
+  "locadora",
+  "locataria",
+  "clausula",
+  "objeto",
+  "prazo",
+  "preco",
+  "caucao",
+  "foro",
+]
+
 function normalizeHeader(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
@@ -92,6 +173,137 @@ function normalizeHeader(value: unknown) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
+}
+
+function normalizeLoose(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+}
+
+function normalizeDocumentText(value: string) {
+  return value
+    .replace(/\u0000/g, " ")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+function decodeXmlEntities(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
+function stripXmlToText(xml: string) {
+  return normalizeDocumentText(
+    decodeXmlEntities(
+      xml
+        .replace(/<w:tab\/>/g, "\t")
+        .replace(/<\/w:p>/g, "\n")
+        .replace(/<\/w:tr>/g, "\n")
+        .replace(/<\/w:tc>/g, " | ")
+        .replace(/<[^>]+>/g, " ")
+    )
+  )
+}
+
+function findEndOfCentralDirectory(buffer: Buffer) {
+  for (let offset = buffer.length - 22; offset >= 0; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset
+  }
+  return -1
+}
+
+function readZipEntries(buffer: Buffer) {
+  const entries = new Map<string, Buffer>()
+  const eocdOffset = findEndOfCentralDirectory(buffer)
+  if (eocdOffset < 0) return entries
+
+  const centralDirectoryEntries = buffer.readUInt16LE(eocdOffset + 10)
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16)
+  let offset = centralDirectoryOffset
+
+  for (let index = 0; index < centralDirectoryEntries; index += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break
+
+    const compressionMethod = buffer.readUInt16LE(offset + 10)
+    const compressedSize = buffer.readUInt32LE(offset + 20)
+    const fileNameLength = buffer.readUInt16LE(offset + 28)
+    const extraLength = buffer.readUInt16LE(offset + 30)
+    const commentLength = buffer.readUInt16LE(offset + 32)
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42)
+    const fileName = buffer.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8")
+
+    const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26)
+    const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28)
+    const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength
+    const compressed = buffer.subarray(dataOffset, dataOffset + compressedSize)
+
+    if (compressionMethod === 0) {
+      entries.set(fileName, compressed)
+    } else if (compressionMethod === 8) {
+      entries.set(fileName, inflateRawSync(compressed))
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength
+  }
+
+  return entries
+}
+
+async function extractDocxText(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const entries = readZipEntries(buffer)
+  const xmlParts = [
+    entries.get("word/document.xml"),
+    ...Array.from(entries.entries())
+      .filter(([name]) => /^word\/(header|footer)\d+\.xml$/.test(name))
+      .map(([, content]) => content),
+  ].filter((entry): entry is Buffer => Boolean(entry))
+
+  if (xmlParts.length === 0) {
+    throw new Error("Nao encontrei o conteudo principal do DOCX.")
+  }
+
+  return normalizeDocumentText(xmlParts.map((part) => stripXmlToText(part.toString("utf8"))).join("\n"))
+}
+
+function decodePdfLiteralString(value: string) {
+  return value
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\")
+}
+
+async function extractPdfText(file: File) {
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const raw = buffer.toString("latin1")
+  const matches = Array.from(raw.matchAll(/\((?:\\.|[^\\)]){2,}\)\s*Tj|\((?:\\.|[^\\)]){2,}\)/g))
+  const text = matches
+    .map((match) => match[0].replace(/\)\s*Tj$/, "").replace(/^\(|\)$/g, ""))
+    .map(decodePdfLiteralString)
+    .join(" ")
+
+  const normalized = normalizeDocumentText(text)
+  if (normalized.length < 40) {
+    throw new Error("Nao consegui extrair texto suficiente do PDF. O arquivo pode estar escaneado ou protegido.")
+  }
+
+  return normalized
+}
+
+function supportedContractDocument(file: File) {
+  const name = file.name.toLowerCase()
+  return name.endsWith(".docx") || name.endsWith(".pdf")
 }
 
 function cellText(value: unknown) {
@@ -277,6 +489,231 @@ function inferFinancialType(row: TabularRow) {
 
   const value = numberValue(row, ["valor", "value", "amount", "total"])
   return value < 0 ? "despesa" : "receita"
+}
+
+function parseBrazilianCurrency(value: string) {
+  const cleaned = value.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")
+  const parsed = Number(cleaned)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function currencyNear(text: string, terms: string[]) {
+  for (const term of terms) {
+    const pattern = new RegExp(`${term}[\\s\\S]{0,180}?(R\\$\\s*\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d{1,3}(?:\\.\\d{3})*,\\d{2})`, "i")
+    const match = text.match(pattern)
+    if (match?.[1]) return parseBrazilianCurrency(match[1])
+  }
+  return undefined
+}
+
+function firstMatch(text: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (match?.[1]) return match[1].trim().replace(/[.;,]+$/, "")
+  }
+  return undefined
+}
+
+function parseDate(value?: string) {
+  if (!value) return undefined
+  const match = value.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/)
+  if (!match) return undefined
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3])
+  if (!day || !month || !year) return undefined
+  return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`
+}
+
+function addMonths(dateText: string | undefined, months: number | undefined) {
+  if (!dateText || !months) return undefined
+  const parsed = parseDate(dateText)
+  if (!parsed) return undefined
+  const [day, month, year] = parsed.split("/").map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setMonth(date.getMonth() + months)
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`
+}
+
+function extractParty(text: string, label: string) {
+  const pattern = new RegExp(`${label}[\\s\\S]{0,500}`, "i")
+  const segment = text.match(pattern)?.[0] ?? ""
+  const company =
+    segment.match(/([A-Z0-9][A-Z0-9 .,&\-ÇÃÕÁÉÍÓÚÂÊÔ]+?(?:LTDA|S\.A\.|EIRELI|ME|EPP))/)?.[1]?.trim() ??
+    undefined
+  const cnpj = segment.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)?.[0]
+  return { company, cnpj, segment }
+}
+
+function extractAddress(segment: string) {
+  const address = firstMatch(segment, [
+    /endere[cç]o(?:\s*[:\-])?\s*([^,\n]+(?:,\s*[^,\n]+){0,3})/i,
+    /(Rua|Avenida|Av\.|Travessa|Rodovia)\s+[^,\n]+(?:,\s*[^,\n]+){0,3}/i,
+  ])
+  const cityState = segment.match(/([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-Za-zÀ-ÿ\s.'-]+)\s*[-\/]\s*([A-Z]{2})/)
+  const postalCode = segment.match(/\d{5}-?\d{3}/)?.[0]
+
+  return {
+    address,
+    city: cityState?.[1]?.trim(),
+    state: cityState?.[2],
+    postalCode,
+  }
+}
+
+function extractRepresentative(text: string) {
+  return firstMatch(text, [
+    /representad[ao]\s+por\s+([^,\n.]+)/i,
+    /representante(?:\s+legal)?(?:\s*[:\-])?\s*([^,\n.]+)/i,
+  ])
+}
+
+function extractGuarantor(text: string) {
+  return firstMatch(text, [
+    /fiador(?:a)?(?:\s*[:\-])?\s*([^,\n.]+)/i,
+    /FIADOR(?:A)?[\s\S]{0,120}?([A-Z][A-ZÀ-ÿ\s.'-]{4,})/i,
+  ])
+}
+
+function extractEquipmentFromContract(text: string) {
+  const equipment: CosExtractedEquipment[] = []
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+
+  for (const line of lines) {
+    const normalized = normalizeLoose(line)
+    const hasEquipmentSignal = /(monitor|ryzen|rtx|computador|pc gamer|notebook|ssd|hd|memoria|ram|processador|equipamento)/i.test(line)
+    const quantityMatch = line.match(/(?:^|\s)(\d{1,3})\s*(?:x|un|und|unidade|unidades)?\s+/i)
+    if (!hasEquipmentSignal || !quantityMatch) continue
+
+    const quantity = Number(quantityMatch[1])
+    const moneyMatches = Array.from(line.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})*,\d{2}/g)).map((match) =>
+      parseBrazilianCurrency(match[0])
+    )
+    const unitValue = moneyMatches[0]
+    const totalValue = moneyMatches[moneyMatches.length - 1]
+
+    equipment.push({
+      quantity,
+      description: line.replace(/^\d{1,3}\s*(?:x|un|und|unidade|unidades)?\s*/i, "").trim(),
+      unitValue,
+      totalValue,
+      suggestedCategory: normalized.includes("monitor") ? "Monitor" : "Computador",
+      suggestedStatus: "disponivel",
+      contractLink: "Vincular ao contrato extraido",
+    })
+  }
+
+  return equipment.slice(0, 30)
+}
+
+function contractConfidence(extraction: Omit<CosContractExtractionPreview, "confidence">) {
+  let score = 0
+  if (extraction.extractedClient?.legalName) score += 18
+  if (extraction.extractedClient?.documentNumber) score += 18
+  if (extraction.extractedContract?.contractType) score += 12
+  if (extraction.extractedContract?.monthlyValue) score += 16
+  if (extraction.extractedContract?.termMonths) score += 12
+  if (extraction.extractedContract?.monthlyDueDay) score += 8
+  if (extraction.extractedEquipment.length > 0) score += 10
+  if (extraction.extractedFinancialEntries.length > 0) score += 6
+  return Math.min(score, 100)
+}
+
+function analyzeContractText(file: File, text: string): CosContractExtractionPreview {
+  const normalized = normalizeLoose(text)
+  const locataria = extractParty(text, "locat[áa]ria")
+  const locadora = extractParty(text, "locadora")
+  const address = extractAddress(locataria.segment || text)
+  const signatureDate = parseDate(firstMatch(text, [/assinad[oa][\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/]))
+  const termMonths = Number(firstMatch(text, [/prazo[\s\S]{0,120}?(\d{1,3})\s*mes/i, /(\d{1,3})\s*meses/i])) || undefined
+  const probableStartDate = parseDate(firstMatch(text, [/in[ií]cio[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /vig[eê]ncia[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i])) ?? signatureDate
+  const monthlyDueDay = Number(firstMatch(text, [/vencimento[\s\S]{0,120}?dia\s*(\d{1,2})/i, /todo\s+dia\s*(\d{1,2})/i, /dia\s*(\d{1,2})\s+de\s+cada\s+m[eê]s/i])) || undefined
+  const monthlyValue = currencyNear(text, ["pre[cç]o", "valor mensal", "mensalidade", "aluguel"])
+  const depositValue = currencyNear(text, ["cau[cç][aã]o", "garantia"])
+  const adjustmentIndex = firstMatch(text, [/(IGP-M|IPCA|INPC|IPC|SELIC)/i])
+  const terminationFine = firstMatch(text, [/multa[\s\S]{0,180}?((?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}%|[0-9]+\s*%)/i])
+  const venue = firstMatch(text, [/foro[\s\S]{0,160}?comarca\s+de\s+([^,\n.]+)/i, /foro\s+de\s+([^,\n.]+)/i])
+  const extractedEquipment = extractEquipmentFromContract(text)
+  const warnings: string[] = []
+
+  if (!locataria.company) warnings.push("Nao identifiquei a razao social da locataria com alta confianca.")
+  if (!monthlyValue) warnings.push("Nao identifiquei valor mensal com alta confianca.")
+  if (!termMonths) warnings.push("Nao identifiquei prazo em meses com alta confianca.")
+  if (extractedEquipment.length === 0) warnings.push("Nao identifiquei equipamentos estruturados no contrato.")
+
+  const extractedContract: CosExtractedContract = {
+    contractType: normalized.includes("locacao") ? "Locacao de equipamentos" : "Contrato operacional",
+    lessor: locadora.company,
+    lessee: locataria.company,
+    signatureDate,
+    probableStartDate,
+    termMonths,
+    calculatedEndDate: addMonths(probableStartDate, termMonths),
+    monthlyDueDay,
+    monthlyValue,
+    depositValue,
+    adjustmentIndex,
+    terminationFine,
+    venue,
+    suggestedStatus: "ativo",
+  }
+
+  const extractedFinancialEntries: CosExtractedFinancialEntry[] = []
+  if (monthlyValue) {
+    extractedFinancialEntries.push({
+      type: "receita",
+      description: `Receita recorrente mensal${locataria.company ? ` - ${locataria.company}` : ""}`,
+      value: monthlyValue,
+      dueDay: monthlyDueDay,
+      installments: termMonths,
+      firstCompetence: probableStartDate,
+      lastCompetence: addMonths(probableStartDate, termMonths),
+      source: file.name,
+    })
+  }
+  if (depositValue) {
+    extractedFinancialEntries.push({
+      type: "receita",
+      description: `Caucao contratual${locataria.company ? ` - ${locataria.company}` : ""}`,
+      value: depositValue,
+      dueDay: monthlyDueDay,
+      installments: 1,
+      firstCompetence: probableStartDate,
+      source: file.name,
+    })
+  }
+
+  const previewWithoutConfidence = {
+    sourceFile: file.name,
+    extractedClient: {
+      legalName: locataria.company,
+      documentNumber: locataria.cnpj,
+      ...address,
+      representative: extractRepresentative(text),
+      guarantor: extractGuarantor(text),
+    },
+    extractedContract,
+    extractedEquipment,
+    extractedFinancialEntries,
+    extractedDocument: {
+      fileName: file.name,
+      type: file.type || "contrato",
+      suggestedNotes: "Contrato analisado pelo COS. Nenhum dado foi gravado.",
+    },
+    warnings,
+    textSample: text.slice(0, 1200),
+  }
+
+  return {
+    ...previewWithoutConfidence,
+    confidence: contractConfidence(previewWithoutConfidence),
+  }
+}
+
+function looksLikeContract(text: string) {
+  const normalized = normalizeLoose(text)
+  const matches = CONTRACT_TERMS.filter((term) => normalized.includes(term)).length
+  return matches >= 3
 }
 
 function buildFinancialPreview(rows: WorkbookRows[]) {
@@ -465,9 +902,17 @@ function pdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
 }
 
+function docxFile(file: File) {
+  return (
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.name.toLowerCase().endsWith(".docx")
+  )
+}
+
 export async function analyzeCosFiles(files: File[]) {
   const allRows: WorkbookRows[] = []
   const filePreviews: CosFilePreview[] = []
+  const contractExtractions: CosContractExtractionPreview[] = []
   const warnings: string[] = []
 
   for (const file of files) {
@@ -496,6 +941,49 @@ export async function analyzeCosFiles(files: File[]) {
       continue
     }
 
+    if (docxFile(file) || pdfFile(file)) {
+      try {
+        const extractedText = docxFile(file) ? await extractDocxText(file) : await extractPdfText(file)
+        const contractExtraction = analyzeContractText(file, extractedText)
+        const isContract = looksLikeContract(extractedText)
+        if (isContract || contractExtraction.confidence >= 35) {
+          contractExtractions.push(contractExtraction)
+        }
+
+        console.info("[cos] Contract document analysis", {
+          fileName: file.name,
+          type: docxFile(file) ? "docx" : "pdf",
+          textLength: extractedText.length,
+          confidence: contractExtraction.confidence,
+          equipmentItems: contractExtraction.extractedEquipment.length,
+          financialItems: contractExtraction.extractedFinancialEntries.length,
+        })
+
+        filePreviews.push({
+          name: file.name,
+          type: file.type || (docxFile(file) ? "DOCX" : "PDF"),
+          size: file.size,
+          sheets: [],
+          notes: isContract
+            ? ["Contrato analisado. Nenhum dado foi gravado; revise os cards antes de cadastrar."]
+            : ["Documento lido, mas o COS nao encontrou sinais fortes de contrato operacional."],
+          contractExtraction: isContract || contractExtraction.confidence >= 35 ? contractExtraction : undefined,
+        })
+      } catch (error) {
+        console.error("[cos] Falha ao analisar contrato", error)
+        const message = error instanceof Error ? error.message : "Falha na leitura do documento."
+        warnings.push(`${file.name}: ${message}`)
+        filePreviews.push({
+          name: file.name,
+          type: file.type || (docxFile(file) ? "DOCX" : "PDF"),
+          size: file.size,
+          sheets: [],
+          notes: [message],
+        })
+      }
+      continue
+    }
+
     if (imageFile(file)) {
       filePreviews.push({
         name: file.name,
@@ -504,19 +992,6 @@ export async function analyzeCosFiles(files: File[]) {
         sheets: [],
         notes: [
           "Leitura automatica de imagem ainda depende da integracao OCR. Posso anexar o arquivo e voce pode complementar os dados manualmente.",
-        ],
-      })
-      continue
-    }
-
-    if (pdfFile(file)) {
-      filePreviews.push({
-        name: file.name,
-        type: file.type || "PDF",
-        size: file.size,
-        sheets: [],
-        notes: [
-          "PDF recebido. A extracao automatica de texto depende de integracao de parser/OCR nesta etapa do COS.",
         ],
       })
       continue
@@ -537,6 +1012,7 @@ export async function analyzeCosFiles(files: File[]) {
     financialEntries: buildFinancialPreview(allRows),
     clients: buildClientPreview(allRows),
     equipment: buildEquipmentPreview(allRows),
+    contractExtractions,
     warnings,
   }
 
@@ -554,6 +1030,9 @@ export async function analyzeCosFiles(files: File[]) {
   const answer = [
     `Analisei ${filePreviews.length} arquivo(s) e encontrei ${sheetCount} aba(s) tabulares.`,
     dreNotice,
+    contractExtractions.length
+      ? ` Analisei ${contractExtractions.length} contrato(s) e gerei cards de cliente, contrato, equipamentos, financeiro e documento.`
+      : "",
     `Previa gerada: ${preview.financialEntries.length} possiveis lancamentos financeiros, ${preview.clients.length} possiveis clientes e ${preview.equipment.length} possiveis equipamentos.`,
     "Nenhum dado foi gravado. Revise a previa; a confirmacao de execucao fica bloqueada para a proxima etapa assistida.",
   ].join(" ")

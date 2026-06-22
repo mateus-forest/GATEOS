@@ -103,6 +103,19 @@ function formatPreviewValue(value: unknown) {
   return String(value)
 }
 
+function formatMoney(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "-"
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+}
+
+function EntityActionButton({ children }: { children: string }) {
+  return (
+    <Button type="button" disabled variant="outline" className="mt-3 w-full rounded-2xl">
+      {children} (proxima etapa)
+    </Button>
+  )
+}
+
 function PreviewTable({ rows, columns }: { rows: Record<string, unknown>[]; columns: string[] }) {
   const visibleRows = rows.slice(0, 5)
   if (visibleRows.length === 0) return null
@@ -137,6 +150,111 @@ function PreviewTable({ rows, columns }: { rows: Record<string, unknown>[]; colu
         <p className="border-t border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
           Mostrando 5 de {rows.length} item(ns) na previa.
         </p>
+      )}
+    </div>
+  )
+}
+
+function ContractExtractionCards({ preview }: { preview: CosFileAnalysisPreview["contractExtractions"][number] }) {
+  const client = preview.extractedClient
+  const contract = preview.extractedContract
+
+  return (
+    <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
+      <div>
+        <p className="font-semibold">Contrato analisado: {preview.sourceFile}</p>
+        <p className="mt-1 text-muted-foreground">
+          Confianca estimada: {preview.confidence}%. Nenhum dado foi gravado. Revise as informacoes antes de cadastrar.
+        </p>
+      </div>
+
+      {client && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Cliente / Locataria</p>
+          <div className="mt-2 space-y-1 text-muted-foreground">
+            <p>{client.legalName || "Razao social nao identificada"}</p>
+            <p>CNPJ/Documento: {client.documentNumber || "-"}</p>
+            <p>
+              Local: {[client.city, client.state].filter(Boolean).join(" - ") || "-"}
+              {client.postalCode ? `, CEP ${client.postalCode}` : ""}
+            </p>
+            {client.address && <p>Endereco: {client.address}</p>}
+            {client.representative && <p>Representante: {client.representative}</p>}
+            {client.guarantor && <p>Fiador: {client.guarantor}</p>}
+          </div>
+          <EntityActionButton>Cadastrar cliente</EntityActionButton>
+        </div>
+      )}
+
+      {contract && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Contrato</p>
+          <div className="mt-2 space-y-1 text-muted-foreground">
+            <p>Tipo: {contract.contractType || "-"}</p>
+            <p>Locadora: {contract.lessor || "-"}</p>
+            <p>Locataria: {contract.lessee || "-"}</p>
+            <p>Valor mensal: {formatMoney(contract.monthlyValue)}</p>
+            <p>Prazo: {contract.termMonths ? `${contract.termMonths} meses` : "-"}</p>
+            <p>Inicio provavel: {contract.probableStartDate || "-"}</p>
+            <p>Final previsto: {contract.calculatedEndDate || "-"}</p>
+            <p>Vencimento: {contract.monthlyDueDay ? `dia ${contract.monthlyDueDay}` : "-"}</p>
+            <p>Caucao: {formatMoney(contract.depositValue)}</p>
+            <p>Indice de reajuste: {contract.adjustmentIndex || "-"}</p>
+            <p>Multa/rescisao: {contract.terminationFine || "-"}</p>
+            <p>Foro: {contract.venue || "-"}</p>
+          </div>
+          <EntityActionButton>Cadastrar contrato</EntityActionButton>
+        </div>
+      )}
+
+      {preview.extractedEquipment.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Equipamentos</p>
+          <div className="mt-2 space-y-2 text-muted-foreground">
+            {preview.extractedEquipment.slice(0, 8).map((item, index) => (
+              <p key={`${item.description}-${index}`}>
+                {item.quantity ? `${item.quantity}x ` : ""}
+                {item.description}
+                {item.unitValue ? ` - unitario ${formatMoney(item.unitValue)}` : ""}
+                {item.totalValue ? ` - total ${formatMoney(item.totalValue)}` : ""}
+              </p>
+            ))}
+            {preview.extractedEquipment.length > 8 && (
+              <p>Mais {preview.extractedEquipment.length - 8} item(ns) identificados.</p>
+            )}
+          </div>
+          <EntityActionButton>Cadastrar equipamentos</EntityActionButton>
+        </div>
+      )}
+
+      {preview.extractedFinancialEntries.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Financeiro sugerido</p>
+          <div className="mt-2 space-y-2 text-muted-foreground">
+            {preview.extractedFinancialEntries.map((entry, index) => (
+              <p key={`${entry.description}-${index}`}>
+                {entry.description}: {formatMoney(entry.value)}
+                {entry.dueDay ? `, vencimento dia ${entry.dueDay}` : ""}
+                {entry.installments ? `, ${entry.installments} parcela(s)` : ""}
+              </p>
+            ))}
+          </div>
+          <EntityActionButton>Criar financeiro</EntityActionButton>
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-muted/60 p-3">
+        <p className="font-semibold">Documento</p>
+        <p className="mt-2 text-muted-foreground">{preview.extractedDocument.suggestedNotes}</p>
+        <EntityActionButton>Anexar documento</EntityActionButton>
+      </div>
+
+      {preview.warnings.length > 0 && (
+        <div className="rounded-2xl bg-amber-50 p-3 text-amber-900">
+          {preview.warnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -191,6 +309,15 @@ function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
           ))}
         </div>
       </div>
+
+      {preview.contractExtractions.length > 0 && (
+        <div className="space-y-3">
+          <p className="font-semibold">Entidades extraidas de contratos</p>
+          {preview.contractExtractions.map((contractPreview) => (
+            <ContractExtractionCards key={contractPreview.sourceFile} preview={contractPreview} />
+          ))}
+        </div>
+      )}
 
       {preview.financialEntries.length > 0 && (
         <div className="space-y-2">
@@ -752,7 +879,7 @@ export function Header() {
                 type="file"
                 multiple
                 className="hidden"
-                accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,image/*"
+                accept=".xlsx,.xls,.csv,.docx,.pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
                 onChange={(event) => {
                   if (event.target.files) appendCosFiles(event.target.files)
                   event.currentTarget.value = ""
