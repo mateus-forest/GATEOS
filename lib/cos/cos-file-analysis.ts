@@ -514,6 +514,13 @@ function firstMatch(text: string, patterns: RegExp[]) {
   return undefined
 }
 
+function firstNumber(text: string, patterns: RegExp[]) {
+  const value = firstMatch(text, patterns)
+  if (!value) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
 function parseDate(value?: string) {
   if (!value) return undefined
   const match = value.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/)
@@ -575,15 +582,117 @@ function extractGuarantor(text: string) {
   ])
 }
 
+function extractLabeledBlock(text: string, startPattern: RegExp, endPatterns: RegExp[], maxLength = 1600) {
+  const startMatch = text.match(startPattern)
+  if (!startMatch || startMatch.index === undefined) return ""
+
+  const rest = text.slice(startMatch.index)
+  const searchArea = rest.slice(startMatch[0].length)
+  const endIndex = endPatterns
+    .map((pattern) => {
+      const match = searchArea.match(pattern)
+      return match?.index === undefined ? -1 : match.index + startMatch[0].length
+    })
+    .filter((index) => index > startMatch[0].length + 20)
+    .sort((a, b) => a - b)[0]
+
+  return rest.slice(0, endIndex || maxLength)
+}
+
+function extractCompanyFromBlock(block: string) {
+  const cnpjIndex = block.search(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)
+  const candidates = [cnpjIndex >= 0 ? block.slice(Math.max(0, cnpjIndex - 280), cnpjIndex + 40) : "", block]
+
+  for (const candidate of candidates) {
+    const matches = Array.from(candidate.matchAll(/([A-Z0-9][A-Z0-9\s.,&'()/-]{8,}?(?:LTDA|S\.A\.|EIRELI|ME|EPP))/g))
+    const best = matches
+      .map((match) => match[1].replace(/\s+/g, " ").replace(/^[^A-Z0-9]+/, "").trim())
+      .sort((a, b) => b.length - a.length)[0]
+    if (best) return best
+  }
+
+  return undefined
+}
+
+function extractLocatariaAccurate(text: string) {
+  const block = extractLabeledBlock(text, /LOCAT.RIA|LOCATARIA/i, [
+    /FIADOR/i,
+    /CLAUSULA|CL.USULA/i,
+    /LOCADORA/i,
+  ])
+  const fallback = extractParty(text, "locat[Ã¡a]ria")
+
+  return {
+    company: extractCompanyFromBlock(block) ?? fallback.company,
+    cnpj: block.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)?.[0] ?? fallback.cnpj,
+    segment: block || fallback.segment,
+  }
+}
+
+function extractAddressFromLocatariaBlock(segment: string) {
+  const fallback = extractAddress(segment)
+  const addressMatch = segment.match(/((?:Rua|Avenida|Av\.|Travessa|Rodovia)\s+[\s\S]{0,220}?CEP\s*\d{2}\.?\d{3}-?\d{3})/i)
+  const fullAddress = addressMatch?.[1]?.replace(/\s+/g, " ").trim()
+  const cep = fullAddress?.match(/\d{2}\.?\d{3}-?\d{3}/)?.[0] ?? fallback.postalCode
+  const cityState = (fullAddress ?? segment).match(/([A-Za-zÀ-ÿ\s.'-]+?)\s*[-\/]\s*([A-Z]{2})(?:\s*,?\s*CEP|\s|$)/)
+  const address = fullAddress
+    ?.replace(/\s*,?\s*CEP\s*\d{2}\.?\d{3}-?\d{3}.*/i, "")
+    .replace(/\s*,?\s*[A-Za-zÀ-ÿ\s.'-]+?\s*[-\/]\s*[A-Z]{2}\s*$/i, "")
+    .trim()
+
+  return {
+    address: address || fallback.address,
+    city: cityState?.[1]?.replace(/.*Bairro\s+[^,]+,\s*/i, "").trim() || fallback.city,
+    state: cityState?.[2] || fallback.state,
+    postalCode: cep,
+  }
+}
+
+function extractTermMonthsAccurate(text: string) {
+  return firstNumber(text, [
+    /prazo\s+determinado\s+de\s+(\d{1,3})\s*mes/i,
+    /prazo[\s\S]{0,160}?determinado[\s\S]{0,100}?(\d{1,3})\s*mes/i,
+    /vigencia[\s\S]{0,160}?(\d{1,3})\s*mes/i,
+    /vig.ncia[\s\S]{0,160}?(\d{1,3})\s*mes/i,
+    /(\d{1,3})\s*meses/i,
+  ])
+}
+
+function extractDepositValueAccurate(text: string) {
+  return currencyNear(text, [
+    "pagamento antecipado de um aluguel",
+    "antecipado de um aluguel",
+    "um aluguel",
+    "caucao",
+    "cau.ao",
+    "garantia",
+  ])
+}
+
+function extractContractObjectBlock(text: string) {
+  return extractLabeledBlock(
+    text,
+    /CLAUSULA\s*1|CL.USULA\s*1|DO OBJETO|OBJETO/i,
+    [/\bTotal\b/i, /CLAUSULA\s*2|CL.USULA\s*2|DO PRAZO/i],
+    2600
+  )
+}
+
 function extractEquipmentFromContract(text: string) {
   const equipment: CosExtractedEquipment[] = []
-  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+  const objectBlock = extractContractObjectBlock(text)
+  const lines = (objectBlock || text)
+    .split(/\n+/)
+    .flatMap((line) => line.split(/\s+\|\s+/))
+    .map((line) => line.trim())
+    .filter(Boolean)
 
   for (const line of lines) {
     const normalized = normalizeLoose(line)
     const hasEquipmentSignal = /(monitor|ryzen|rtx|computador|pc gamer|notebook|ssd|hd|memoria|ram|processador|equipamento)/i.test(line)
     const quantityMatch = line.match(/(?:^|\s)(\d{1,3})\s*(?:x|un|und|unidade|unidades)?\s+/i)
     if (!hasEquipmentSignal || !quantityMatch) continue
+    if (/(fiador|foro|multa|rescis|clausula|locataria|locadora|assinatura|testemunha)/i.test(normalized)) continue
 
     const quantity = Number(quantityMatch[1])
     const moneyMatches = Array.from(line.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})*,\d{2}/g)).map((match) =>
@@ -623,7 +732,6 @@ function analyzeContractText(file: File, text: string): CosContractExtractionPre
   const normalized = normalizeLoose(text)
   const locataria = extractParty(text, "locat[áa]ria")
   const locadora = extractParty(text, "locadora")
-  const address = extractAddress(locataria.segment || text)
   const signatureDate = parseDate(firstMatch(text, [/assinad[oa][\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/]))
   const termMonths = Number(firstMatch(text, [/prazo[\s\S]{0,120}?(\d{1,3})\s*mes/i, /(\d{1,3})\s*meses/i])) || undefined
   const probableStartDate = parseDate(firstMatch(text, [/in[ií]cio[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /vig[eê]ncia[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i])) ?? signatureDate
@@ -634,24 +742,40 @@ function analyzeContractText(file: File, text: string): CosContractExtractionPre
   const terminationFine = firstMatch(text, [/multa[\s\S]{0,180}?((?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}%|[0-9]+\s*%)/i])
   const venue = firstMatch(text, [/foro[\s\S]{0,160}?comarca\s+de\s+([^,\n.]+)/i, /foro\s+de\s+([^,\n.]+)/i])
   const extractedEquipment = extractEquipmentFromContract(text)
+  const refinedLocataria = extractLocatariaAccurate(text)
+  const refinedAddress = extractAddressFromLocatariaBlock(refinedLocataria.segment || locataria.segment || text)
+  const refinedTermMonths = extractTermMonthsAccurate(text) ?? termMonths
+  const refinedDepositValue = extractDepositValueAccurate(text) ?? depositValue
   const warnings: string[] = []
 
-  if (!locataria.company) warnings.push("Nao identifiquei a razao social da locataria com alta confianca.")
+  console.info("[cos] Refined contract extraction", {
+    fileName: file.name,
+    lessee: refinedLocataria.company,
+    cnpj: refinedLocataria.cnpj,
+    city: refinedAddress.city,
+    state: refinedAddress.state,
+    termMonths: refinedTermMonths,
+    monthlyValue,
+    depositValue: refinedDepositValue,
+    equipmentItems: extractedEquipment.length,
+  })
+
+  if (!refinedLocataria.company) warnings.push("Nao identifiquei a razao social da locataria com alta confianca.")
   if (!monthlyValue) warnings.push("Nao identifiquei valor mensal com alta confianca.")
-  if (!termMonths) warnings.push("Nao identifiquei prazo em meses com alta confianca.")
+  if (!refinedTermMonths) warnings.push("Nao identifiquei prazo em meses com alta confianca.")
   if (extractedEquipment.length === 0) warnings.push("Nao identifiquei equipamentos estruturados no contrato.")
 
   const extractedContract: CosExtractedContract = {
     contractType: normalized.includes("locacao") ? "Locacao de equipamentos" : "Contrato operacional",
     lessor: locadora.company,
-    lessee: locataria.company,
+    lessee: refinedLocataria.company,
     signatureDate,
     probableStartDate,
-    termMonths,
-    calculatedEndDate: addMonths(probableStartDate, termMonths),
+    termMonths: refinedTermMonths,
+    calculatedEndDate: addMonths(probableStartDate, refinedTermMonths),
     monthlyDueDay,
     monthlyValue,
-    depositValue,
+    depositValue: refinedDepositValue,
     adjustmentIndex,
     terminationFine,
     venue,
@@ -662,20 +786,20 @@ function analyzeContractText(file: File, text: string): CosContractExtractionPre
   if (monthlyValue) {
     extractedFinancialEntries.push({
       type: "receita",
-      description: `Receita recorrente mensal${locataria.company ? ` - ${locataria.company}` : ""}`,
+      description: `Receita recorrente mensal${refinedLocataria.company ? ` - ${refinedLocataria.company}` : ""}`,
       value: monthlyValue,
       dueDay: monthlyDueDay,
-      installments: termMonths,
+      installments: refinedTermMonths,
       firstCompetence: probableStartDate,
-      lastCompetence: addMonths(probableStartDate, termMonths),
+      lastCompetence: addMonths(probableStartDate, refinedTermMonths),
       source: file.name,
     })
   }
-  if (depositValue) {
+  if (refinedDepositValue) {
     extractedFinancialEntries.push({
       type: "receita",
-      description: `Caucao contratual${locataria.company ? ` - ${locataria.company}` : ""}`,
-      value: depositValue,
+      description: `Caucao contratual${refinedLocataria.company ? ` - ${refinedLocataria.company}` : ""}`,
+      value: refinedDepositValue,
       dueDay: monthlyDueDay,
       installments: 1,
       firstCompetence: probableStartDate,
@@ -686,9 +810,9 @@ function analyzeContractText(file: File, text: string): CosContractExtractionPre
   const previewWithoutConfidence = {
     sourceFile: file.name,
     extractedClient: {
-      legalName: locataria.company,
-      documentNumber: locataria.cnpj,
-      ...address,
+      legalName: refinedLocataria.company,
+      documentNumber: refinedLocataria.cnpj,
+      ...refinedAddress,
       representative: extractRepresentative(text),
       guarantor: extractGuarantor(text),
     },
