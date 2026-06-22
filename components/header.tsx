@@ -11,6 +11,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -52,6 +60,22 @@ type CosAttachment = {
   name: string
   size: number
   type: string
+}
+type CosActionKind = "create_client" | "create_financial_entry" | "attach_document"
+type CosActionReview = {
+  kind: CosActionKind
+  title: string
+  description: string
+  endpoint: string
+  payload: Record<string, unknown>
+  source: {
+    fileName?: string
+    type?: string
+    confidence?: number
+    detectedType?: string
+  }
+  fileName?: string
+  requiresNoDocumentConfirmation?: boolean
 }
 type SessionProfile = {
   name: string
@@ -108,10 +132,19 @@ function formatMoney(value: unknown) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
-function EntityActionButton({ children }: { children: string }) {
+function EntityActionButton({
+  children,
+  disabled = true,
+  onClick,
+}: {
+  children: string
+  disabled?: boolean
+  onClick?: () => void
+}) {
   return (
-    <Button type="button" disabled variant="outline" className="mt-3 w-full rounded-2xl">
-      {children} (proxima etapa)
+    <Button type="button" disabled={disabled} variant="outline" className="mt-3 w-full rounded-2xl" onClick={onClick}>
+      {children}
+      {disabled ? " (proxima etapa)" : ""}
     </Button>
   )
 }
@@ -155,9 +188,21 @@ function PreviewTable({ rows, columns }: { rows: Record<string, unknown>[]; colu
   )
 }
 
-function ContractExtractionCards({ preview }: { preview: CosFileAnalysisPreview["contractExtractions"][number] }) {
+function ContractExtractionCards({
+  preview,
+  onAction,
+}: {
+  preview: CosFileAnalysisPreview["contractExtractions"][number]
+  onAction: (review: CosActionReview) => void
+}) {
   const client = preview.extractedClient
   const contract = preview.extractedContract
+  const source = {
+    fileName: preview.sourceFile,
+    type: "contract",
+    confidence: preview.confidence,
+    detectedType: "Contrato",
+  }
 
   return (
     <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
@@ -182,7 +227,26 @@ function ContractExtractionCards({ preview }: { preview: CosFileAnalysisPreview[
             {client.representative && <p>Representante: {client.representative}</p>}
             {client.guarantor && <p>Fiador: {client.guarantor}</p>}
           </div>
-          <EntityActionButton>Cadastrar cliente</EntityActionButton>
+          <EntityActionButton
+            disabled={false}
+            onClick={() =>
+              onAction({
+                kind: "create_client",
+                title: "Cadastrar cliente",
+                description: "Revise os dados extraidos antes de criar o cliente.",
+                endpoint: "/api/cos/actions/create-client",
+                payload: {
+                  ...client,
+                  name: client.legalName,
+                  documentNumber: client.documentNumber,
+                },
+                source,
+                requiresNoDocumentConfirmation: !client.documentNumber,
+              })
+            }
+          >
+            Cadastrar cliente
+          </EntityActionButton>
         </div>
       )}
 
@@ -232,21 +296,64 @@ function ContractExtractionCards({ preview }: { preview: CosFileAnalysisPreview[
           <p className="font-semibold">Financeiro sugerido</p>
           <div className="mt-2 space-y-2 text-muted-foreground">
             {preview.extractedFinancialEntries.map((entry, index) => (
-              <p key={`${entry.description}-${index}`}>
-                {entry.description}: {formatMoney(entry.value)}
-                {entry.dueDay ? `, vencimento dia ${entry.dueDay}` : ""}
-                {entry.installments ? `, ${entry.installments} parcela(s)` : ""}
-              </p>
+              <div key={`${entry.description}-${index}`} className="rounded-xl bg-white/70 p-2">
+                <p>
+                  {entry.description}: {formatMoney(entry.value)}
+                  {entry.dueDay ? `, vencimento dia ${entry.dueDay}` : ""}
+                  {entry.installments ? `, ${entry.installments} parcela(s)` : ""}
+                </p>
+                <EntityActionButton
+                  disabled={false}
+                  onClick={() =>
+                    onAction({
+                      kind: "create_financial_entry",
+                      title: "Criar lancamento financeiro",
+                      description: "Revise o lancamento individual antes de gravar no financeiro.",
+                      endpoint: "/api/cos/actions/create-financial-entry",
+                      payload: {
+                        type: entry.type,
+                        description: entry.description,
+                        value: entry.value,
+                        due_date: "",
+                        competence_date: "",
+                        status: "pendente",
+                        suggested_due_day: entry.dueDay ?? "",
+                        category: entry.source,
+                      },
+                      source,
+                    })
+                  }
+                >
+                  Criar lancamento financeiro
+                </EntityActionButton>
+              </div>
             ))}
           </div>
-          <EntityActionButton>Criar financeiro</EntityActionButton>
         </div>
       )}
 
       <div className="rounded-2xl bg-muted/60 p-3">
         <p className="font-semibold">Documento</p>
         <p className="mt-2 text-muted-foreground">{preview.extractedDocument.suggestedNotes}</p>
-        <EntityActionButton>Anexar documento</EntityActionButton>
+        <EntityActionButton
+          disabled={false}
+          onClick={() =>
+            onAction({
+              kind: "attach_document",
+              title: "Anexar documento",
+              description: "Revise os metadados antes de anexar o arquivo ao sistema.",
+              endpoint: "/api/cos/actions/attach-document",
+              payload: {
+                detectedType: preview.extractedDocument.type,
+                notes: preview.extractedDocument.suggestedNotes,
+              },
+              source,
+              fileName: preview.sourceFile,
+            })
+          }
+        >
+          Anexar documento
+        </EntityActionButton>
       </div>
 
       {preview.warnings.length > 0 && (
@@ -260,10 +367,22 @@ function ContractExtractionCards({ preview }: { preview: CosFileAnalysisPreview[
   )
 }
 
-function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["financialOcrAnalyses"][number] }) {
+function FinancialOcrCards({
+  preview,
+  onAction,
+}: {
+  preview: CosFileAnalysisPreview["financialOcrAnalyses"][number]
+  onAction: (review: CosActionReview) => void
+}) {
   const revenueTotal = formatMoney(preview.summary.revenueTotal)
   const expenseTotal = formatMoney(preview.summary.expenseTotal)
   const resultTotal = formatMoney(preview.summary.operationalResult)
+  const source = {
+    fileName: preview.sourceFile,
+    type: preview.sourceType,
+    confidence: preview.confidence,
+    detectedType: preview.detectedType,
+  }
 
   return (
     <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
@@ -293,17 +412,34 @@ function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["finan
       <div className="rounded-2xl bg-muted/60 p-3">
         <p className="font-semibold">Clientes encontrados</p>
         {preview.extractedClients.length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 space-y-2">
             {preview.extractedClients.map((client) => (
-              <Badge key={client} variant="secondary" className="rounded-full">
-                {client}
-              </Badge>
+              <div key={client} className="rounded-xl bg-white/70 p-2">
+                <Badge variant="secondary" className="rounded-full">
+                  {client}
+                </Badge>
+                <EntityActionButton
+                  disabled={false}
+                  onClick={() =>
+                    onAction({
+                      kind: "create_client",
+                      title: "Cadastrar cliente",
+                      description: "Revise o cliente identificado pelo OCR antes de cadastrar.",
+                      endpoint: "/api/cos/actions/create-client",
+                      payload: { name: client, legalName: client },
+                      source,
+                      requiresNoDocumentConfirmation: true,
+                    })
+                  }
+                >
+                  Cadastrar cliente
+                </EntityActionButton>
+              </div>
             ))}
           </div>
         ) : (
           <p className="mt-2 text-muted-foreground">Nenhum cliente identificado com confianca.</p>
         )}
-        <EntityActionButton>Cadastrar clientes</EntityActionButton>
       </div>
 
       {preview.extractedCategories.length > 0 && (
@@ -328,12 +464,36 @@ function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["finan
           <p className="font-semibold">Receitas encontradas</p>
           <div className="mt-2 space-y-2 text-muted-foreground">
             {preview.extractedRevenue.slice(0, 8).map((item, index) => (
-              <p key={`${item.description}-${index}`} className="truncate">
-                {item.description}: {item.values.map((value) => formatMoney(value)).join(" | ")}
-              </p>
+              <div key={`${item.description}-${index}`} className="rounded-xl bg-white/70 p-2">
+                <p className="truncate">
+                  {item.description}: {item.values.map((value) => formatMoney(value)).join(" | ")}
+                </p>
+                <EntityActionButton
+                  disabled={false}
+                  onClick={() =>
+                    onAction({
+                      kind: "create_financial_entry",
+                      title: "Criar lancamento financeiro",
+                      description: "Revise esta receita individual antes de gravar no financeiro.",
+                      endpoint: "/api/cos/actions/create-financial-entry",
+                      payload: {
+                        type: "receita",
+                        description: item.description,
+                        value: item.values[item.values.length - 1],
+                        category: item.category,
+                        competence_date: "",
+                        due_date: "",
+                        status: "pendente",
+                      },
+                      source,
+                    })
+                  }
+                >
+                  Criar lancamento financeiro
+                </EntityActionButton>
+              </div>
             ))}
           </div>
-          <EntityActionButton>Criar receitas</EntityActionButton>
         </div>
       )}
 
@@ -342,12 +502,36 @@ function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["finan
           <p className="font-semibold">Despesas encontradas</p>
           <div className="mt-2 space-y-2 text-muted-foreground">
             {preview.extractedExpenses.slice(0, 8).map((item, index) => (
-              <p key={`${item.description}-${index}`} className="truncate">
-                {item.description}: {item.values.map((value) => formatMoney(value)).join(" | ")}
-              </p>
+              <div key={`${item.description}-${index}`} className="rounded-xl bg-white/70 p-2">
+                <p className="truncate">
+                  {item.description}: {item.values.map((value) => formatMoney(value)).join(" | ")}
+                </p>
+                <EntityActionButton
+                  disabled={false}
+                  onClick={() =>
+                    onAction({
+                      kind: "create_financial_entry",
+                      title: "Criar lancamento financeiro",
+                      description: "Revise esta despesa individual antes de gravar no financeiro.",
+                      endpoint: "/api/cos/actions/create-financial-entry",
+                      payload: {
+                        type: "despesa",
+                        description: item.description,
+                        value: item.values[item.values.length - 1],
+                        category: item.category,
+                        competence_date: "",
+                        due_date: "",
+                        status: "pendente",
+                      },
+                      source,
+                    })
+                  }
+                >
+                  Criar lancamento financeiro
+                </EntityActionButton>
+              </div>
             ))}
           </div>
-          <EntityActionButton>Criar despesas</EntityActionButton>
         </div>
       )}
 
@@ -364,7 +548,25 @@ function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["finan
         <p className="mt-2 text-muted-foreground">
           O arquivo original pode ser anexado ao sistema em uma etapa futura. Nesta versao, a analise permanece somente leitura.
         </p>
-        <EntityActionButton>Anexar documento</EntityActionButton>
+        <EntityActionButton
+          disabled={false}
+          onClick={() =>
+            onAction({
+              kind: "attach_document",
+              title: "Anexar documento",
+              description: "Revise os metadados antes de anexar o arquivo ao sistema.",
+              endpoint: "/api/cos/actions/attach-document",
+              payload: {
+                detectedType: preview.detectedType,
+                notes: `Analise OCR financeira: ${preview.detectedType}.`,
+              },
+              source,
+              fileName: preview.sourceFile,
+            })
+          }
+        >
+          Anexar documento
+        </EntityActionButton>
       </div>
 
       {preview.extractedWarnings.length > 0 && (
@@ -378,7 +580,13 @@ function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["finan
   )
 }
 
-function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
+function CosPreviewPanel({
+  preview,
+  onAction,
+}: {
+  preview: CosFileAnalysisPreview
+  onAction: (review: CosActionReview) => void
+}) {
   return (
     <div className="mt-4 space-y-4 rounded-3xl border border-border bg-white p-4 text-xs text-foreground">
       <div>
@@ -432,7 +640,7 @@ function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
         <div className="space-y-3">
           <p className="font-semibold">Entidades extraidas de contratos</p>
           {preview.contractExtractions.map((contractPreview) => (
-            <ContractExtractionCards key={contractPreview.sourceFile} preview={contractPreview} />
+            <ContractExtractionCards key={contractPreview.sourceFile} preview={contractPreview} onAction={onAction} />
           ))}
         </div>
       )}
@@ -441,7 +649,7 @@ function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
         <div className="space-y-3">
           <p className="font-semibold">Analise financeira por OCR</p>
           {preview.financialOcrAnalyses.map((ocrPreview) => (
-            <FinancialOcrCards key={ocrPreview.sourceFile} preview={ocrPreview} />
+            <FinancialOcrCards key={ocrPreview.sourceFile} preview={ocrPreview} onAction={onAction} />
           ))}
         </div>
       )}
@@ -493,6 +701,11 @@ export function Header() {
   const [cosLoading, setCosLoading] = useState(false)
   const [cosDragActive, setCosDragActive] = useState(false)
   const [cosAttachments, setCosAttachments] = useState<File[]>([])
+  const [cosUploadedFiles, setCosUploadedFiles] = useState<Record<string, File>>({})
+  const [cosActionReview, setCosActionReview] = useState<CosActionReview | null>(null)
+  const [cosActionPayload, setCosActionPayload] = useState<Record<string, string>>({})
+  const [cosActionConfirmNoDocument, setCosActionConfirmNoDocument] = useState(false)
+  const [cosActionSubmitting, setCosActionSubmitting] = useState(false)
   const [cosMessages, setCosMessages] = useState<CosChatMessage[]>([
     { id: "cos-initial", role: "assistant", content: COS_INITIAL_MESSAGE },
   ])
@@ -652,6 +865,83 @@ export function Header() {
     setCosAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
+  const openCosActionReview = (review: CosActionReview) => {
+    const normalizedPayload = Object.fromEntries(
+      Object.entries(review.payload).map(([key, value]) => [key, value === undefined || value === null ? "" : String(value)])
+    )
+    setCosActionReview(review)
+    setCosActionPayload(normalizedPayload)
+    setCosActionConfirmNoDocument(false)
+  }
+
+  const closeCosActionReview = () => {
+    if (cosActionSubmitting) return
+    setCosActionReview(null)
+    setCosActionPayload({})
+    setCosActionConfirmNoDocument(false)
+  }
+
+  const executeCosAction = async () => {
+    if (!cosActionReview || cosActionSubmitting) return
+
+    setCosActionSubmitting(true)
+    try {
+      const file = cosActionReview.fileName ? cosUploadedFiles[cosActionReview.fileName] : undefined
+      const response =
+        cosActionReview.kind === "attach_document"
+          ? await fetch(cosActionReview.endpoint, {
+              method: "POST",
+              body: (() => {
+                const formData = new FormData()
+                if (file) formData.append("file", file)
+                formData.append("sourceFileName", cosActionReview.source.fileName ?? cosActionReview.fileName ?? "")
+                formData.append("sourceFileType", cosActionReview.source.type ?? "")
+                formData.append("sourceConfidence", String(cosActionReview.source.confidence ?? ""))
+                formData.append("detectedType", cosActionPayload.detectedType ?? cosActionReview.source.detectedType ?? "")
+                formData.append("notes", cosActionPayload.notes ?? "")
+                return formData
+              })(),
+            })
+          : await fetch(cosActionReview.endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                payload: cosActionPayload,
+                source: cosActionReview.source,
+                confirmNoDocument: cosActionConfirmNoDocument,
+              }),
+            })
+
+      const result = (await response.json().catch(() => null)) as { error?: string; log?: { logged?: boolean } } | null
+
+      if (!response.ok) {
+        toast.error(result?.error || "Nao foi possivel executar a acao do COS.")
+        return
+      }
+
+      toast.success(result?.log?.logged === false ? "Acao executada. Log pendente de tabela COS." : "Acao executada com sucesso.")
+      setCosMessages((current) => [
+        ...current,
+        {
+          id: `assistant-action-${Date.now()}`,
+          role: "assistant",
+          content:
+            result?.log?.logged === false
+              ? "A acao foi executada com sucesso, mas o log do COS nao foi registrado porque a tabela de auditoria ainda precisa ser aplicada."
+              : "Acao executada com sucesso e registrada no log do COS.",
+        },
+      ])
+      setCosActionReview(null)
+      setCosActionPayload({})
+      setCosActionConfirmNoDocument(false)
+    } catch (error) {
+      console.error("[cos] Falha ao executar acao isolada", error)
+      toast.error("Nao foi possivel executar a acao do COS.")
+    } finally {
+      setCosActionSubmitting(false)
+    }
+  }
+
   const sendCosMessage = async (rawMessage?: string) => {
     const message = (rawMessage ?? cosInput).trim()
     const filesToSend = cosAttachments
@@ -706,6 +996,13 @@ export function Header() {
 
       if (response.ok && payload?.preview) {
         assistantMessage.preview = payload.preview
+        setCosUploadedFiles((current) => {
+          const next = { ...current }
+          filesToSend.forEach((file) => {
+            next[file.name] = file
+          })
+          return next
+        })
       }
 
       setCosMessages((current) => [...current, assistantMessage])
@@ -743,6 +1040,22 @@ export function Header() {
     router.replace("/login")
     router.refresh()
   }
+
+  const cosActionNeedsDate =
+    cosActionReview?.kind === "create_financial_entry" &&
+    !String(cosActionPayload.competence_date ?? "").trim() &&
+    !String(cosActionPayload.due_date ?? "").trim()
+  const cosActionNeedsNoDocumentConfirmation =
+    cosActionReview?.requiresNoDocumentConfirmation && !cosActionConfirmNoDocument
+  const cosActionNeedsFile =
+    cosActionReview?.kind === "attach_document" &&
+    (!cosActionReview.fileName || !cosUploadedFiles[cosActionReview.fileName])
+  const cosActionCanConfirm =
+    Boolean(cosActionReview) &&
+    !cosActionSubmitting &&
+    !cosActionNeedsDate &&
+    !cosActionNeedsNoDocumentConfirmation &&
+    !cosActionNeedsFile
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-xl sm:px-7 lg:px-10">
@@ -966,7 +1279,7 @@ export function Header() {
                           ))}
                         </div>
                       )}
-                      {message.preview && <CosPreviewPanel preview={message.preview} />}
+                      {message.preview && <CosPreviewPanel preview={message.preview} onAction={openCosActionReview} />}
                     </div>
                   </div>
                 ))}
@@ -1074,6 +1387,107 @@ export function Header() {
         </div>,
         document.body
       )}
+
+      <Dialog open={Boolean(cosActionReview)} onOpenChange={(open) => (!open ? closeCosActionReview() : undefined)}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{cosActionReview?.title ?? "Revisar acao do COS"}</DialogTitle>
+            <DialogDescription>
+              {cosActionReview?.description ?? "Revise os dados antes de gravar."} Nenhuma acao sera executada sem esta confirmacao.
+            </DialogDescription>
+          </DialogHeader>
+
+          {cosActionReview && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-muted/50 p-4 text-sm">
+                <p className="font-semibold">Origem</p>
+                <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+                  <p>Arquivo: {cosActionReview.source.fileName || cosActionReview.fileName || "-"}</p>
+                  <p>Tipo: {cosActionReview.source.detectedType || cosActionReview.source.type || "-"}</p>
+                  <p>Confianca: {cosActionReview.source.confidence ?? "-"}%</p>
+                  <p>Acao: {cosActionReview.kind}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(cosActionPayload).map(([key, value]) => {
+                  const isLong = key === "notes" || key === "address" || key === "description"
+                  return (
+                    <label key={key} className={isLong ? "sm:col-span-2" : ""}>
+                      <span className="mb-1 block text-xs font-medium text-muted-foreground">{key}</span>
+                      {isLong ? (
+                        <textarea
+                          className="min-h-24 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
+                          value={value}
+                          onChange={(event) =>
+                            setCosActionPayload((current) => ({ ...current, [key]: event.target.value }))
+                          }
+                        />
+                      ) : (
+                        <Input
+                          type={key.includes("date") ? "date" : "text"}
+                          value={value}
+                          onChange={(event) =>
+                            setCosActionPayload((current) => ({ ...current, [key]: event.target.value }))
+                          }
+                        />
+                      )}
+                    </label>
+                  )
+                })}
+
+                {cosActionReview.kind === "create_financial_entry" && !("competence_date" in cosActionPayload) && (
+                  <label>
+                    <span className="mb-1 block text-xs font-medium text-muted-foreground">competence_date</span>
+                    <Input
+                      type="date"
+                      value={cosActionPayload.competence_date ?? ""}
+                      onChange={(event) =>
+                        setCosActionPayload((current) => ({ ...current, competence_date: event.target.value }))
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+
+              {cosActionNeedsDate && (
+                <p className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">
+                  Informe competencia ou vencimento antes de criar o lancamento financeiro.
+                </p>
+              )}
+
+              {cosActionReview.requiresNoDocumentConfirmation && (
+                <label className="flex items-start gap-3 rounded-2xl border border-border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={cosActionConfirmNoDocument}
+                    onChange={(event) => setCosActionConfirmNoDocument(event.target.checked)}
+                  />
+                  <span>
+                    Confirmo que desejo cadastrar este cliente mesmo sem CNPJ/CPF identificado na extracao.
+                  </span>
+                </label>
+              )}
+
+              {cosActionNeedsFile && (
+                <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-900">
+                  O arquivo original nao esta mais disponivel nesta sessao do COS. Envie o arquivo novamente para anexar.
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeCosActionReview} disabled={cosActionSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={executeCosAction} disabled={!cosActionCanConfirm}>
+              {cosActionSubmitting ? "Gravando..." : "Confirmar e gravar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </header>
   )
