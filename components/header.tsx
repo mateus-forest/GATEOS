@@ -157,9 +157,28 @@ function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
               {file.sheets.length > 0 && (
                 <div className="mt-2 space-y-1 text-muted-foreground">
                   {file.sheets.map((sheet) => (
-                    <p key={sheet.name}>
-                      {sheet.name}: {sheet.rowCount} linha(s), colunas: {sheet.columns.slice(0, 8).join(", ") || "-"}
-                    </p>
+                    <div key={sheet.name} className="space-y-2 rounded-xl bg-white/70 p-3">
+                      <p className="font-medium text-foreground">{sheet.name}</p>
+                      {sheet.probableType && <p>Tipo provavel: {sheet.probableType}</p>}
+                      <p>
+                        Linhas analisadas: {sheet.rowCount}. Colunas uteis: {sheet.usefulColumns}. Cabecalho provavel:{" "}
+                        {sheet.headerRow ? `linha ${sheet.headerRow}` : "nao identificado"}.
+                      </p>
+                      <p>Linhas vazias ignoradas: {sheet.ignoredEmptyRows}.</p>
+                      <p>Colunas detectadas: {sheet.columns.slice(0, 12).join(", ") || "-"}</p>
+                      {sheet.detectedSections.length > 0 && (
+                        <p>Secoes detectadas: {sheet.detectedSections.slice(0, 8).join(", ")}</p>
+                      )}
+                      {sheet.sampleRows.length > 0 && (
+                        <div className="space-y-2 pt-1">
+                          <p className="font-medium text-foreground">Amostra estruturada</p>
+                          <PreviewTable
+                            rows={sheet.sampleRows}
+                            columns={["_rowNumber", "_rowType", ...sheet.columns.slice(0, 6)]}
+                          />
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
