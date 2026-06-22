@@ -260,6 +260,124 @@ function ContractExtractionCards({ preview }: { preview: CosFileAnalysisPreview[
   )
 }
 
+function FinancialOcrCards({ preview }: { preview: CosFileAnalysisPreview["financialOcrAnalyses"][number] }) {
+  const revenueTotal = formatMoney(preview.summary.revenueTotal)
+  const expenseTotal = formatMoney(preview.summary.expenseTotal)
+  const resultTotal = formatMoney(preview.summary.operationalResult)
+
+  return (
+    <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
+      <div>
+        <p className="font-semibold">OCR financeiro: {preview.sourceFile}</p>
+        <p className="mt-1 text-muted-foreground">
+          Tipo detectado: {preview.detectedType}. Confianca estimada: {preview.confidence}%.
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          Nenhum dado foi gravado. Revise as informacoes antes de qualquer cadastro.
+        </p>
+      </div>
+
+      <div className="rounded-2xl bg-muted/60 p-3">
+        <p className="font-semibold">Resumo financeiro</p>
+        <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+          <p>Valores detectados: {preview.summary.valuesDetected}</p>
+          <p>Percentuais detectados: {preview.summary.percentagesDetected}</p>
+          <p>Receita total: {revenueTotal}</p>
+          <p>Despesas totais: {expenseTotal}</p>
+          <p>Resultado operacional: {resultTotal}</p>
+          <p>Colunas: {preview.extractedColumns.join(", ") || "-"}</p>
+        </div>
+        <EntityActionButton>Salvar analise</EntityActionButton>
+      </div>
+
+      <div className="rounded-2xl bg-muted/60 p-3">
+        <p className="font-semibold">Clientes encontrados</p>
+        {preview.extractedClients.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {preview.extractedClients.map((client) => (
+              <Badge key={client} variant="secondary" className="rounded-full">
+                {client}
+              </Badge>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-muted-foreground">Nenhum cliente identificado com confianca.</p>
+        )}
+        <EntityActionButton>Cadastrar clientes</EntityActionButton>
+      </div>
+
+      {preview.extractedCategories.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Categorias DRE encontradas</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {preview.extractedCategories.map((category) => (
+              <Badge key={category} variant="outline" className="rounded-full">
+                {category}
+              </Badge>
+            ))}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <EntityActionButton>Criar categorias DRE</EntityActionButton>
+            <EntityActionButton>Vincular categorias</EntityActionButton>
+          </div>
+        </div>
+      )}
+
+      {preview.extractedRevenue.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Receitas encontradas</p>
+          <div className="mt-2 space-y-2 text-muted-foreground">
+            {preview.extractedRevenue.slice(0, 8).map((item, index) => (
+              <p key={`${item.description}-${index}`} className="truncate">
+                {item.description}: {item.values.map((value) => formatMoney(value)).join(" | ")}
+              </p>
+            ))}
+          </div>
+          <EntityActionButton>Criar receitas</EntityActionButton>
+        </div>
+      )}
+
+      {preview.extractedExpenses.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Despesas encontradas</p>
+          <div className="mt-2 space-y-2 text-muted-foreground">
+            {preview.extractedExpenses.slice(0, 8).map((item, index) => (
+              <p key={`${item.description}-${index}`} className="truncate">
+                {item.description}: {item.values.map((value) => formatMoney(value)).join(" | ")}
+              </p>
+            ))}
+          </div>
+          <EntityActionButton>Criar despesas</EntityActionButton>
+        </div>
+      )}
+
+      {preview.extractedFinancialEntries.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Lancamentos financeiros sugeridos</p>
+          <PreviewTable rows={preview.extractedFinancialEntries} columns={["type", "description", "value", "category", "source"]} />
+          <EntityActionButton>Criar lancamentos financeiros</EntityActionButton>
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-muted/60 p-3">
+        <p className="font-semibold">Documento</p>
+        <p className="mt-2 text-muted-foreground">
+          O arquivo original pode ser anexado ao sistema em uma etapa futura. Nesta versao, a analise permanece somente leitura.
+        </p>
+        <EntityActionButton>Anexar documento</EntityActionButton>
+      </div>
+
+      {preview.extractedWarnings.length > 0 && (
+        <div className="rounded-2xl bg-amber-50 p-3 text-amber-900">
+          {preview.extractedWarnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
   return (
     <div className="mt-4 space-y-4 rounded-3xl border border-border bg-white p-4 text-xs text-foreground">
@@ -315,6 +433,15 @@ function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
           <p className="font-semibold">Entidades extraidas de contratos</p>
           {preview.contractExtractions.map((contractPreview) => (
             <ContractExtractionCards key={contractPreview.sourceFile} preview={contractPreview} />
+          ))}
+        </div>
+      )}
+
+      {preview.financialOcrAnalyses.length > 0 && (
+        <div className="space-y-3">
+          <p className="font-semibold">Analise financeira por OCR</p>
+          {preview.financialOcrAnalyses.map((ocrPreview) => (
+            <FinancialOcrCards key={ocrPreview.sourceFile} preview={ocrPreview} />
           ))}
         </div>
       )}

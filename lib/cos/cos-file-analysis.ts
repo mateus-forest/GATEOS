@@ -68,6 +68,37 @@ export type CosContractExtractionPreview = {
   textSample: string
 }
 
+export type CosFinancialOcrLine = {
+  description: string
+  sourceLine: string
+  values: number[]
+  category?: string
+  columns?: string[]
+}
+
+export type CosFinancialOcrPreview = {
+  sourceType: "financial_image"
+  sourceFile: string
+  detectedType: string
+  confidence: number
+  extractedColumns: string[]
+  extractedClients: string[]
+  extractedRevenue: CosFinancialOcrLine[]
+  extractedExpenses: CosFinancialOcrLine[]
+  extractedCategories: string[]
+  extractedFinancialEntries: TabularRow[]
+  extractedWarnings: string[]
+  suggestedActions: string[]
+  summary: {
+    valuesDetected: number
+    percentagesDetected: number
+    revenueTotal?: number
+    expenseTotal?: number
+    operationalResult?: number
+  }
+  textSample: string
+}
+
 export type CosFileSheetPreview = {
   name: string
   rowCount: number
@@ -87,6 +118,7 @@ export type CosFilePreview = {
   sheets: CosFileSheetPreview[]
   notes: string[]
   contractExtraction?: CosContractExtractionPreview
+  financialOcr?: CosFinancialOcrPreview
 }
 
 export type CosFileAnalysisPreview = {
@@ -96,6 +128,7 @@ export type CosFileAnalysisPreview = {
   clients: TabularRow[]
   equipment: TabularRow[]
   contractExtractions: CosContractExtractionPreview[]
+  financialOcrAnalyses: CosFinancialOcrPreview[]
   warnings: string[]
 }
 
@@ -164,6 +197,47 @@ const CONTRACT_TERMS = [
   "preco",
   "caucao",
   "foro",
+]
+
+const FINANCIAL_OCR_ACTIONS = [
+  "Cadastrar clientes",
+  "Criar receitas",
+  "Criar despesas",
+  "Criar categorias DRE",
+  "Vincular categorias",
+  "Criar lancamentos financeiros",
+  "Salvar analise",
+  "Anexar documento",
+]
+
+const FINANCIAL_CATEGORY_TERMS = [
+  { label: "Receitas", terms: ["receita", "receitas", "faturamento", "entrada"] },
+  { label: "Despesas com pessoal", terms: ["pessoal", "salario", "salarios", "ferias", "fgts", "inss", "freelancer"] },
+  { label: "Despesas operacionais", terms: ["despesas operacionais", "aluguel", "condominio", "sistema", "internet", "prestacao"] },
+  { label: "Despesas financeiras", terms: ["despesas financeiras", "tarifa", "juros", "emprestimo", "bancaria"] },
+  { label: "Despesas nao operacionais", terms: ["nao operacionais", "investimento", "distribuicao", "devolucao"] },
+  { label: "Impostos", terms: ["imposto", "simples nacional", "tributo"] },
+  { label: "Investimentos", terms: ["investimento", "imobilizado"] },
+  { label: "Distribuicao de lucros", terms: ["distribuicao", "lucros", "socios"] },
+  { label: "Aportes", terms: ["aporte", "aportes"] },
+  { label: "Saldo banco", terms: ["saldo banco"] },
+  { label: "Saldo anterior", terms: ["saldo anterior"] },
+  { label: "Resultado operacional", terms: ["resultado operacional"] },
+  { label: "Lucro operacional", terms: ["lucro operacional"] },
+]
+
+const FINANCIAL_CLIENT_TERMS = [
+  "Fribal",
+  "Estacio Itapipoca",
+  "Estacio",
+  "Fortaleza Iguatemi",
+  "Rio de Janeiro",
+  "Intech",
+  "Paulinia nova",
+  "Curitiba",
+  "SG Itapipoca",
+  "SG Atibaia",
+  "Venda de produto",
 ]
 
 function normalizeHeader(value: unknown) {
@@ -1013,6 +1087,265 @@ async function analyzeSpreadsheet(file: File) {
   return workbookToRows(workbook, file.name)
 }
 
+function extractMoneyValues(line: string) {
+  return Array.from(
+    line.matchAll(/-?\s*(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|-?\s*(?:R\$\s*)?\d+,\d{2}/g)
+  )
+    .map((match) => parseBrazilianCurrency(match[0].replace(/\s+/g, "")))
+    .filter((value): value is number => typeof value === "number")
+}
+
+function extractPercentValues(text: string) {
+  return Array.from(text.matchAll(/-?\d{1,3}(?:,\d{1,2})?\s*%/g)).map((match) => match[0])
+}
+
+function detectFinancialColumns(text: string) {
+  const normalized = normalizeLoose(text)
+  const detected = new Set<string>()
+  const monthAliases = [
+    ["jan", "jan", "janeiro"],
+    ["fev", "fev", "fevereiro"],
+    ["mar", "mar", "marco", "março"],
+    ["abr", "abr", "abril"],
+    ["mai", "mai", "maio"],
+    ["jun", "jun", "junho"],
+    ["jul", "jul", "julho"],
+    ["ago", "ago", "agosto"],
+    ["set", "set", "setembro"],
+    ["out", "out", "outubro"],
+    ["nov", "nov", "novembro"],
+    ["dez", "dez", "dezembro"],
+  ]
+
+  monthAliases.forEach(([label, ...aliases]) => {
+    if (aliases.some((alias) => new RegExp(`\\b${alias}(?:[-/]?\\d{2,4})?\\b`, "i").test(normalized))) {
+      detected.add(label)
+    }
+  })
+
+  if (/\btotal\b/i.test(normalized)) detected.add("total")
+  if (/\bcompetencia\b|\bcompetencia\b/i.test(normalized)) detected.add("competencia")
+  if (/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/.test(normalized)) detected.add("datas")
+
+  return Array.from(detected)
+}
+
+function detectFinancialDocumentType(text: string) {
+  const normalized = normalizeLoose(text)
+  const monthCount = detectFinancialColumns(text).filter((column) => column.length === 3).length
+  const moneyCount = extractMoneyValues(text).length
+  const score = {
+    dre: 0,
+    cashFlow: 0,
+    payable: 0,
+    receivable: 0,
+    granatum: 0,
+    bankStatement: 0,
+    financialReport: 0,
+  }
+
+  if (normalized.includes("granatum")) score.granatum += 4
+  if (normalized.includes("dre") || normalized.includes("demonstrativo")) score.dre += 3
+  if (normalized.includes("receita") && normalized.includes("despesa")) score.dre += 3
+  if (normalized.includes("lucro") || normalized.includes("resultado operacional")) score.dre += 2
+  if (monthCount >= 3) score.dre += 2
+  if (normalized.includes("fluxo de caixa") || normalized.includes("saldo inicial") || normalized.includes("saldo final")) score.cashFlow += 4
+  if (normalized.includes("contas a pagar") || normalized.includes("fornecedor")) score.payable += 4
+  if (normalized.includes("contas a receber") || normalized.includes("cliente")) score.receivable += 4
+  if (normalized.includes("extrato") || normalized.includes("agencia") || normalized.includes("conta corrente")) score.bankStatement += 4
+  if (normalized.includes("financeiro") || moneyCount >= 5) score.financialReport += 2
+
+  const entries = [
+    ["DRE Gerencial", score.dre],
+    ["Fluxo de Caixa", score.cashFlow],
+    ["Contas a Pagar", score.payable],
+    ["Contas a Receber", score.receivable],
+    ["Relatorio Granatum", score.granatum],
+    ["Extrato Bancario", score.bankStatement],
+    ["Relatorio Financeiro", score.financialReport],
+  ] as const
+
+  const best = entries.reduce((current, next) => (next[1] > current[1] ? next : current), entries[0])
+  const confidence = Math.min(96, Math.max(35, best[1] * 12 + Math.min(moneyCount, 12) * 2 + monthCount * 2))
+  return {
+    detectedType: best[1] > 0 ? best[0] : "Planilha Generica",
+    confidence,
+  }
+}
+
+function detectFinancialCategories(text: string) {
+  const normalized = normalizeLoose(text)
+  return FINANCIAL_CATEGORY_TERMS.filter((category) =>
+    category.terms.some((term) => normalized.includes(normalizeLoose(term)))
+  ).map((category) => category.label)
+}
+
+function detectFinancialClients(text: string) {
+  const normalized = normalizeLoose(text)
+  return FINANCIAL_CLIENT_TERMS.filter((client) => normalized.includes(normalizeLoose(client)))
+}
+
+function classifyFinancialLine(line: string) {
+  const normalized = normalizeLoose(line)
+  const category = FINANCIAL_CATEGORY_TERMS.find((item) =>
+    item.terms.some((term) => normalized.includes(normalizeLoose(term)))
+  )?.label
+
+  if (
+    normalized.includes("receita") ||
+    normalized.includes("faturamento") ||
+    FINANCIAL_CLIENT_TERMS.some((client) => normalized.includes(normalizeLoose(client)))
+  ) {
+    return { kind: "revenue" as const, category: category || "Receitas" }
+  }
+
+  if (
+    normalized.includes("despesa") ||
+    normalized.includes("custo") ||
+    normalized.includes("imposto") ||
+    normalized.includes("salario") ||
+    normalized.includes("juros") ||
+    normalized.includes("tarifa") ||
+    normalized.includes("investimento") ||
+    normalized.includes("distribuicao")
+  ) {
+    return { kind: "expense" as const, category: category || "Despesas" }
+  }
+
+  return { kind: "neutral" as const, category }
+}
+
+function buildFinancialOcrRows(text: string) {
+  const revenue: CosFinancialOcrLine[] = []
+  const expenses: CosFinancialOcrLine[] = []
+  const entries: TabularRow[] = []
+  const columns = detectFinancialColumns(text)
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  lines.forEach((line, index) => {
+    const values = extractMoneyValues(line)
+    if (values.length === 0) return
+
+    const classification = classifyFinancialLine(line)
+    const description = line.replace(/-?\s*(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|-?\s*(?:R\$\s*)?\d+,\d{2}/g, "").trim()
+    const item: CosFinancialOcrLine = {
+      description: description || `Linha ${index + 1}`,
+      sourceLine: line,
+      values,
+      category: classification.category,
+      columns,
+    }
+
+    if (classification.kind === "revenue") {
+      revenue.push(item)
+      entries.push({
+        type: "receita",
+        description: item.description,
+        value: values[values.length - 1],
+        category: item.category,
+        source: "ocr_financeiro",
+      })
+    } else if (classification.kind === "expense") {
+      expenses.push(item)
+      entries.push({
+        type: "despesa",
+        description: item.description,
+        value: values[values.length - 1],
+        category: item.category,
+        source: "ocr_financeiro",
+      })
+    }
+  })
+
+  return { revenue, expenses, entries }
+}
+
+function findLineValue(text: string, patterns: RegExp[]) {
+  const lines = text.split("\n")
+  for (const pattern of patterns) {
+    const line = lines.find((item) => pattern.test(normalizeLoose(item)))
+    if (!line) continue
+    const values = extractMoneyValues(line)
+    if (values.length > 0) return values[values.length - 1]
+  }
+  return undefined
+}
+
+async function extractImageOcrText(file: File) {
+  const { createWorker } = await import("tesseract.js")
+  const worker = await createWorker("por+eng")
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const result = await worker.recognize(buffer)
+    return normalizeDocumentText(result.data.text ?? "")
+  } finally {
+    await worker.terminate()
+  }
+}
+
+function analyzeFinancialOcrText(file: File, extractedText: string, sourceType: "financial_image" = "financial_image") {
+  const normalizedText = normalizeDocumentText(extractedText)
+  const documentType = detectFinancialDocumentType(normalizedText)
+  const columns = detectFinancialColumns(normalizedText)
+  const categories = detectFinancialCategories(normalizedText)
+  const clients = detectFinancialClients(normalizedText)
+  const rows = buildFinancialOcrRows(normalizedText)
+  const moneyValues = extractMoneyValues(normalizedText)
+  const percentages = extractPercentValues(normalizedText)
+  const warnings: string[] = []
+
+  if (!normalizedText) {
+    warnings.push("OCR nao retornou texto legivel para este arquivo.")
+  }
+  if (columns.length === 0) {
+    warnings.push("Nao identifiquei colunas de meses, datas ou totais com confianca.")
+  }
+  if (moneyValues.length === 0) {
+    warnings.push("Nao identifiquei valores monetarios com confianca.")
+  }
+
+  const preview: CosFinancialOcrPreview = {
+    sourceType,
+    sourceFile: file.name,
+    detectedType: documentType.detectedType,
+    confidence: documentType.confidence,
+    extractedColumns: columns,
+    extractedClients: clients,
+    extractedRevenue: rows.revenue.slice(0, 20),
+    extractedExpenses: rows.expenses.slice(0, 20),
+    extractedCategories: categories,
+    extractedFinancialEntries: rows.entries.slice(0, 30),
+    extractedWarnings: warnings,
+    suggestedActions: FINANCIAL_OCR_ACTIONS,
+    summary: {
+      valuesDetected: moneyValues.length,
+      percentagesDetected: percentages.length,
+      revenueTotal: findLineValue(normalizedText, [/receita total/, /receita bruta/, /receita liquida/]),
+      expenseTotal: findLineValue(normalizedText, [/total.*despesa/, /despesas totais/]),
+      operationalResult: findLineValue(normalizedText, [/resultado operacional/, /lucro operacional/]),
+    },
+    textSample: normalizedText.slice(0, 1400),
+  }
+
+  console.info("[cos] Financial OCR analysis", {
+    fileName: file.name,
+    detectedType: preview.detectedType,
+    confidence: preview.confidence,
+    textLength: normalizedText.length,
+    columns: preview.extractedColumns,
+    clients: preview.extractedClients.length,
+    revenueRows: preview.extractedRevenue.length,
+    expenseRows: preview.extractedExpenses.length,
+    categories: preview.extractedCategories.length,
+    moneyValues: preview.summary.valuesDetected,
+  })
+
+  return preview
+}
+
 function supportedSpreadsheet(file: File) {
   const name = file.name.toLowerCase()
   return name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")
@@ -1037,6 +1370,7 @@ export async function analyzeCosFiles(files: File[]) {
   const allRows: WorkbookRows[] = []
   const filePreviews: CosFilePreview[] = []
   const contractExtractions: CosContractExtractionPreview[] = []
+  const financialOcrAnalyses: CosFinancialOcrPreview[] = []
   const warnings: string[] = []
 
   for (const file of files) {
@@ -1070,17 +1404,28 @@ export async function analyzeCosFiles(files: File[]) {
         const extractedText = docxFile(file) ? await extractDocxText(file) : await extractPdfText(file)
         const contractExtraction = analyzeContractText(file, extractedText)
         const isContract = looksLikeContract(extractedText)
+        const financialOcrCandidate =
+          !isContract && extractedText.trim()
+            ? analyzeFinancialOcrText(file, extractedText)
+            : undefined
+        const financialOcr =
+          financialOcrCandidate && financialOcrCandidate.confidence >= 40 ? financialOcrCandidate : undefined
+
         if (isContract || contractExtraction.confidence >= 35) {
           contractExtractions.push(contractExtraction)
         }
+        if (financialOcr) {
+          financialOcrAnalyses.push(financialOcr)
+        }
 
-        console.info("[cos] Contract document analysis", {
+        console.info("[cos] Document analysis", {
           fileName: file.name,
           type: docxFile(file) ? "docx" : "pdf",
           textLength: extractedText.length,
           confidence: contractExtraction.confidence,
           equipmentItems: contractExtraction.extractedEquipment.length,
           financialItems: contractExtraction.extractedFinancialEntries.length,
+          financialType: financialOcr?.detectedType,
         })
 
         filePreviews.push({
@@ -1090,34 +1435,55 @@ export async function analyzeCosFiles(files: File[]) {
           sheets: [],
           notes: isContract
             ? ["Contrato analisado. Nenhum dado foi gravado; revise os cards antes de cadastrar."]
-            : ["Documento lido, mas o COS nao encontrou sinais fortes de contrato operacional."],
+            : financialOcr
+              ? ["Documento financeiro textual analisado. Nenhum dado foi gravado; revise os cards antes de cadastrar."]
+              : ["Documento lido, mas o COS nao encontrou sinais fortes de contrato ou relatorio financeiro."],
           contractExtraction: isContract || contractExtraction.confidence >= 35 ? contractExtraction : undefined,
+          financialOcr,
         })
       } catch (error) {
         console.error("[cos] Falha ao analisar contrato", error)
         const message = error instanceof Error ? error.message : "Falha na leitura do documento."
+        const pdfScanNotice = pdfFile(file)
+          ? " Se este PDF for escaneado, envie a pagina como PNG/JPG para OCR financeiro; o motor local usado nesta etapa nao faz OCR direto de PDF."
+          : ""
         warnings.push(`${file.name}: ${message}`)
         filePreviews.push({
           name: file.name,
           type: file.type || (docxFile(file) ? "DOCX" : "PDF"),
           size: file.size,
           sheets: [],
-          notes: [message],
+          notes: [`${message}${pdfScanNotice}`],
         })
       }
       continue
     }
 
     if (imageFile(file)) {
-      filePreviews.push({
-        name: file.name,
-        type: file.type || "imagem",
-        size: file.size,
-        sheets: [],
-        notes: [
-          "Leitura automatica de imagem ainda depende da integracao OCR. Posso anexar o arquivo e voce pode complementar os dados manualmente.",
-        ],
-      })
+      try {
+        const extractedText = await extractImageOcrText(file)
+        const financialOcr = analyzeFinancialOcrText(file, extractedText)
+        financialOcrAnalyses.push(financialOcr)
+        filePreviews.push({
+          name: file.name,
+          type: file.type || "imagem",
+          size: file.size,
+          sheets: [],
+          notes: ["OCR financeiro executado. Nenhum dado foi gravado; revise os cards antes de cadastrar."],
+          financialOcr,
+        })
+      } catch (error) {
+        console.error("[cos] Falha ao executar OCR financeiro", error)
+        const message = error instanceof Error ? error.message : "Falha na leitura OCR da imagem."
+        warnings.push(`${file.name}: ${message}`)
+        filePreviews.push({
+          name: file.name,
+          type: file.type || "imagem",
+          size: file.size,
+          sheets: [],
+          notes: [`Nao consegui executar OCR neste arquivo: ${message}`],
+        })
+      }
       continue
     }
 
@@ -1137,6 +1503,7 @@ export async function analyzeCosFiles(files: File[]) {
     clients: buildClientPreview(allRows),
     equipment: buildEquipmentPreview(allRows),
     contractExtractions,
+    financialOcrAnalyses,
     warnings,
   }
 
@@ -1156,6 +1523,9 @@ export async function analyzeCosFiles(files: File[]) {
     dreNotice,
     contractExtractions.length
       ? ` Analisei ${contractExtractions.length} contrato(s) e gerei cards de cliente, contrato, equipamentos, financeiro e documento.`
+      : "",
+    financialOcrAnalyses.length
+      ? ` Analisei ${financialOcrAnalyses.length} imagem(ns) ou documento(s) financeiro(s) por OCR/texto e gerei preview financeiro estruturado.`
       : "",
     `Previa gerada: ${preview.financialEntries.length} possiveis lancamentos financeiros, ${preview.clients.length} possiveis clientes e ${preview.equipment.length} possiveis equipamentos.`,
     "Nenhum dado foi gravado. Revise a previa; a confirmacao de execucao fica bloqueada para a proxima etapa assistida.",
