@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Bell, ChevronDown, LogOut, Search, Send, X } from "lucide-react"
+import { Bell, ChevronDown, FileText, LogOut, Plus, Search, Send, X } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +27,7 @@ import { getFinancialEntries } from "@/lib/data/financial"
 import { getInstallments } from "@/lib/data/installments"
 import { getNotifications, markNotificationAsRead } from "@/lib/data/notifications"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import type { CosFileAnalysisPreview } from "@/lib/cos/cos-file-analysis"
 
 type SearchRecord = Record<string, unknown>
 type SearchItem = { label: string; description: string; href: string }
@@ -43,6 +44,14 @@ type CosChatMessage = {
   id: string
   role: "user" | "assistant"
   content: string
+  attachments?: CosAttachment[]
+  preview?: CosFileAnalysisPreview
+}
+type CosAttachment = {
+  id: string
+  name: string
+  size: number
+  type: string
 }
 type SessionProfile = {
   name: string
@@ -82,11 +91,135 @@ const COS_SUGGESTIONS = [
   "Resumo financeiro",
 ]
 
+function formatFileSize(size: number) {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function formatPreviewValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-"
+  if (typeof value === "boolean") return value ? "Sim" : "Nao"
+  return String(value)
+}
+
+function PreviewTable({ rows, columns }: { rows: Record<string, unknown>[]; columns: string[] }) {
+  const visibleRows = rows.slice(0, 5)
+  if (visibleRows.length === 0) return null
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-white">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-[11px]">
+          <thead className="bg-muted/70 text-muted-foreground">
+            <tr>
+              {columns.map((column) => (
+                <th key={column} className="whitespace-nowrap px-3 py-2 font-medium">
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, index) => (
+              <tr key={index} className="border-t border-border/80">
+                {columns.map((column) => (
+                  <td key={column} className="max-w-44 truncate px-3 py-2 text-foreground">
+                    {formatPreviewValue(row[column])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > visibleRows.length && (
+        <p className="border-t border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+          Mostrando 5 de {rows.length} item(ns) na previa.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function CosPreviewPanel({ preview }: { preview: CosFileAnalysisPreview }) {
+  return (
+    <div className="mt-4 space-y-4 rounded-3xl border border-border bg-white p-4 text-xs text-foreground">
+      <div>
+        <p className="font-semibold">Arquivos analisados</p>
+        <div className="mt-2 space-y-2">
+          {preview.files.map((file) => (
+            <div key={`${file.name}-${file.size}`} className="rounded-2xl bg-muted/60 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate font-medium">{file.name}</span>
+                <span className="shrink-0 text-muted-foreground">{formatFileSize(file.size)}</span>
+              </div>
+              {file.sheets.length > 0 && (
+                <div className="mt-2 space-y-1 text-muted-foreground">
+                  {file.sheets.map((sheet) => (
+                    <p key={sheet.name}>
+                      {sheet.name}: {sheet.rowCount} linha(s), colunas: {sheet.columns.slice(0, 8).join(", ") || "-"}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {file.notes.map((note) => (
+                <p key={note} className="mt-2 text-muted-foreground">
+                  {note}
+                </p>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {preview.financialEntries.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-semibold">Possiveis lancamentos financeiros</p>
+          <PreviewTable
+            rows={preview.financialEntries}
+            columns={["type", "description", "competence_date", "due_date", "value", "status"]}
+          />
+        </div>
+      )}
+
+      {preview.clients.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-semibold">Possiveis clientes</p>
+          <PreviewTable rows={preview.clients} columns={["name", "document_number", "email", "phone", "city", "status"]} />
+        </div>
+      )}
+
+      {preview.equipment.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-semibold">Possiveis equipamentos</p>
+          <PreviewTable rows={preview.equipment} columns={["name", "category", "quantity_total", "status"]} />
+        </div>
+      )}
+
+      {preview.warnings.length > 0 && (
+        <div className="rounded-2xl bg-amber-50 p-3 text-amber-900">
+          {preview.warnings.map((warning) => (
+            <p key={warning}>{warning}</p>
+          ))}
+        </div>
+      )}
+
+      <Button type="button" disabled className="w-full rounded-2xl">
+        Confirmar execucao (proxima etapa)
+      </Button>
+    </div>
+  )
+}
+
 export function Header() {
   const router = useRouter()
+  const cosFileInputRef = useRef<HTMLInputElement | null>(null)
   const [cosOpen, setCosOpen] = useState(false)
   const [cosInput, setCosInput] = useState("")
   const [cosLoading, setCosLoading] = useState(false)
+  const [cosDragActive, setCosDragActive] = useState(false)
+  const [cosAttachments, setCosAttachments] = useState<File[]>([])
   const [cosMessages, setCosMessages] = useState<CosChatMessage[]>([
     { id: "cos-initial", role: "assistant", content: COS_INITIAL_MESSAGE },
   ])
@@ -231,27 +364,63 @@ export function Header() {
     handleNavigate(notification.link ?? "/dashboard")
   }
 
+  const appendCosFiles = (files: FileList | File[]) => {
+    const selected = Array.from(files)
+    if (selected.length === 0) return
+
+    setCosAttachments((current) => {
+      const existing = new Set(current.map((file) => `${file.name}-${file.size}-${file.lastModified}`))
+      const next = selected.filter((file) => !existing.has(`${file.name}-${file.size}-${file.lastModified}`))
+      return [...current, ...next].slice(0, 8)
+    })
+  }
+
+  const removeCosAttachment = (index: number) => {
+    setCosAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
+  }
+
   const sendCosMessage = async (rawMessage?: string) => {
     const message = (rawMessage ?? cosInput).trim()
-    if (!message || cosLoading) return
+    const filesToSend = cosAttachments
+    if ((!message && filesToSend.length === 0) || cosLoading) return
 
     const userMessage: CosChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: message,
+      content: message || "Analisar arquivo",
+      attachments: filesToSend.map((file, index) => ({
+        id: `file-${Date.now()}-${index}`,
+        name: file.name,
+        size: file.size,
+        type: file.type || "arquivo",
+      })),
     }
 
     setCosMessages((current) => [...current, userMessage])
     setCosInput("")
+    setCosAttachments([])
     setCosLoading(true)
 
     try {
-      const response = await fetch("/api/cos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-      })
-      const payload = (await response.json().catch(() => null)) as { answer?: string; error?: string } | null
+      const response =
+        filesToSend.length > 0
+          ? await fetch("/api/cos", {
+              method: "POST",
+              body: (() => {
+                const formData = new FormData()
+                formData.append("message", message || "Analisar arquivo")
+                filesToSend.forEach((file) => formData.append("files", file))
+                return formData
+              })(),
+            })
+          : await fetch("/api/cos", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message }),
+            })
+      const payload = (await response.json().catch(() => null)) as
+        | { answer?: string; error?: string; preview?: CosFileAnalysisPreview }
+        | null
 
       const assistantMessage: CosChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -260,6 +429,10 @@ export function Header() {
           response.ok && payload?.answer
             ? payload.answer
             : payload?.error || "Não consegui acessar esses dados no momento.",
+      }
+
+      if (response.ok && payload?.preview) {
+        assistantMessage.preview = payload.preview
       }
 
       setCosMessages((current) => [...current, assistantMessage])
@@ -449,6 +622,16 @@ export function Header() {
             aria-modal="true"
             aria-labelledby="cos-assistant-title"
             className="fixed left-1/2 top-1/2 z-[1000] flex max-h-[calc(100vh-96px)] w-[min(calc(100vw-32px),520px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[28px] border border-border/80 bg-white shadow-[0_32px_120px_rgba(15,23,42,0.28)]"
+            onDragOver={(event) => {
+              event.preventDefault()
+              setCosDragActive(true)
+            }}
+            onDragLeave={() => setCosDragActive(false)}
+            onDrop={(event) => {
+              event.preventDefault()
+              setCosDragActive(false)
+              appendCosFiles(event.dataTransfer.files)
+            }}
           >
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-5">
               <div className="flex min-w-0 items-center gap-3">
@@ -475,6 +658,11 @@ export function Header() {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
               <div className="space-y-5">
+                {cosDragActive && (
+                  <div className="rounded-3xl border border-dashed border-neutral-300 bg-muted/60 px-5 py-4 text-center text-sm text-muted-foreground">
+                    Solte os arquivos aqui para o COS analisar.
+                  </div>
+                )}
                 {cosMessages.map((message) => (
                   <div
                     key={message.id}
@@ -491,6 +679,21 @@ export function Header() {
                       }`}
                     >
                       {message.content}
+                      {message.attachments && message.attachments.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {message.attachments.map((attachment) => (
+                            <div
+                              key={attachment.id}
+                              className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 text-xs"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                              <span className="shrink-0 opacity-80">{formatFileSize(attachment.size)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {message.preview && <CosPreviewPanel preview={message.preview} />}
                     </div>
                   </div>
                 ))}
@@ -525,6 +728,39 @@ export function Header() {
               </div>
             </div>
             <div className="shrink-0 border-t border-border bg-white px-4 py-4">
+              <input
+                ref={cosFileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,image/*"
+                onChange={(event) => {
+                  if (event.target.files) appendCosFiles(event.target.files)
+                  event.currentTarget.value = ""
+                }}
+              />
+              {cosAttachments.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {cosAttachments.map((file, index) => (
+                    <div
+                      key={`${file.name}-${file.size}-${file.lastModified}`}
+                      className="flex max-w-full items-center gap-2 rounded-full border border-border bg-muted px-3 py-1.5 text-xs"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="max-w-48 truncate">{file.name}</span>
+                      <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remover ${file.name}`}
+                        className="rounded-full text-muted-foreground hover:text-foreground"
+                        onClick={() => removeCosAttachment(index)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <form
                 className="flex items-center gap-2"
                 onSubmit={(event) => {
@@ -532,15 +768,31 @@ export function Header() {
                   sendCosMessage()
                 }}
               >
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0 rounded-2xl"
+                  disabled={cosLoading}
+                  aria-label="Anexar arquivo ao COS"
+                  onClick={() => cosFileInputRef.current?.click()}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
                 <Input
                   aria-label="Mensagem para o COS"
-                  placeholder="Pergunte algo ao COS..."
+                  placeholder="Pergunte ou anexe um arquivo..."
                   className="h-10 rounded-2xl"
                   value={cosInput}
                   onChange={(event) => setCosInput(event.target.value)}
                   disabled={cosLoading}
                 />
-                <Button type="submit" size="icon" className="shrink-0 rounded-2xl" disabled={cosLoading || !cosInput.trim()}>
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="shrink-0 rounded-2xl"
+                  disabled={cosLoading || (!cosInput.trim() && cosAttachments.length === 0)}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </form>

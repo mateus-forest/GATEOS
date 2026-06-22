@@ -21,9 +21,10 @@ export type CosIntent =
   | "overview"
 
 export type CosAnswer = {
-  intent: CosIntent
+  intent: CosIntent | "file_analysis"
   answer: string
   sources: string[]
+  preview?: unknown
 }
 
 export const MONTH_NAMES = [
