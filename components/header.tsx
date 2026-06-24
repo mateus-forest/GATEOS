@@ -78,6 +78,12 @@ type CosActionReview = {
   requiresNoDocumentConfirmation?: boolean
   requiresExtraConfirmation?: string
 }
+type CosReviewField = {
+  key: string
+  label: string
+  type?: "text" | "date" | "money" | "textarea"
+  required?: boolean
+}
 type SessionProfile = {
   name: string
   email: string
@@ -131,6 +137,156 @@ function formatPreviewValue(value: unknown) {
 function formatMoney(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-"
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+}
+
+const COS_ANALYSIS_STORAGE_KEY = "gate-cos-last-analysis-v1"
+const COS_REVIEW_FIELDS: Record<CosActionKind, CosReviewField[]> = {
+  create_client: [
+    { key: "name", label: "Razao social", required: true },
+    { key: "document_number", label: "CNPJ/CPF", required: true },
+    { key: "address", label: "Endereco", type: "textarea" },
+    { key: "city", label: "Cidade" },
+    { key: "state", label: "Estado" },
+    { key: "zip_code", label: "CEP" },
+    { key: "representative", label: "Representante legal" },
+    { key: "contact_name", label: "Contato principal" },
+    { key: "email", label: "E-mail" },
+    { key: "phone", label: "Telefone" },
+  ],
+  create_financial_entry: [
+    { key: "type", label: "Tipo", required: true },
+    { key: "description", label: "Descricao", type: "textarea", required: true },
+    { key: "value", label: "Valor", type: "money", required: true },
+    { key: "competence_date", label: "Competencia", type: "date", required: true },
+    { key: "due_date", label: "Data de vencimento", type: "date", required: true },
+    { key: "status", label: "Status" },
+    { key: "category", label: "Categoria" },
+  ],
+  attach_document: [
+    { key: "detectedType", label: "Tipo do documento", required: true },
+    { key: "notes", label: "Observacoes", type: "textarea" },
+  ],
+}
+const COS_FIELD_LABELS: Record<string, string> = {
+  due_date: "Data de vencimento",
+  competence_date: "Competencia",
+  status: "Status",
+  suggested_due_day: "Dia sugerido de vencimento",
+  category: "Categoria",
+  description: "Descricao",
+  value: "Valor",
+  confidence: "Confianca",
+  confidenceLevel: "Nivel de confianca",
+  source_file: "Arquivo de origem",
+  sourceType: "Tipo de origem",
+  documentType: "Tipo de documento",
+  file: "Arquivo",
+  entities: "Entidades",
+  modules: "Modulos",
+  type: "Tipo",
+  name: "Nome",
+  document_number: "CNPJ/CPF",
+  email: "E-mail",
+  phone: "Telefone",
+  city: "Cidade",
+  address: "Endereco",
+  quantity_total: "Quantidade",
+}
+
+function fieldLabel(key: string) {
+  return COS_FIELD_LABELS[key] ?? key.replace(/_/g, " ")
+}
+
+function normalizeDocumentForReview(value: unknown) {
+  return String(value ?? "").replace(/\D/g, "")
+}
+
+function cleanClientNameForReview(value: unknown) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*[,;]?\s*\b(CNPJ|CPF)\b\s*[:\-]?\s*[\d./-]+.*$/i, "")
+    .replace(/\s*[,;]?\s*\bpessoa\s+jur[ií]dica\s+de\s+direito\s+privado\b.*$/i, "")
+    .replace(/\s*[,;]?\s*\bdenominad[ao]\s+LOCAT[ÁA]RIA\b.*$/i, "")
+    .replace(/\s*[,;]?\s*\bendere[cç]o\b\s*[:\-]?.*$/i, "")
+    .replace(/\s*[,;]?\s*\b(Rua|Avenida|Av\.|Travessa|Rodovia)\b.*$/i, "")
+    .replace(/[;,]+$/, "")
+    .trim()
+}
+
+function unsafeClientNameReason(value: unknown) {
+  const current = String(value ?? "").trim()
+  if (!current) return "Dados do cliente ainda precisam de revisão manual."
+  if (
+    /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/.test(current) ||
+    /\bpessoa\s+jur[ií]dica\b/i.test(current) ||
+    /\bdenominad[ao]\b/i.test(current) ||
+    /\bendere[cç]o\b/i.test(current) ||
+    /\b(Rua|Avenida|Av\.|Travessa|Rodovia)\b/i.test(current) ||
+    /\b(CL[ÁA]USULA|CLAUSULA|foro|obriga[cç][aã]o|rescis[aã]o)\b/i.test(current) ||
+    current.length > 160
+  ) {
+    return "Dados do cliente ainda precisam de revisão manual."
+  }
+  return ""
+}
+
+function toDateInput(value: unknown) {
+  const text = String(value ?? "").trim()
+  if (!text) return ""
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  const match = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/)
+  if (!match) return ""
+  const day = match[1].padStart(2, "0")
+  const month = match[2].padStart(2, "0")
+  const year = match[3].length === 2 ? `20${match[3]}` : match[3]
+  return `${year}-${month}-${day}`
+}
+
+function firstDueDateFromDay(startDate: unknown, dueDay?: number) {
+  const isoStart = toDateInput(startDate)
+  if (!isoStart || !dueDay) return ""
+  const [year, month, day] = isoStart.split("-").map(Number)
+  const dueDate = new Date(year, month - 1, dueDay)
+  if (dueDay < day) dueDate.setMonth(dueDate.getMonth() + 1)
+  return `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, "0")}-${String(dueDate.getDate()).padStart(2, "0")}`
+}
+
+function parseReviewNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
+  const text = String(value ?? "").trim()
+  if (!text) return undefined
+  const normalized = text.includes(",")
+    ? text.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")
+    : text.replace(/[R$\s]/g, "")
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function hasCosPreview(messages: CosChatMessage[]) {
+  return messages.some((message) => Boolean(message.preview))
+}
+
+function loadPersistedCosMessages(): CosChatMessage[] | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(COS_ANALYSIS_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { messages?: CosChatMessage[] }
+    return Array.isArray(parsed.messages) && hasCosPreview(parsed.messages) ? parsed.messages : null
+  } catch {
+    return null
+  }
+}
+
+function persistCosMessages(messages: CosChatMessage[]) {
+  if (typeof window === "undefined" || !hasCosPreview(messages)) return
+  window.localStorage.setItem(
+    COS_ANALYSIS_STORAGE_KEY,
+    JSON.stringify({
+      savedAt: new Date().toISOString(),
+      messages,
+    })
+  )
 }
 
 function ConfidenceBadge({ confidence, level }: { confidence?: number; level?: string }) {
@@ -194,7 +350,7 @@ function PreviewTable({ rows, columns }: { rows: Record<string, unknown>[]; colu
             <tr>
               {columns.map((column) => (
                 <th key={column} className="whitespace-nowrap px-3 py-2 font-medium">
-                  {column}
+                  {fieldLabel(column)}
                 </th>
               ))}
             </tr>
@@ -203,7 +359,7 @@ function PreviewTable({ rows, columns }: { rows: Record<string, unknown>[]; colu
             {visibleRows.map((row, index) => (
               <tr key={index} className="border-t border-border/80">
                 {columns.map((column) => (
-                  <td key={column} className="max-w-44 truncate px-3 py-2 text-foreground">
+                  <td key={column} className="max-w-56 px-3 py-2 text-foreground [overflow-wrap:anywhere]">
                     {formatPreviewValue(row[column])}
                   </td>
                 ))}
@@ -236,9 +392,15 @@ function ContractExtractionCards({
     confidence: preview.confidence,
     detectedType: "Contrato",
   }
+  const cleanClientName = cleanClientNameForReview(client?.legalName)
+  const clientDocument = normalizeDocumentForReview(client?.documentNumber)
+  const clientBlockReason =
+    client && (unsafeClientNameReason(cleanClientName) || (!clientDocument && client.confidenceLevel !== "alta"))
+      ? "Dados do cliente ainda precisam de revisão manual."
+      : ""
 
   return (
-    <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
+    <div className="space-y-3 rounded-3xl border border-border bg-white p-4 [overflow-wrap:anywhere]">
       <div>
         <p className="font-semibold">Contrato analisado: {preview.sourceFile}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -256,7 +418,7 @@ function ContractExtractionCards({
               level={preview.extractedParties.lessor.confidenceLevel}
             />
           </div>
-          <div className="mt-2 space-y-1 text-muted-foreground">
+          <div className="mt-2 space-y-1 text-muted-foreground [overflow-wrap:anywhere]">
             <p>{preview.extractedParties.lessor.legalName || "Razao social nao identificada"}</p>
             <p>CNPJ/Documento: {preview.extractedParties.lessor.documentNumber || "-"}</p>
             <p>Endereco: {preview.extractedParties.lessor.address || "-"}</p>
@@ -275,8 +437,8 @@ function ContractExtractionCards({
             <p className="font-semibold">Cliente / Locataria</p>
             <ConfidenceBadge confidence={client.confidence} level={client.confidenceLevel} />
           </div>
-          <div className="mt-2 space-y-1 text-muted-foreground">
-            <p>{client.legalName || "Razao social nao identificada"}</p>
+          <div className="mt-2 space-y-1 text-muted-foreground [overflow-wrap:anywhere]">
+            <p>{cleanClientName || "Razao social nao identificada"}</p>
             <p>CNPJ/Documento: {client.documentNumber || "-"}</p>
             <p>
               Local: {[client.city, client.state].filter(Boolean).join(" - ") || "-"}
@@ -291,8 +453,11 @@ function ContractExtractionCards({
             {client.guarantor && <p>Fiador: {client.guarantor}</p>}
           </div>
           <FieldWarnings warnings={client.warnings} missingFields={client.missingFields} />
+          {clientBlockReason && (
+            <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-amber-900">{clientBlockReason}</p>
+          )}
           <EntityActionButton
-            disabled={false}
+            disabled={Boolean(clientBlockReason)}
             onClick={() =>
               onAction({
                 kind: "create_client",
@@ -300,9 +465,19 @@ function ContractExtractionCards({
                 description: "Revise os dados extraidos antes de criar o cliente.",
                 endpoint: "/api/cos/actions/create-client",
                 payload: {
-                  ...client,
-                  name: client.legalName,
-                  documentNumber: client.documentNumber,
+                  name: cleanClientName,
+                  legal_name: cleanClientName,
+                  document_number: clientDocument,
+                  address: client.address ?? "",
+                  city: client.city ?? "",
+                  state: client.state ?? "",
+                  zip_code: client.postalCode ?? "",
+                  representative: client.representative ?? "",
+                  contact_name: client.primaryContact ?? "",
+                  email: client.email ?? "",
+                  phone: client.phone ?? "",
+                  confidence: client.confidence ?? preview.confidence,
+                  source_file: preview.sourceFile,
                 },
                 source,
                 requiresNoDocumentConfirmation: !client.documentNumber,
@@ -324,7 +499,7 @@ function ContractExtractionCards({
             <p className="font-semibold">Contrato</p>
             <ConfidenceBadge confidence={contract.confidence} level={contract.confidenceLevel} />
           </div>
-          <div className="mt-2 space-y-1 text-muted-foreground">
+          <div className="mt-2 space-y-1 text-muted-foreground [overflow-wrap:anywhere]">
             <p>Titulo: {contract.title || "-"}</p>
             <p>Tipo: {contract.contractType || "-"}</p>
             <p>Locadora: {contract.lessor || "-"}</p>
@@ -357,7 +532,7 @@ function ContractExtractionCards({
       {preview.extractedEquipment.length > 0 && (
         <div className="rounded-2xl bg-muted/60 p-3">
           <p className="font-semibold">Equipamentos</p>
-          <div className="mt-2 space-y-2 text-muted-foreground">
+          <div className="mt-2 space-y-2 text-muted-foreground [overflow-wrap:anywhere]">
             {preview.extractedEquipment.slice(0, 8).map((item, index) => (
               <p key={`${item.description}-${index}`}>
                 {item.quantity ? `${item.quantity}x ` : ""}
@@ -379,16 +554,33 @@ function ContractExtractionCards({
       {preview.extractedFinancialEntries.length > 0 && (
         <div className="rounded-2xl bg-muted/60 p-3">
           <p className="font-semibold">Financeiro sugerido</p>
-          <div className="mt-2 space-y-2 text-muted-foreground">
+          <div className="mt-2 space-y-2 text-muted-foreground [overflow-wrap:anywhere]">
             {preview.extractedFinancialEntries.map((entry, index) => (
               <div key={`${entry.description}-${index}`} className="rounded-xl bg-white/70 p-2">
+                {(() => {
+                  const competenceDate = toDateInput(entry.firstCompetence)
+                  const dueDate = firstDueDateFromDay(entry.firstCompetence, entry.dueDay)
+                  const sourceContractValue = preview.extractedContract?.monthlyValue
+                  const financialBlocked =
+                    !entry.value ||
+                    (typeof entry.value === "number" && entry.value < 100 && typeof sourceContractValue === "number" && sourceContractValue >= 100) ||
+                    !competenceDate ||
+                    !dueDate ||
+                    /\b(CL[ÁA]USULA|CLAUSULA|foro|obriga[cç][aã]o|rescis[aã]o)\b/i.test(entry.description)
+                  return (
+                    <>
                 <p>
                   {entry.description}: {formatMoney(entry.value)}
                   {entry.dueDay ? `, vencimento dia ${entry.dueDay}` : ""}
                   {entry.installments ? `, ${entry.installments} parcela(s)` : ""}
                 </p>
+                {financialBlocked && (
+                  <p className="mt-2 rounded-2xl bg-amber-50 p-2 text-amber-900">
+                    Lancamento financeiro precisa de revisão manual antes de gravar.
+                  </p>
+                )}
                 <EntityActionButton
-                  disabled={false}
+                  disabled={financialBlocked}
                   onClick={() =>
                     onAction({
                       kind: "create_financial_entry",
@@ -399,11 +591,12 @@ function ContractExtractionCards({
                         type: entry.type,
                         description: entry.description,
                         value: entry.value,
-                        due_date: "",
-                        competence_date: "",
+                        due_date: dueDate,
+                        competence_date: competenceDate,
                         status: "pendente",
-                        suggested_due_day: entry.dueDay ?? "",
                         category: entry.source,
+                        source_contract_value: sourceContractValue ?? "",
+                        value_confidence: entry.value ? "alta" : "baixa",
                       },
                       source,
                     })
@@ -411,6 +604,9 @@ function ContractExtractionCards({
                 >
                   Criar lancamento financeiro
                 </EntityActionButton>
+                    </>
+                  )
+                })()}
               </div>
             ))}
           </div>
@@ -804,37 +1000,27 @@ function CosPreviewPanel({
       {preview.normalizedExtractions.length > 0 && (
         <div className="space-y-2">
           <p className="font-semibold">Inteligencia operacional</p>
-          <PreviewTable
-            rows={preview.normalizedExtractions.map((item) => ({
-              documentType: item.operationalIntelligence.documentTypeLabel,
-              file: item.sourceFile.name,
-              confidenceLevel: item.confidenceLevel,
-              confidence: item.confidence,
-              entities: item.operationalIntelligence.businessEntities.length,
-              modules: item.operationalIntelligence.operationalMappings.map((mapping) => mapping.gateModule).join(", "),
-            }))}
-            columns={["documentType", "file", "confidenceLevel", "confidence", "entities", "modules"]}
-          />
           <div className="space-y-2">
             {preview.normalizedExtractions.slice(0, 4).map((item) => (
-              <div key={`${item.sourceFile.name}-${item.sourceType}`} className="rounded-2xl bg-muted/60 p-3">
+              <div key={`${item.sourceFile.name}-${item.sourceType}`} className="rounded-2xl bg-muted/60 p-3 [overflow-wrap:anywhere]">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium">{item.operationalIntelligence.documentTypeLabel}</p>
                   <ConfidenceBadge confidence={item.confidence} level={item.confidenceLevel} />
                 </div>
-                <p className="mt-1 text-muted-foreground">{item.operationalIntelligence.executiveSummary}</p>
-                {item.operationalIntelligence.logicalStructure.length > 0 && (
-                  <p className="mt-2 text-muted-foreground">
-                    Estrutura: {item.operationalIntelligence.logicalStructure.map((section) => section.name).join(", ")}.
-                  </p>
-                )}
+                <p className="mt-1 text-muted-foreground">
+                  {item.operationalIntelligence.executiveSummary ||
+                    "Identifiquei um documento operacional com dados para revisao antes de qualquer gravacao."}
+                </p>
                 {item.operationalIntelligence.businessEntities.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {item.operationalIntelligence.businessEntities.slice(0, 10).map((entity, index) => (
-                      <Badge key={`${entity.entityType}-${entity.label}-${index}`} variant="outline" className="rounded-full">
-                        {entity.entityType}: {entity.label}
-                      </Badge>
-                    ))}
+                  <div className="mt-3">
+                    <p className="font-medium text-foreground">Dados encontrados</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Array.from(new Set(item.operationalIntelligence.businessEntities.map((entity) => entity.entityType))).map((entityType) => (
+                        <Badge key={entityType} variant="outline" className="rounded-full">
+                          {entityType}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {item.operationalIntelligence.missingData.length > 0 && (
@@ -845,13 +1031,21 @@ function CosPreviewPanel({
                     Divergencias possiveis: {item.operationalIntelligence.possibleDivergences.join(" ")}
                   </p>
                 )}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {item.operationalIntelligence.operationalMappings.slice(0, 8).map((mapping) => (
-                    <Badge key={`${mapping.entityType}-${mapping.gateModule}`} variant="secondary" className="rounded-full">
-                      {mapping.entityType} {"->"} {mapping.gateModule}
-                    </Badge>
-                  ))}
-                </div>
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Ver detalhes tecnicos</summary>
+                  <div className="mt-2 space-y-2 text-muted-foreground">
+                    {item.operationalIntelligence.logicalStructure.length > 0 && (
+                      <p>Estrutura: {item.operationalIntelligence.logicalStructure.map((section) => section.name).join(", ")}.</p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {item.operationalIntelligence.operationalMappings.slice(0, 8).map((mapping) => (
+                        <Badge key={`${mapping.entityType}-${mapping.gateModule}`} variant="secondary" className="rounded-full">
+                          {mapping.entityType} {"->"} {mapping.gateModule}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               </div>
             ))}
           </div>
@@ -910,9 +1104,9 @@ export function Header() {
   const [cosActionPayload, setCosActionPayload] = useState<Record<string, string>>({})
   const [cosActionConfirmNoDocument, setCosActionConfirmNoDocument] = useState(false)
   const [cosActionSubmitting, setCosActionSubmitting] = useState(false)
-  const [cosMessages, setCosMessages] = useState<CosChatMessage[]>([
-    { id: "cos-initial", role: "assistant", content: COS_INITIAL_MESSAGE },
-  ])
+  const [cosMessages, setCosMessages] = useState<CosChatMessage[]>(() => {
+    return loadPersistedCosMessages() ?? [{ id: "cos-initial", role: "assistant", content: COS_INITIAL_MESSAGE }]
+  })
   const [searchTerm, setSearchTerm] = useState("")
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [profile, setProfile] = useState<SessionProfile>({
@@ -969,6 +1163,10 @@ export function Header() {
       })
     })
   }, [])
+
+  useEffect(() => {
+    persistCosMessages(cosMessages)
+  }, [cosMessages])
 
   const unreadCount = notifications.filter((notification) => !notification.read).length
 
@@ -1069,10 +1267,28 @@ export function Header() {
     setCosAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
+  const clearCosAnalysis = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(COS_ANALYSIS_STORAGE_KEY)
+    }
+    setCosMessages([{ id: "cos-initial", role: "assistant", content: COS_INITIAL_MESSAGE }])
+    setCosUploadedFiles({})
+    setCosAttachments([])
+    toast.success("Analise do COS limpa.")
+  }
+
   const openCosActionReview = (review: CosActionReview) => {
     const normalizedPayload = Object.fromEntries(
       Object.entries(review.payload).map(([key, value]) => [key, value === undefined || value === null ? "" : String(value)])
     )
+    if (review.kind === "create_client") {
+      const cleanName = cleanClientNameForReview(normalizedPayload.name || normalizedPayload.legal_name)
+      normalizedPayload.name = cleanName
+      normalizedPayload.legal_name = cleanName
+      normalizedPayload.document_number = normalizeDocumentForReview(
+        normalizedPayload.document_number || normalizedPayload.documentNumber
+      )
+    }
     setCosActionReview(review)
     setCosActionPayload(normalizedPayload)
     setCosActionConfirmNoDocument(false)
@@ -1256,13 +1472,43 @@ export function Header() {
   const cosActionNeedsFile =
     cosActionReview?.kind === "attach_document" &&
     (!cosActionReview.fileName || !cosUploadedFiles[cosActionReview.fileName])
+  const cosActionValidationError = (() => {
+    if (!cosActionReview) return ""
+    if (cosActionReview.kind === "create_client") {
+      const name = cleanClientNameForReview(cosActionPayload.name ?? cosActionPayload.legal_name)
+      const documentNumber = normalizeDocumentForReview(cosActionPayload.document_number)
+      const confidence = Number(cosActionPayload.confidence)
+      const nameReason = unsafeClientNameReason(name)
+      if (nameReason) return nameReason
+      if (!documentNumber && (!Number.isFinite(confidence) || confidence < 75)) {
+        return "Dados do cliente ainda precisam de revisão manual."
+      }
+    }
+    if (cosActionReview.kind === "create_financial_entry") {
+      const value = parseReviewNumber(cosActionPayload.value)
+      const sourceContractValue = parseReviewNumber(cosActionPayload.source_contract_value)
+      const description = String(cosActionPayload.description ?? "")
+      if (typeof value === "number" && typeof sourceContractValue === "number" && sourceContractValue >= 100 && value < 100) {
+        return "Valor financeiro inconsistente com o contrato. Revise o valor mensal antes de gravar."
+      }
+      if (String(cosActionPayload.value_confidence ?? "") === "baixa" || String(cosActionPayload.value_confidence ?? "") === "ambiguous") {
+        return "Valor financeiro com baixa confianca. Revise manualmente antes de gravar."
+      }
+      if (description.length > 180 || /\b(CL[ÁA]USULA|CLAUSULA|foro|obriga[cç][aã]o|rescis[aã]o)\b/i.test(description)) {
+        return "Descricao financeira parece conter texto juridico. Revise manualmente antes de gravar."
+      }
+    }
+    return ""
+  })()
   const cosActionCanConfirm =
     Boolean(cosActionReview) &&
     !cosActionSubmitting &&
     !cosActionNeedsDate &&
     !cosActionNeedsNoDocumentConfirmation &&
     !cosActionNeedsExtraConfirmation &&
-    !cosActionNeedsFile
+    !cosActionNeedsFile &&
+    !cosActionValidationError
+  const cosReviewFields = cosActionReview ? COS_REVIEW_FIELDS[cosActionReview.kind] : []
 
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-border/70 bg-background/90 px-4 backdrop-blur-xl sm:px-7 lg:px-10">
@@ -1449,6 +1695,13 @@ export function Header() {
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            {hasCosPreview(cosMessages) && (
+              <div className="shrink-0 border-b border-border bg-muted/30 px-6 py-2 text-right">
+                <Button type="button" variant="ghost" size="sm" className="rounded-2xl" onClick={clearCosAnalysis}>
+                  Limpar analise
+                </Button>
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
               <div className="space-y-5">
                 {cosDragActive && (
@@ -1596,70 +1849,68 @@ export function Header() {
       )}
 
       <Dialog open={Boolean(cosActionReview)} onOpenChange={(open) => (!open ? closeCosActionReview() : undefined)}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="z-[1301] flex max-h-[calc(100vh-32px)] max-w-2xl flex-col overflow-hidden p-0">
           <DialogHeader>
-            <DialogTitle>{cosActionReview?.title ?? "Revisar acao do COS"}</DialogTitle>
-            <DialogDescription>
+            <div className="px-6 pt-6 sm:px-8 sm:pt-8">
+              <DialogTitle>{cosActionReview?.title ?? "Revisar acao do COS"}</DialogTitle>
+              <DialogDescription>
               {cosActionReview?.description ?? "Revise os dados antes de gravar."} Nenhuma acao sera executada sem esta confirmacao.
-            </DialogDescription>
+              </DialogDescription>
+            </div>
           </DialogHeader>
 
           {cosActionReview && (
-            <div className="space-y-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-2 sm:px-8">
               <div className="rounded-2xl border border-border bg-muted/50 p-4 text-sm">
                 <p className="font-semibold">Origem</p>
-                <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
+                <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2 [overflow-wrap:anywhere]">
                   <p>Arquivo: {cosActionReview.source.fileName || cosActionReview.fileName || "-"}</p>
                   <p>Tipo: {cosActionReview.source.detectedType || cosActionReview.source.type || "-"}</p>
                   <p>Confianca: {cosActionReview.source.confidence ?? "-"}%</p>
-                  <p>Acao: {cosActionReview.kind}</p>
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                {Object.entries(cosActionPayload).map(([key, value]) => {
-                  const isLong = key === "notes" || key === "address" || key === "description"
+                {cosReviewFields.map((field) => {
+                  const value = cosActionPayload[field.key] ?? ""
+                  const isLong = field.type === "textarea"
                   return (
-                    <label key={key} className={isLong ? "sm:col-span-2" : ""}>
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">{key}</span>
+                    <label key={field.key} className={isLong ? "sm:col-span-2" : ""}>
+                      <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                        {field.label}
+                        {field.required ? " *" : ""}
+                      </span>
                       {isLong ? (
                         <textarea
-                          className="min-h-24 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
+                          className="min-h-24 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm [overflow-wrap:anywhere]"
                           value={value}
                           onChange={(event) =>
-                            setCosActionPayload((current) => ({ ...current, [key]: event.target.value }))
+                            setCosActionPayload((current) => ({ ...current, [field.key]: event.target.value }))
                           }
                         />
                       ) : (
                         <Input
-                          type={key.includes("date") ? "date" : "text"}
+                          type={field.type === "date" ? "date" : "text"}
                           value={value}
                           onChange={(event) =>
-                            setCosActionPayload((current) => ({ ...current, [key]: event.target.value }))
+                            setCosActionPayload((current) => ({ ...current, [field.key]: event.target.value }))
                           }
                         />
                       )}
                     </label>
                   )
                 })}
-
-                {cosActionReview.kind === "create_financial_entry" && !("competence_date" in cosActionPayload) && (
-                  <label>
-                    <span className="mb-1 block text-xs font-medium text-muted-foreground">competence_date</span>
-                    <Input
-                      type="date"
-                      value={cosActionPayload.competence_date ?? ""}
-                      onChange={(event) =>
-                        setCosActionPayload((current) => ({ ...current, competence_date: event.target.value }))
-                      }
-                    />
-                  </label>
-                )}
               </div>
 
               {cosActionNeedsDate && (
                 <p className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">
-                  Informe competencia ou vencimento antes de criar o lancamento financeiro.
+                  Informe competencia ou data de vencimento antes de criar o lancamento financeiro.
+                </p>
+              )}
+
+              {cosActionValidationError && (
+                <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-900">
+                  {cosActionValidationError}
                 </p>
               )}
 
@@ -1697,7 +1948,7 @@ export function Header() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-border bg-background px-6 pb-6 sm:px-8">
             <Button type="button" variant="outline" onClick={closeCosActionReview} disabled={cosActionSubmitting}>
               Cancelar
             </Button>

@@ -6,6 +6,8 @@ const ts = require("typescript")
 
 const root = path.resolve(__dirname, "..")
 const sourcePath = path.join(root, "lib", "cos", "cos-file-analysis.ts")
+const actionUtilsPath = path.join(root, "lib", "cos", "cos-action-utils.ts")
+const headerPath = path.join(root, "components", "header.tsx")
 const fixturePath = path.join(__dirname, "fixtures", "cos-contract-atibaia.txt")
 
 function loadTypescriptModule(filePath, sourceOverride) {
@@ -61,6 +63,7 @@ exports.analyzeCosContractTextForValidation = function(fileName, text) {
 }
 
 const { analyzeCosContractTextForValidation } = loadTypescriptModule(sourcePath, sourceForMode())
+const { normalizeCosClientName, hasUnsafeCosClientName, numberField } = loadTypescriptModule(actionUtilsPath)
 if (typeof analyzeCosContractTextForValidation !== "function") {
   throw new Error("analyzeCosContractTextForValidation nao foi exportado pelo parser COS.")
 }
@@ -79,7 +82,10 @@ const expected = {
   depositValue: 3697.33,
   monthlyDueDay: 15,
   signatureDate: "27/05/2025",
+  probableStartDate: "27/05/2025",
   calculatedEndDate: "27/05/2028",
+  installments: 36,
+  recurringRevenueValue: 3697.33,
   equipment: [
     { quantity: 8, description: "AMD Ryzen 5, RTX 3060, 16GB RAM, SSD 1TB, 650W" },
     { quantity: 4, description: "AMD Ryzen 5, RTX 3050, 16GB RAM, SSD 480GB, HD 1TB, 650W" },
@@ -101,7 +107,10 @@ const actualSummary = {
   depositValue: actual.extractedContract?.depositValue,
   monthlyDueDay: actual.extractedContract?.monthlyDueDay,
   signatureDate: actual.extractedContract?.signatureDate,
+  probableStartDate: actual.extractedContract?.probableStartDate,
   calculatedEndDate: actual.extractedContract?.calculatedEndDate,
+  installments: actual.extractedContract?.installments,
+  recurringRevenueValue: actual.extractedFinancialEntries.find((entry) => entry.description.includes("Receita recorrente"))?.value,
   equipment: actual.extractedEquipment.map((item) => ({
     quantity: item.quantity,
     description: normalizeText(item.description),
@@ -114,6 +123,29 @@ for (const [key, expectedValue] of Object.entries(expected)) {
   assertEqual(key, actualSummary[key], expectedValue, failures)
 }
 assertEquipment(actualSummary.equipment, expected.equipment, failures)
+
+const contaminatedClientName =
+  "BELI GAMES, ENTRETENIMENTO, INOVACOES E SERVICOS LTDA, pessoa juridica de direito privado, CNPJ 60.961.002/0001-79, denominada LOCATARIA, Endereco Rua Teste"
+assertEqual(
+  "clientName.sanitized",
+  normalizeCosClientName(contaminatedClientName),
+  "BELI GAMES, ENTRETENIMENTO, INOVACOES E SERVICOS LTDA",
+  failures
+)
+assertEqual("clientName.rawUnsafe", hasUnsafeCosClientName(contaminatedClientName), true, failures)
+assertEqual("clientName.cleanSafe", hasUnsafeCosClientName("BELI GAMES, ENTRETENIMENTO, INOVACOES E SERVICOS LTDA"), false, failures)
+assertEqual("money.decimalNumberString", numberField("3697.33"), 3697.33, failures)
+assertEqual("money.brazilianCurrency", numberField("R$ 3.697,33"), 3697.33, failures)
+assertEqual("money.partialValueRejected", actual.extractedContract?.monthlyValue === 7.33, false, failures)
+
+const headerSource = fs.readFileSync(headerPath, "utf8")
+assertEqual("ui.localStoragePersistence", headerSource.includes("gate-cos-last-analysis-v1"), true, failures)
+assertEqual("ui.clearAnalysisAction", headerSource.includes("Limpar analise"), true, failures)
+assertEqual("ui.reviewFieldWhitelist", headerSource.includes("COS_REVIEW_FIELDS"), true, failures)
+assertEqual("ui.reviewNoRawPayloadLoop", headerSource.includes("Object.entries(cosActionPayload)"), false, failures)
+assertEqual("ui.reviewPortugueseDueDateLabel", headerSource.includes("Data de vencimento"), true, failures)
+assertEqual("ui.reviewPortugueseCompetenceLabel", headerSource.includes("Competencia"), true, failures)
+assertEqual("ui.reviewZIndex", headerSource.includes("z-[1301]"), true, failures)
 
 console.log(JSON.stringify({ expected, actual: actualSummary, failures }, null, 2))
 

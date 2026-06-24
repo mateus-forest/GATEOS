@@ -1001,6 +1001,50 @@ function currencyNear(text: string, terms: string[]) {
   return undefined
 }
 
+function currencyAfterPatterns(text: string, patterns: RegExp[]) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (match?.[1]) return parseBrazilianCurrency(match[1])
+  }
+  return undefined
+}
+
+function moneyValuesFromText(text: string) {
+  return Array.from(text.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}/g))
+    .map((match) => parseBrazilianCurrency(match[0]))
+    .filter((value): value is number => typeof value === "number")
+}
+
+function reliableContractMoney(value: number | undefined, sourceBlock: string) {
+  if (typeof value !== "number") return undefined
+  const largerValues = moneyValuesFromText(sourceBlock).filter((item) => item >= 100)
+  if (value < 100 && largerValues.length > 0) return undefined
+  return value
+}
+
+function extractMonthlyContractValue(text: string) {
+  return reliableContractMoney(
+    currencyAfterPatterns(text, [
+      /pre[cç]o\s+da\s+loca[cç][aã]o\s+ser[aá]\s+de\s*(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+      /valor\s+mensal\s+(?:da\s+loca[cç][aã]o\s+)?(?:ser[aá]\s+de|de)?\s*(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+      /mensalidade\s+(?:ser[aá]\s+de|de)?\s*(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+      /aluguel\s+mensal\s+(?:ser[aá]\s+de|de)?\s*(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    ]) ?? currencyNear(text, ["preco", "preço", "valor mensal", "mensalidade", "aluguel"]),
+    text
+  )
+}
+
+function extractContractDepositValue(text: string) {
+  return reliableContractMoney(
+    currencyAfterPatterns(text, [
+      /cau[cç][aã]o[\s\S]{0,120}?valor\s+de\s*(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+      /como\s+cau[cç][aã]o[\s\S]{0,160}?(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+      /garantia[\s\S]{0,120}?(R\$\s*\d{1,3}(?:\.\d{3})*,\d{2})/i,
+    ]) ?? extractDepositValueAccurate(text),
+    text
+  )
+}
+
 function firstMatch(text: string, patterns: RegExp[]) {
   for (const pattern of patterns) {
     const match = text.match(pattern)
@@ -1506,8 +1550,8 @@ function analyzeContractTextV2(file: File, text: string): CosContractExtractionP
   const termMonths = extractTermMonthsAccurate(termBlock)
   const calculatedEndDate = explicitEndDate ?? addMonths(probableStartDate, termMonths)
   const monthlyDueDay = Number(firstMatch(priceBlock, [/vencimento[\s\S]{0,120}?dia\s*(\d{1,2})/i, /todo\s+dia\s*(\d{1,2})/i, /dia\s*(\d{1,2})\s+de\s+cada\s+mes/i])) || undefined
-  const monthlyValue = currencyNear(priceBlock, ["preco", "valor mensal", "mensalidade", "aluguel"])
-  const depositValue = extractDepositValueAccurate(priceBlock)
+  const monthlyValue = extractMonthlyContractValue(priceBlock)
+  const depositValue = extractContractDepositValue(priceBlock)
   const totalValue = currencyNear(priceBlock, ["valor total", "total do contrato", "valor global"])
   const entryValue = currencyNear(priceBlock, ["entrada", "sinal"])
   const adjustmentIndex = firstMatch(text, [/(IGP-M|IPCA|INPC|IPC|SELIC)/i])

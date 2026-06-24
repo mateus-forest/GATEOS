@@ -2,7 +2,9 @@ import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import {
+  hasUnsafeCosClientName,
   normalizeDocumentNumber,
+  normalizeCosClientName,
   textField,
   writeCosActionLog,
 } from "@/lib/cos/cos-action-utils"
@@ -27,8 +29,10 @@ export async function POST(request: Request) {
   const payload = (body?.payload ?? body ?? {}) as Record<string, unknown>
   const source = (body?.source ?? {}) as Record<string, unknown>
 
-  const name = textField(payload.name ?? payload.legalName ?? payload.legal_name)
-  const legalName = textField(payload.legalName ?? payload.legal_name ?? payload.name)
+  const rawName = textField(payload.name ?? payload.legalName ?? payload.legal_name)
+  const rawLegalName = textField(payload.legalName ?? payload.legal_name ?? payload.name)
+  const name = normalizeCosClientName(rawName)
+  const legalName = normalizeCosClientName(rawLegalName)
   const documentNumber = normalizeDocumentNumber(
     payload.documentNumber ?? payload.document_number ?? payload.document ?? payload.cnpj ?? payload.cpf
   )
@@ -36,6 +40,14 @@ export async function POST(request: Request) {
 
   if (!name && !legalName) {
     return NextResponse.json({ error: "Informe o nome ou a razao social do cliente." }, { status: 400 })
+  }
+
+  if (hasUnsafeCosClientName(rawName) || hasUnsafeCosClientName(rawLegalName) || hasUnsafeCosClientName(name) || hasUnsafeCosClientName(legalName)) {
+    return NextResponse.json({ error: "Dados do cliente ainda precisam de revisão manual." }, { status: 400 })
+  }
+
+  if ((name || legalName).length < 3) {
+    return NextResponse.json({ error: "Dados do cliente ainda precisam de revisão manual." }, { status: 400 })
   }
 
   if (!documentNumber && !confirmNoDocument) {

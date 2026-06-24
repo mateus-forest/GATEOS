@@ -20,12 +20,39 @@ export function textField(value: unknown) {
   return String(value ?? "").trim()
 }
 
+export function normalizeCosClientName(value: unknown) {
+  return textField(value)
+    .replace(/\s+/g, " ")
+    .replace(/\s*[,;]?\s*\b(CNPJ|CPF)\b\s*[:\-]?\s*[\d./-]+.*$/i, "")
+    .replace(/\s*[,;]?\s*\bpessoa\s+jur[ií]dica\s+de\s+direito\s+privado\b.*$/i, "")
+    .replace(/\s*[,;]?\s*\bdenominad[ao]\s+LOCAT[ÁA]RIA\b.*$/i, "")
+    .replace(/\s*[,;]?\s*\bendere[cç]o\b\s*[:\-]?.*$/i, "")
+    .replace(/\s*[,;]?\s*\b(Rua|Avenida|Av\.|Travessa|Rodovia)\b.*$/i, "")
+    .replace(/[;,]+$/, "")
+    .trim()
+}
+
+export function hasUnsafeCosClientName(value: unknown) {
+  const text = textField(value)
+  if (!text) return false
+  return (
+    /\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/.test(text) ||
+    /\bpessoa\s+jur[ií]dica\b/i.test(text) ||
+    /\bdenominad[ao]\b/i.test(text) ||
+    /\bendere[cç]o\b/i.test(text) ||
+    /\b(Rua|Avenida|Av\.|Travessa|Rodovia)\b/i.test(text) ||
+    /\b(CL[ÁA]USULA|CLAUSULA|foro|obriga[cç][aã]o|rescis[aã]o)\b/i.test(text) ||
+    text.length > 160
+  )
+}
+
 export function numberField(value: unknown) {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined
-  const normalized = String(value ?? "")
-    .replace(/[R$\s]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".")
+  const text = String(value ?? "").trim()
+  if (!text) return undefined
+  const normalized = text.includes(",")
+    ? text.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")
+    : text.replace(/[R$\s]/g, "")
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : undefined
 }
