@@ -105,7 +105,7 @@ function DialogContent({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
@@ -113,7 +113,7 @@ function DialogContent({
         aria-describedby={descriptionId}
         data-slot="dialog-content"
         className={cn(
-          "relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border/80 bg-background p-8 text-foreground shadow-[0_30px_100px_rgba(15,23,42,0.22)]",
+          "relative max-h-[calc(100vh-32px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border/80 bg-background p-5 text-foreground shadow-[0_30px_100px_rgba(15,23,42,0.22)] sm:p-8",
           className
         )}
         {...props}

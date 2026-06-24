@@ -2,43 +2,104 @@ import * as XLSX from "xlsx"
 import { inflateRawSync } from "node:zlib"
 
 type TabularRow = Record<string, unknown>
+type CosConfidenceLevel = "alta" | "media" | "baixa"
+type CosActionStatus = "preview" | "requires_review" | "next_step"
 
-export type CosExtractedClient = {
+type CosEntityMetadata = {
+  sourceFileName?: string
+  sourcePage?: number
+  sourceSnippet?: string
+  confidence: number
+  confidenceLevel: CosConfidenceLevel
+  warnings: string[]
+  missingFields: string[]
+  suggestedAction?: string
+  actionStatus: CosActionStatus
+}
+
+type CosExtractedParty = CosEntityMetadata & {
+  role: "lessor" | "lessee" | "guarantor"
   legalName?: string
+  tradeName?: string
   documentNumber?: string
   address?: string
   city?: string
   state?: string
   postalCode?: string
   representative?: string
+  representativeDocument?: string
+  phone?: string
+  email?: string
+  primaryContact?: string
+}
+
+export type CosExtractedClient = {
+  legalName?: string
+  tradeName?: string
+  documentNumber?: string
+  address?: string
+  city?: string
+  state?: string
+  postalCode?: string
+  representative?: string
+  representativeDocument?: string
   guarantor?: string
+  phone?: string
+  email?: string
+  primaryContact?: string
+  confidence?: number
+  confidenceLevel?: CosConfidenceLevel
+  warnings?: string[]
+  missingFields?: string[]
 }
 
 export type CosExtractedContract = {
+  title?: string
   contractType?: string
   lessor?: string
   lessee?: string
   signatureDate?: string
   probableStartDate?: string
+  endDate?: string
   termMonths?: number
+  validity?: string
   calculatedEndDate?: string
   monthlyDueDay?: number
   monthlyValue?: number
+  totalValue?: number
   depositValue?: number
+  entryValue?: number
+  installments?: number
+  recurrence?: string
   adjustmentIndex?: string
+  adjustmentRule?: string
   terminationFine?: string
+  interest?: string
+  noticePeriod?: string
   venue?: string
   suggestedStatus?: string
+  intelligentNotes?: string[]
+  confidence?: number
+  confidenceLevel?: CosConfidenceLevel
+  warnings?: string[]
+  missingFields?: string[]
 }
 
 export type CosExtractedEquipment = {
   quantity?: number
   description: string
+  configuration?: string
   unitValue?: number
   totalValue?: number
   suggestedCategory?: string
   suggestedStatus?: string
+  suggestedClientLink?: string
   contractLink?: string
+  sourceSnippet?: string
+  confidence?: number
+  confidenceLevel?: CosConfidenceLevel
+  warnings?: string[]
+  missingFields?: string[]
 }
 
 export type CosExtractedFinancialEntry = {
@@ -54,6 +115,11 @@ export type CosExtractedFinancialEntry = {
 
 export type CosContractExtractionPreview = {
   sourceFile: string
+  extractedParties?: {
+    lessor?: CosExtractedParty
+    lessee?: CosExtractedParty
+    guarantor?: CosExtractedParty
+  }
   extractedClient?: CosExtractedClient
   extractedContract?: CosExtractedContract
   extractedEquipment: CosExtractedEquipment[]
@@ -74,6 +140,27 @@ export type CosFinancialOcrLine = {
   values: number[]
   category?: string
   columns?: string[]
+  rowKind?: string
+  confidence?: number
+  warnings?: string[]
+}
+
+export type CosDreRow = CosEntityMetadata & {
+  label: string
+  rowKind: string
+  category?: string
+  values: Record<string, number | string | null>
+  total?: number
+  sourceSheet?: string
+  sourceRow?: number
+}
+
+export type CosDiagnostic = CosEntityMetadata & {
+  type: string
+  title: string
+  description: string
+  severity: "info" | "warning" | "critical"
+  suggestedActions: string[]
 }
 
 export type CosFinancialOcrPreview = {
@@ -87,6 +174,8 @@ export type CosFinancialOcrPreview = {
   extractedExpenses: CosFinancialOcrLine[]
   extractedCategories: string[]
   extractedFinancialEntries: TabularRow[]
+  extractedDreRows: CosDreRow[]
+  diagnostics: CosDiagnostic[]
   extractedWarnings: string[]
   suggestedActions: string[]
   summary: {
@@ -121,6 +210,40 @@ export type CosFilePreview = {
   financialOcr?: CosFinancialOcrPreview
 }
 
+export type CosNormalizedExtraction = {
+  sourceType:
+    | "contract"
+    | "dre"
+    | "granatum"
+    | "bank_statement"
+    | "financial_report"
+    | "image"
+    | "spreadsheet"
+    | "document"
+  confidence: number
+  confidenceLevel: CosConfidenceLevel
+  sourceFile: {
+    name: string
+    type: string
+    size: number
+  }
+  extractedParties: {
+    lessor?: CosExtractedParty
+    lessee?: CosExtractedParty
+    guarantor?: CosExtractedParty
+  }
+  extractedClient?: CosExtractedClient
+  extractedContract?: CosExtractedContract
+  extractedEquipment: Array<CosExtractedEquipment | TabularRow>
+  extractedFinancialEntries: TabularRow[]
+  extractedCategories: string[]
+  extractedBankBalances: TabularRow[]
+  extractedDreRows: CosDreRow[]
+  diagnostics: CosDiagnostic[]
+  warnings: string[]
+  suggestedActions: string[]
+}
+
 export type CosFileAnalysisPreview = {
   kind: "file_analysis"
   files: CosFilePreview[]
@@ -129,6 +252,8 @@ export type CosFileAnalysisPreview = {
   equipment: TabularRow[]
   contractExtractions: CosContractExtractionPreview[]
   financialOcrAnalyses: CosFinancialOcrPreview[]
+  normalizedExtractions: CosNormalizedExtraction[]
+  diagnostics: CosDiagnostic[]
   warnings: string[]
 }
 
@@ -226,6 +351,42 @@ const FINANCIAL_CATEGORY_TERMS = [
   { label: "Lucro operacional", terms: ["lucro operacional"] },
 ]
 
+const EQUIPMENT_TERMS = [
+  "computador",
+  "desktop",
+  "notebook",
+  "monitor",
+  "pc gamer",
+  "processador",
+  "ryzen",
+  "intel",
+  "rtx",
+  "gtx",
+  "ssd",
+  "memoria",
+  "ram",
+  "teclado",
+  "mouse",
+  "headset",
+  "servidor",
+]
+
+const LEGAL_EQUIPMENT_EXCLUSION_TERMS = [
+  "devolucao",
+  "devolver",
+  "obrigacao",
+  "manutencao preventiva",
+  "manutencao corretiva",
+  "responsabilidade",
+  "multa",
+  "rescis",
+  "foro",
+  "clausula",
+  "testemunha",
+  "assinatura",
+  "inadimplemento",
+]
+
 const FINANCIAL_CLIENT_TERMS = [
   "Fribal",
   "Estacio Itapipoca",
@@ -254,6 +415,37 @@ function normalizeLoose(value: unknown) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+}
+
+function confidenceLevel(confidence: number): CosConfidenceLevel {
+  if (confidence >= 75) return "alta"
+  if (confidence >= 50) return "media"
+  return "baixa"
+}
+
+function metadata(args: {
+  fileName?: string
+  snippet?: string
+  confidence: number
+  warnings?: string[]
+  missingFields?: string[]
+  suggestedAction?: string
+  actionStatus?: CosActionStatus
+}): CosEntityMetadata {
+  return {
+    sourceFileName: args.fileName,
+    sourceSnippet: args.snippet?.slice(0, 500),
+    confidence: args.confidence,
+    confidenceLevel: confidenceLevel(args.confidence),
+    warnings: args.warnings ?? [],
+    missingFields: args.missingFields ?? [],
+    suggestedAction: args.suggestedAction,
+    actionStatus: args.actionStatus ?? "preview",
+  }
+}
+
+function uniqueText(values: Array<string | undefined>) {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))))
 }
 
 function normalizeDocumentText(value: string) {
@@ -416,7 +608,7 @@ function columnNameFromValue(value: unknown, index: number) {
   return `Coluna ${index + 1}`
 }
 
-function uniqueColumns(columns: string[]) {
+function uniqueColumns(columns: unknown[]) {
   const used = new Map<string, number>()
   return columns.map((column, index) => {
     const clean = columnNameFromValue(column, index)
@@ -588,6 +780,46 @@ function firstMatch(text: string, patterns: RegExp[]) {
   return undefined
 }
 
+function allDocumentNumbers(segment: string) {
+  return uniqueText([
+    ...Array.from(segment.matchAll(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)).map((match) => match[0]),
+    ...Array.from(segment.matchAll(/\d{3}\.\d{3}\.\d{3}-\d{2}/g)).map((match) => match[0]),
+  ])
+}
+
+function extractCompanyLoose(block: string) {
+  const cnpjIndex = block.search(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)
+  const candidates = [cnpjIndex >= 0 ? block.slice(Math.max(0, cnpjIndex - 360), cnpjIndex + 40) : "", block]
+
+  for (const candidate of candidates) {
+    const matches = Array.from(
+      candidate.matchAll(/([A-Z0-9][A-Z0-9\s.,&'()/-]{8,}?(?:LTDA|S\.A\.|SA|S\/A|EIRELI|ME|EPP))/g)
+    )
+    const best = matches
+      .map((match) => match[1].replace(/\s+/g, " ").replace(/^[^A-Z0-9]+/, "").trim())
+      .filter((value) => !/locadora|locataria|contrato|clausula/i.test(value))
+      .sort((a, b) => b.length - a.length)[0]
+    if (best) return best
+  }
+
+  return undefined
+}
+
+function extractRepresentativeDocument(segment: string) {
+  return firstMatch(segment, [
+    /(?:CPF|RG)(?:\s*[:\-])?\s*([\d.\-\/]{7,18})/i,
+    /portador(?:a)?[\s\S]{0,80}?(?:CPF|RG)[^\d]*([\d.\-\/]{7,18})/i,
+  ])
+}
+
+function extractContactInfo(segment: string) {
+  return {
+    phone: firstMatch(segment, [/(\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4})/]),
+    email: firstMatch(segment, [/([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i]),
+    primaryContact: firstMatch(segment, [/contato(?:\s+principal)?(?:\s*[:\-])?\s*([^,\n.]+)/i]),
+  }
+}
+
 function firstNumber(text: string, patterns: RegExp[]) {
   const value = firstMatch(text, patterns)
   if (!value) return undefined
@@ -673,6 +905,60 @@ function extractLabeledBlock(text: string, startPattern: RegExp, endPatterns: Re
   return rest.slice(0, endIndex || maxLength)
 }
 
+function extractPartyBlock(text: string, role: "lessor" | "lessee" | "guarantor") {
+  if (role === "lessor") {
+    return extractLabeledBlock(text, /LOCADORA|CONTRATADA|VENDEDORA/i, [/LOCAT.RIA|LOCATARIA|CONTRATANTE|COMPRADORA|FIADOR|CLAUSULA|CL.USULA/i], 1800)
+  }
+  if (role === "lessee") {
+    return extractLabeledBlock(text, /LOCAT.RIA|LOCATARIA|CONTRATANTE|COMPRADORA/i, [/FIADOR|GARANTIDOR|LOCADORA|CLAUSULA|CL.USULA/i], 2200)
+  }
+  return extractLabeledBlock(text, /FIADOR|GARANTIDOR/i, [/CLAUSULA|CL.USULA|ASSINATURA|TESTEMUNHA/i], 1600)
+}
+
+function buildExtractedParty(fileName: string, text: string, role: "lessor" | "lessee" | "guarantor"): CosExtractedParty | undefined {
+  const block = extractPartyBlock(text, role)
+  const fallbackLabel = role === "lessor" ? "locadora" : role === "lessee" ? "locat[ÃƒÂ¡a]ria" : "fiador"
+  const fallback = extractParty(text, fallbackLabel)
+  const segment = block || fallback.segment
+  if (!segment) return undefined
+
+  const address = role === "lessee" ? extractAddressFromLocatariaBlock(segment) : extractAddress(segment)
+  const contacts = extractContactInfo(segment)
+  const legalName = extractCompanyLoose(segment) ?? fallback.company ?? (role === "guarantor" ? extractGuarantor(segment) : undefined)
+  const documentNumber = allDocumentNumbers(segment)[0] ?? fallback.cnpj
+  const representative = extractRepresentative(segment)
+  const missingFields = [
+    !legalName ? "razao_social_nome" : "",
+    role !== "lessor" && !documentNumber ? "cnpj_cpf" : "",
+  ].filter(Boolean)
+  const warnings = missingFields.length > 0 ? [`Dados incompletos para ${role === "lessor" ? "locadora" : role === "lessee" ? "locataria" : "fiador"}.`] : []
+  const confidence = Math.min(95, 35 + (legalName ? 28 : 0) + (documentNumber ? 24 : 0) + (address.address ? 8 : 0))
+
+  return {
+    role,
+    legalName,
+    documentNumber,
+    address: address.address,
+    city: address.city,
+    state: address.state,
+    postalCode: address.postalCode,
+    representative,
+    representativeDocument: extractRepresentativeDocument(segment),
+    phone: contacts.phone,
+    email: contacts.email,
+    primaryContact: contacts.primaryContact,
+    ...metadata({
+      fileName,
+      snippet: segment,
+      confidence,
+      warnings,
+      missingFields,
+      suggestedAction: role === "lessee" ? "Cadastrar cliente" : undefined,
+      actionStatus: role === "lessee" ? "requires_review" : "preview",
+    }),
+  }
+}
+
 function extractCompanyFromBlock(block: string) {
   const cnpjIndex = block.search(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)
   const candidates = [cnpjIndex >= 0 ? block.slice(Math.max(0, cnpjIndex - 280), cnpjIndex + 40) : "", block]
@@ -744,18 +1030,21 @@ function extractDepositValueAccurate(text: string) {
 }
 
 function extractContractObjectBlock(text: string) {
-  return extractLabeledBlock(
-    text,
-    /CLAUSULA\s*1|CL.USULA\s*1|DO OBJETO|OBJETO/i,
-    [/\bTotal\b/i, /CLAUSULA\s*2|CL.USULA\s*2|DO PRAZO/i],
-    2600
-  )
+  const blocks = [
+    extractLabeledBlock(text, /DO OBJETO|OBJETO|DESCRICAO DOS BENS|DESCRI..O DOS BENS/i, [/DO PRAZO|CLAUSULA\s*2|CL.USULA\s*2|OBRIGACOES|OBRIGA..ES/i], 3200),
+    extractLabeledBlock(text, /TABELA DE EQUIPAMENTOS|EQUIPAMENTOS LOCADOS|BENS LOCADOS|ANEXO.*EQUIPAMENTOS/i, [/TOTAL GERAL|CONDI..ES|DO PRAZO|CLAUSULA|CL.USULA/i], 3600),
+    extractLabeledBlock(text, /PROPOSTA COMERCIAL/i, [/CONDI..ES|VALIDADE|ASSINATURA|CLAUSULA|CL.USULA/i], 3000),
+  ].filter((block) => block.trim().length > 80)
+
+  return blocks.join("\n")
 }
 
 function extractEquipmentFromContract(text: string) {
   const equipment: CosExtractedEquipment[] = []
   const objectBlock = extractContractObjectBlock(text)
-  const lines = (objectBlock || text)
+  if (!objectBlock) return equipment
+
+  const lines = objectBlock
     .split(/\n+/)
     .flatMap((line) => line.split(/\s+\|\s+/))
     .map((line) => line.trim())
@@ -763,10 +1052,10 @@ function extractEquipmentFromContract(text: string) {
 
   for (const line of lines) {
     const normalized = normalizeLoose(line)
-    const hasEquipmentSignal = /(monitor|ryzen|rtx|computador|pc gamer|notebook|ssd|hd|memoria|ram|processador|equipamento)/i.test(line)
-    const quantityMatch = line.match(/(?:^|\s)(\d{1,3})\s*(?:x|un|und|unidade|unidades)?\s+/i)
+    const hasEquipmentSignal = EQUIPMENT_TERMS.some((term) => normalized.includes(normalizeLoose(term)))
+    const quantityMatch = line.match(/(?:^|\s)(\d{1,3})\s*(?:x|un|und|unid\.?|unidade|unidades|qtde|qtd)?(?:\s+|$)/i)
     if (!hasEquipmentSignal || !quantityMatch) continue
-    if (/(fiador|foro|multa|rescis|clausula|locataria|locadora|assinatura|testemunha)/i.test(normalized)) continue
+    if (LEGAL_EQUIPMENT_EXCLUSION_TERMS.some((term) => normalized.includes(normalizeLoose(term)))) continue
 
     const quantity = Number(quantityMatch[1])
     const moneyMatches = Array.from(line.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})*,\d{2}/g)).map((match) =>
@@ -778,11 +1067,18 @@ function extractEquipmentFromContract(text: string) {
     equipment.push({
       quantity,
       description: line.replace(/^\d{1,3}\s*(?:x|un|und|unidade|unidades)?\s*/i, "").trim(),
+      configuration: firstMatch(line, [/(?:configura..o|config\.?)(?:\s*[:\-])?\s*([^|;\n]+)/i]),
       unitValue,
       totalValue,
       suggestedCategory: normalized.includes("monitor") ? "Monitor" : "Computador",
-      suggestedStatus: "disponivel",
+      suggestedStatus: "locado",
+      suggestedClientLink: "Vincular a locataria extraida",
       contractLink: "Vincular ao contrato extraido",
+      sourceSnippet: line,
+      confidence: Math.min(92, 45 + (quantity ? 20 : 0) + (hasEquipmentSignal ? 20 : 0) + (moneyMatches.length > 0 ? 7 : 0)),
+      confidenceLevel: confidenceLevel(Math.min(92, 45 + (quantity ? 20 : 0) + (hasEquipmentSignal ? 20 : 0) + (moneyMatches.length > 0 ? 7 : 0))),
+      warnings: [],
+      missingFields: [!quantity ? "quantidade" : "", !line ? "descricao" : ""].filter(Boolean),
     })
   }
 
@@ -908,6 +1204,189 @@ function analyzeContractText(file: File, text: string): CosContractExtractionPre
   }
 }
 
+function detectContractType(normalized: string) {
+  if (normalized.includes("comodato")) return "Comodato"
+  if (normalized.includes("manutencao")) return "Manutencao"
+  if (normalized.includes("prestacao de servico") || normalized.includes("prestacao de servicos")) return "Prestacao de servico"
+  if (normalized.includes("venda")) return "Venda"
+  if (normalized.includes("locacao")) return "Locacao de equipamentos"
+  if (normalized.includes("recorrente")) return "Contrato recorrente"
+  if (normalized.includes("avulso")) return "Contrato avulso"
+  return "Outro"
+}
+
+function analyzeContractTextV2(file: File, text: string): CosContractExtractionPreview {
+  const normalized = normalizeLoose(text)
+  const lessorParty = buildExtractedParty(file.name, text, "lessor")
+  const lesseeParty = buildExtractedParty(file.name, text, "lessee")
+  const guarantorParty = buildExtractedParty(file.name, text, "guarantor")
+  const locataria = extractLocatariaAccurate(text)
+  const locadora = extractParty(text, "locadora")
+  const locatariaAddress = extractAddressFromLocatariaBlock(locataria.segment || text)
+  const signatureDate = parseDate(firstMatch(text, [/assinad[oa][\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/]))
+  const probableStartDate =
+    parseDate(firstMatch(text, [/inicio[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /vigencia[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i])) ??
+    signatureDate
+  const explicitEndDate = parseDate(firstMatch(text, [/termino[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /data\s+final[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i]))
+  const termMonths = extractTermMonthsAccurate(text)
+  const calculatedEndDate = explicitEndDate ?? addMonths(probableStartDate, termMonths)
+  const monthlyDueDay = Number(firstMatch(text, [/vencimento[\s\S]{0,120}?dia\s*(\d{1,2})/i, /todo\s+dia\s*(\d{1,2})/i, /dia\s*(\d{1,2})\s+de\s+cada\s+mes/i])) || undefined
+  const monthlyValue = currencyNear(text, ["preco", "valor mensal", "mensalidade", "aluguel"])
+  const depositValue = extractDepositValueAccurate(text)
+  const totalValue = currencyNear(text, ["valor total", "total do contrato", "valor global"])
+  const entryValue = currencyNear(text, ["entrada", "sinal"])
+  const adjustmentIndex = firstMatch(text, [/(IGP-M|IPCA|INPC|IPC|SELIC)/i])
+  const adjustmentRule = firstMatch(text, [/reajust[ea][\s\S]{0,160}?([^.\n]+)/i])
+  const terminationFine = firstMatch(text, [/multa[\s\S]{0,180}?((?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}%|[0-9]+\s*%)/i])
+  const interest = firstMatch(text, [/juros[\s\S]{0,120}?(\d{1,2}(?:,\d{1,2})?\s*%[^.\n]*)/i])
+  const noticePeriod = firstMatch(text, [/aviso\s+previo[\s\S]{0,120}?(\d{1,3}\s*dias?)/i])
+  const venue = firstMatch(text, [/foro[\s\S]{0,160}?comarca\s+de\s+([^,\n.]+)/i, /foro\s+de\s+([^,\n.]+)/i])
+  const extractedEquipment = extractEquipmentFromContract(text)
+  const lesseeName = lesseeParty?.legalName ?? locataria.company
+  const lesseeDocument = lesseeParty?.documentNumber ?? locataria.cnpj
+  const contractType = detectContractType(normalized)
+  const contractMissingFields = [
+    !lesseeName ? "cliente" : "",
+    !monthlyValue ? "valor" : "",
+    !termMonths && !calculatedEndDate ? "prazo_ou_datas" : "",
+    !contractType ? "tipo" : "",
+  ].filter(Boolean)
+  const contractConfidenceScore = Math.min(
+    96,
+    35 +
+      (lesseeName ? 16 : 0) +
+      (monthlyValue ? 18 : 0) +
+      (termMonths || calculatedEndDate ? 16 : 0) +
+      (contractType !== "Outro" ? 12 : 0) +
+      (lessorParty?.legalName ? 8 : 0)
+  )
+  const warnings = [
+    !lesseeName ? "Nao identifiquei a razao social da locataria com alta confianca." : "",
+    !lesseeDocument ? "Nao identifiquei CNPJ/CPF da locataria com alta confianca." : "",
+    !monthlyValue ? "Nao identifiquei valor mensal com alta confianca." : "",
+    !termMonths && !calculatedEndDate ? "Nao identifiquei prazo ou data final com alta confianca." : "",
+    extractedEquipment.length === 0 ? "Nao identifiquei equipamentos estruturados em bloco proprio do contrato." : "",
+  ].filter(Boolean)
+
+  const extractedContract: CosExtractedContract = {
+    title: firstMatch(text, [/^\s*([^\n]{0,90}contrato[^\n]{0,90})/i]),
+    contractType,
+    lessor: lessorParty?.legalName ?? locadora.company,
+    lessee: lesseeName,
+    signatureDate,
+    probableStartDate,
+    endDate: explicitEndDate,
+    termMonths,
+    validity: termMonths ? `${termMonths} meses` : calculatedEndDate ? `Ate ${calculatedEndDate}` : undefined,
+    calculatedEndDate,
+    monthlyDueDay,
+    monthlyValue,
+    totalValue,
+    depositValue,
+    entryValue,
+    installments: termMonths,
+    recurrence: monthlyValue ? "mensal" : undefined,
+    adjustmentIndex,
+    adjustmentRule,
+    terminationFine,
+    interest,
+    noticePeriod,
+    venue,
+    suggestedStatus: "ativo",
+    intelligentNotes: [
+      !lessorParty?.legalName ? "Locadora precisa de revisao manual." : "",
+      !lesseeDocument ? "Cliente sem documento confiavel; confirme antes de cadastrar." : "",
+      extractedEquipment.length === 0 ? "Equipamentos nao foram capturados em bloco proprio." : "",
+    ].filter(Boolean),
+    confidence: contractConfidenceScore,
+    confidenceLevel: confidenceLevel(contractConfidenceScore),
+    warnings: contractMissingFields.length ? ["Campos criticos do contrato precisam de revisao."] : [],
+    missingFields: contractMissingFields,
+  }
+
+  const extractedFinancialEntries: CosExtractedFinancialEntry[] = []
+  if (monthlyValue) {
+    extractedFinancialEntries.push({
+      type: "receita",
+      description: `Receita recorrente mensal${lesseeName ? ` - ${lesseeName}` : ""}`,
+      value: monthlyValue,
+      dueDay: monthlyDueDay,
+      installments: termMonths,
+      firstCompetence: probableStartDate,
+      lastCompetence: calculatedEndDate,
+      source: file.name,
+    })
+  }
+  if (depositValue) {
+    extractedFinancialEntries.push({
+      type: "receita",
+      description: `Caucao contratual${lesseeName ? ` - ${lesseeName}` : ""}`,
+      value: depositValue,
+      dueDay: monthlyDueDay,
+      installments: 1,
+      firstCompetence: probableStartDate,
+      source: file.name,
+    })
+  }
+
+  const previewWithoutConfidence = {
+    sourceFile: file.name,
+    extractedParties: {
+      lessor: lessorParty,
+      lessee: lesseeParty,
+      guarantor: guarantorParty,
+    },
+    extractedClient: {
+      legalName: lesseeName,
+      documentNumber: lesseeDocument,
+      address: lesseeParty?.address ?? locatariaAddress.address,
+      city: lesseeParty?.city ?? locatariaAddress.city,
+      state: lesseeParty?.state ?? locatariaAddress.state,
+      postalCode: lesseeParty?.postalCode ?? locatariaAddress.postalCode,
+      representative: lesseeParty?.representative ?? extractRepresentative(text),
+      representativeDocument: lesseeParty?.representativeDocument,
+      guarantor: guarantorParty?.legalName ?? extractGuarantor(text),
+      phone: lesseeParty?.phone,
+      email: lesseeParty?.email,
+      primaryContact: lesseeParty?.primaryContact,
+      confidence: lesseeParty?.confidence,
+      confidenceLevel: lesseeParty?.confidenceLevel,
+      warnings: lesseeParty?.warnings,
+      missingFields: lesseeParty?.missingFields,
+    },
+    extractedContract,
+    extractedEquipment,
+    extractedFinancialEntries,
+    extractedDocument: {
+      fileName: file.name,
+      type: file.type || "contrato",
+      suggestedNotes: "Contrato analisado pelo COS. Anexar ao cliente e ao contrato apos revisao humana.",
+    },
+    warnings,
+    textSample: text.slice(0, 1200),
+  }
+
+  console.info("[cos] Operational contract extraction", {
+    fileName: file.name,
+    lessor: lessorParty?.legalName,
+    lessee: lesseeName,
+    cnpjCpf: lesseeDocument,
+    contractType,
+    termMonths,
+    calculatedEndDate,
+    monthlyValue,
+    depositValue,
+    equipmentItems: extractedEquipment.length,
+    confidence: contractConfidence(previewWithoutConfidence),
+    warnings: warnings.length,
+  })
+
+  return {
+    ...previewWithoutConfidence,
+    confidence: contractConfidence(previewWithoutConfidence),
+  }
+}
+
 function looksLikeContract(text: string) {
   const normalized = normalizeLoose(text)
   const matches = CONTRACT_TERMS.filter((term) => normalized.includes(term)).length
@@ -1011,6 +1490,252 @@ function buildEquipmentPreview(rows: WorkbookRows[]) {
   }
 
   return preview
+}
+
+function normalizedRowText(row: TabularRow) {
+  return normalizeLoose(Object.values(row).map(cellText).join(" "))
+}
+
+function normalizeFinancialCell(value: unknown): number | string | null {
+  const text = cellText(value)
+  if (!text || text === "-") return null
+  if (/^#DIV\/0!?$/i.test(text)) return "#DIV/0!"
+  if (/%$/.test(text)) return text
+  const normalized = text.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".")
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : text
+}
+
+function classifyDreRow(label: string) {
+  const normalized = normalizeLoose(label)
+  if (normalized.includes("receita")) return { rowKind: "receita", category: "Receitas" }
+  if (normalized.includes("imposto")) return { rowKind: "impostos", category: "Impostos" }
+  if (normalized.includes("pessoal") || normalized.includes("salario")) return { rowKind: "despesas_com_pessoal", category: "Despesas com pessoal" }
+  if (normalized.includes("financeira") || normalized.includes("juros") || normalized.includes("tarifa")) return { rowKind: "despesas_financeiras", category: "Despesas financeiras" }
+  if (normalized.includes("nao operacional")) return { rowKind: "despesas_nao_operacionais", category: "Despesas nao operacionais" }
+  if (normalized.includes("despesa") || normalized.includes("custo")) return { rowKind: "despesas_operacionais", category: "Despesas operacionais" }
+  if (normalized.includes("investimento")) return { rowKind: "investimentos", category: "Investimentos" }
+  if (normalized.includes("distribuicao") || normalized.includes("lucro")) return { rowKind: "distribuicao_lucros", category: "Distribuicao de lucros" }
+  if (normalized.includes("aporte")) return { rowKind: "aportes", category: "Aportes" }
+  if (normalized.includes("saldo anterior")) return { rowKind: "saldo_anterior", category: "Saldo anterior" }
+  if (normalized.includes("saldo banco")) return { rowKind: "saldo_banco", category: "Saldo banco" }
+  if (normalized.includes("diferenca")) return { rowKind: "diferenca", category: "Diferencas" }
+  if (normalized.includes("resultado operacional")) return { rowKind: "resultado_operacional", category: "Resultado operacional" }
+  return { rowKind: "linha_financeira", category: undefined }
+}
+
+function buildDreRows(rows: WorkbookRows[]) {
+  const dreRows: CosDreRow[] = []
+  const bankBalances: TabularRow[] = []
+
+  for (const sheet of rows) {
+    const probableFinancial = Boolean(sheet.sourceType) || sheet.columns.some(isMonthLike)
+    if (!probableFinancial) continue
+
+    for (const row of sheet.rows) {
+      if (dreRows.length >= 120) break
+      const label =
+        textValue(row, ["descricao", "description", "categoria", "category", "cliente", "fornecedor"]) ||
+        cellText(row[sheet.columns[0]])
+      if (!label || label.length > 120) continue
+
+      const values: Record<string, number | string | null> = {}
+      let numericCount = 0
+      for (const column of sheet.columns) {
+        const normalizedValue = normalizeFinancialCell(row[column])
+        if (typeof normalizedValue === "number") numericCount += 1
+        if (isMonthLike(column) || isTotalLike(column) || isValueLike(column) || normalizedValue !== null) {
+          values[column] = normalizedValue
+        }
+      }
+      if (numericCount === 0) continue
+
+      const classification = classifyDreRow(label)
+      const numericValues = Object.values(values).filter((value): value is number => typeof value === "number")
+      const total = numericValues.length ? numericValues[numericValues.length - 1] : undefined
+      const sourceRow = Number(row._rowNumber)
+      const dreRow: CosDreRow = {
+        label,
+        rowKind: classification.rowKind,
+        category: classification.category,
+        values,
+        total,
+        sourceSheet: sheet.sheetName,
+        sourceRow: Number.isFinite(sourceRow) ? sourceRow : undefined,
+        ...metadata({
+          fileName: sheet.fileName,
+          snippet: Object.values(row).map(cellText).filter(Boolean).join(" | "),
+          confidence: Math.min(92, 45 + Math.min(numericCount, 8) * 5 + (classification.category ? 10 : 0)),
+          warnings: Object.values(values).includes("#DIV/0!") ? ["Linha contem erro #DIV/0!."] : [],
+          missingFields: [],
+          suggestedAction: "Ver detalhes",
+          actionStatus: "preview",
+        }),
+      }
+      dreRows.push(dreRow)
+      if (classification.rowKind === "saldo_banco" || classification.rowKind === "saldo_anterior") {
+        bankBalances.push({ label, total, source: `${sheet.fileName} / ${sheet.sheetName}` })
+      }
+    }
+  }
+
+  return { dreRows, bankBalances }
+}
+
+function buildDiagnostics(args: {
+  dreRows: CosDreRow[]
+  financialEntries: TabularRow[]
+  bankBalances: TabularRow[]
+  sourceFileName?: string
+}) {
+  const diagnostics: CosDiagnostic[] = []
+  const revenueTotal = args.dreRows
+    .filter((row) => row.rowKind === "receita")
+    .reduce((total, row) => total + (typeof row.total === "number" ? row.total : 0), 0)
+  const expenseTotal = args.dreRows
+    .filter((row) => row.rowKind.includes("despesa") || row.rowKind === "impostos" || row.rowKind === "investimentos")
+    .reduce((total, row) => total + Math.abs(typeof row.total === "number" ? row.total : 0), 0)
+  const previewRevenue = args.financialEntries
+    .filter((entry) => normalizeLoose(entry.type).includes("receita"))
+    .reduce((total, entry) => total + (typeof entry.value === "number" ? entry.value : 0), 0)
+
+  if (revenueTotal && previewRevenue && Math.abs(revenueTotal - previewRevenue) > 1) {
+    diagnostics.push({
+      type: "dre_vs_financial_preview",
+      title: "Divergencia entre DRE e lancamentos extraidos",
+      description: `Identifiquei receita total na DRE de ${revenueTotal.toFixed(2)}, enquanto os lancamentos financeiros extraidos somam ${previewRevenue.toFixed(2)}.`,
+      severity: "warning",
+      suggestedActions: ["Ver detalhes", "Gerar ajuste sugerido", "Ignorar"],
+      ...metadata({
+        fileName: args.sourceFileName,
+        confidence: 78,
+        warnings: [],
+        missingFields: ["financeiro_do_sistema_real"],
+        suggestedAction: "Ver detalhes",
+        actionStatus: "preview",
+      }),
+    })
+  }
+
+  if (args.bankBalances.length > 0 && args.dreRows.some((row) => row.rowKind === "diferenca")) {
+    diagnostics.push({
+      type: "bank_balance_difference",
+      title: "Possivel diferenca entre saldo banco e saldo operacional",
+      description: "O arquivo contem linhas de saldo bancario e diferenca. Nesta etapa o COS apenas sinaliza para conferencia.",
+      severity: "warning",
+      suggestedActions: ["Ver detalhes", "Gerar ajuste sugerido", "Ignorar"],
+      ...metadata({
+        fileName: args.sourceFileName,
+        confidence: 72,
+        warnings: [],
+        missingFields: ["saldo_operacional_do_sistema"],
+        suggestedAction: "Ver detalhes",
+        actionStatus: "preview",
+      }),
+    })
+  }
+
+  if (revenueTotal || expenseTotal) {
+    diagnostics.push({
+      type: "financial_structure_detected",
+      title: "Estrutura financeira detectada",
+      description: `Identifiquei receitas, despesas, totais ou subtotais para analise operacional. Receita lida: ${revenueTotal.toFixed(2)}; despesas lidas: ${expenseTotal.toFixed(2)}.`,
+      severity: "info",
+      suggestedActions: ["Salvar como analise", "Criar categorias DRE", "Criar lancamentos sugeridos"],
+      ...metadata({
+        fileName: args.sourceFileName,
+        confidence: 80,
+        warnings: [],
+        missingFields: [],
+        suggestedAction: "Salvar como analise",
+        actionStatus: "next_step",
+      }),
+    })
+  }
+
+  return diagnostics
+}
+
+function normalizedSourceTypeFromLabel(label?: string): CosNormalizedExtraction["sourceType"] {
+  const normalized = normalizeLoose(label)
+  if (normalized.includes("granatum")) return "granatum"
+  if (normalized.includes("extrato")) return "bank_statement"
+  if (normalized.includes("dre") || normalized.includes("demonstrativo")) return "dre"
+  if (normalized.includes("fluxo") || normalized.includes("financeiro") || normalized.includes("contas")) return "financial_report"
+  return "spreadsheet"
+}
+
+function normalizeContractExtraction(file: File, extraction: CosContractExtractionPreview): CosNormalizedExtraction {
+  return {
+    sourceType: "contract",
+    confidence: extraction.confidence,
+    confidenceLevel: confidenceLevel(extraction.confidence),
+    sourceFile: { name: file.name, type: file.type || "contrato", size: file.size },
+    extractedParties: extraction.extractedParties ?? {},
+    extractedClient: extraction.extractedClient,
+    extractedContract: extraction.extractedContract,
+    extractedEquipment: extraction.extractedEquipment,
+    extractedFinancialEntries: extraction.extractedFinancialEntries,
+    extractedCategories: [],
+    extractedBankBalances: [],
+    extractedDreRows: [],
+    diagnostics: [],
+    warnings: extraction.warnings,
+    suggestedActions: [
+      "Cadastrar cliente",
+      "Cadastrar contrato",
+      "Cadastrar equipamentos",
+      "Criar lancamento financeiro",
+      "Anexar documento ao cliente",
+      "Anexar documento ao contrato",
+    ],
+  }
+}
+
+function normalizeFinancialOcrExtraction(file: File, preview: CosFinancialOcrPreview): CosNormalizedExtraction {
+  return {
+    sourceType: normalizedSourceTypeFromLabel(preview.detectedType) === "spreadsheet" ? "image" : normalizedSourceTypeFromLabel(preview.detectedType),
+    confidence: preview.confidence,
+    confidenceLevel: confidenceLevel(preview.confidence),
+    sourceFile: { name: file.name, type: file.type || "imagem/documento financeiro", size: file.size },
+    extractedParties: {},
+    extractedEquipment: [],
+    extractedFinancialEntries: preview.extractedFinancialEntries,
+    extractedCategories: preview.extractedCategories,
+    extractedBankBalances: [],
+    extractedDreRows: preview.extractedDreRows,
+    diagnostics: preview.diagnostics,
+    warnings: preview.extractedWarnings,
+    suggestedActions: ["Salvar como analise", "Criar categorias DRE", "Criar lancamentos sugeridos", "Anexar documento"],
+  }
+}
+
+function normalizeSpreadsheetExtraction(file: File, workbookRows: WorkbookRows[], financialEntries: TabularRow[], clients: TabularRow[], equipment: TabularRow[]) {
+  const { dreRows, bankBalances } = buildDreRows(workbookRows)
+  const diagnostics = buildDiagnostics({
+    dreRows,
+    financialEntries,
+    bankBalances,
+    sourceFileName: file.name,
+  })
+  const probableType = workbookRows.map((row) => row.sourceType).find(Boolean)
+  const confidence = Math.min(94, 45 + (dreRows.length ? 20 : 0) + (financialEntries.length ? 12 : 0) + (clients.length ? 8 : 0) + (bankBalances.length ? 8 : 0))
+
+  return {
+    sourceType: normalizedSourceTypeFromLabel(probableType),
+    confidence,
+    confidenceLevel: confidenceLevel(confidence),
+    sourceFile: { name: file.name, type: file.type || "planilha", size: file.size },
+    extractedParties: {},
+    extractedEquipment: equipment,
+    extractedFinancialEntries: financialEntries,
+    extractedCategories: uniqueText(dreRows.map((row) => row.category)),
+    extractedBankBalances: bankBalances,
+    extractedDreRows: dreRows,
+    diagnostics,
+    warnings: diagnostics.filter((diagnostic) => diagnostic.severity !== "info").map((diagnostic) => diagnostic.description),
+    suggestedActions: ["Salvar como analise", "Criar categorias DRE", "Criar lancamentos sugeridos"],
+  } satisfies CosNormalizedExtraction
 }
 
 function workbookToRows(workbook: XLSX.WorkBook, fileName: string) {
@@ -1219,6 +1944,7 @@ function buildFinancialOcrRows(text: string) {
   const revenue: CosFinancialOcrLine[] = []
   const expenses: CosFinancialOcrLine[] = []
   const entries: TabularRow[] = []
+  const dreRows: CosDreRow[] = []
   const columns = detectFinancialColumns(text)
   const lines = text
     .split("\n")
@@ -1237,7 +1963,26 @@ function buildFinancialOcrRows(text: string) {
       values,
       category: classification.category,
       columns,
+      rowKind: classifyDreRow(description || line).rowKind,
+      confidence: Math.min(90, 48 + Math.min(values.length, 6) * 5 + (classification.category ? 12 : 0)),
+      warnings: /#DIV\/0!/i.test(line) ? ["Linha contem erro #DIV/0!."] : [],
     }
+    const rowClassification = classifyDreRow(item.description)
+    dreRows.push({
+      label: item.description,
+      rowKind: rowClassification.rowKind,
+      category: rowClassification.category ?? item.category,
+      values: Object.fromEntries(values.map((value, valueIndex) => [columns[valueIndex] ?? `valor_${valueIndex + 1}`, value])),
+      total: values[values.length - 1],
+      ...metadata({
+        snippet: line,
+        confidence: item.confidence ?? 55,
+        warnings: item.warnings,
+        missingFields: [],
+        suggestedAction: "Ver detalhes",
+        actionStatus: "preview",
+      }),
+    })
 
     if (classification.kind === "revenue") {
       revenue.push(item)
@@ -1260,7 +2005,7 @@ function buildFinancialOcrRows(text: string) {
     }
   })
 
-  return { revenue, expenses, entries }
+  return { revenue, expenses, entries, dreRows }
 }
 
 function findLineValue(text: string, patterns: RegExp[]) {
@@ -1318,6 +2063,16 @@ function analyzeFinancialOcrText(file: File, extractedText: string, sourceType: 
     extractedExpenses: rows.expenses.slice(0, 20),
     extractedCategories: categories,
     extractedFinancialEntries: rows.entries.slice(0, 30),
+    extractedDreRows: rows.dreRows.slice(0, 60).map((row) => ({
+      ...row,
+      sourceFileName: file.name,
+    })),
+    diagnostics: buildDiagnostics({
+      dreRows: rows.dreRows,
+      financialEntries: rows.entries,
+      bankBalances: [],
+      sourceFileName: file.name,
+    }),
     extractedWarnings: warnings,
     suggestedActions: FINANCIAL_OCR_ACTIONS,
     summary: {
@@ -1371,13 +2126,18 @@ export async function analyzeCosFiles(files: File[]) {
   const filePreviews: CosFilePreview[] = []
   const contractExtractions: CosContractExtractionPreview[] = []
   const financialOcrAnalyses: CosFinancialOcrPreview[] = []
+  const normalizedExtractions: CosNormalizedExtraction[] = []
   const warnings: string[] = []
 
   for (const file of files) {
     if (supportedSpreadsheet(file)) {
       try {
         const result = await analyzeSpreadsheet(file)
+        const fileFinancialEntries = buildFinancialPreview(result.rows)
+        const fileClients = buildClientPreview(result.rows)
+        const fileEquipment = buildEquipmentPreview(result.rows)
         allRows.push(...result.rows)
+        normalizedExtractions.push(normalizeSpreadsheetExtraction(file, result.rows, fileFinancialEntries, fileClients, fileEquipment))
         filePreviews.push({
           name: file.name,
           type: file.type || "planilha",
@@ -1402,7 +2162,7 @@ export async function analyzeCosFiles(files: File[]) {
     if (docxFile(file) || pdfFile(file)) {
       try {
         const extractedText = docxFile(file) ? await extractDocxText(file) : await extractPdfText(file)
-        const contractExtraction = analyzeContractText(file, extractedText)
+        const contractExtraction = analyzeContractTextV2(file, extractedText)
         const isContract = looksLikeContract(extractedText)
         const financialOcrCandidate =
           !isContract && extractedText.trim()
@@ -1413,9 +2173,11 @@ export async function analyzeCosFiles(files: File[]) {
 
         if (isContract || contractExtraction.confidence >= 35) {
           contractExtractions.push(contractExtraction)
+          normalizedExtractions.push(normalizeContractExtraction(file, contractExtraction))
         }
         if (financialOcr) {
           financialOcrAnalyses.push(financialOcr)
+          normalizedExtractions.push(normalizeFinancialOcrExtraction(file, financialOcr))
         }
 
         console.info("[cos] Document analysis", {
@@ -1464,6 +2226,7 @@ export async function analyzeCosFiles(files: File[]) {
         const extractedText = await extractImageOcrText(file)
         const financialOcr = analyzeFinancialOcrText(file, extractedText)
         financialOcrAnalyses.push(financialOcr)
+        normalizedExtractions.push(normalizeFinancialOcrExtraction(file, financialOcr))
         filePreviews.push({
           name: file.name,
           type: file.type || "imagem",
@@ -1504,6 +2267,8 @@ export async function analyzeCosFiles(files: File[]) {
     equipment: buildEquipmentPreview(allRows),
     contractExtractions,
     financialOcrAnalyses,
+    normalizedExtractions,
+    diagnostics: normalizedExtractions.flatMap((extraction) => extraction.diagnostics),
     warnings,
   }
 

@@ -76,6 +76,7 @@ type CosActionReview = {
   }
   fileName?: string
   requiresNoDocumentConfirmation?: boolean
+  requiresExtraConfirmation?: string
 }
 type SessionProfile = {
   name: string
@@ -130,6 +131,38 @@ function formatPreviewValue(value: unknown) {
 function formatMoney(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-"
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+}
+
+function ConfidenceBadge({ confidence, level }: { confidence?: number; level?: string }) {
+  const numeric = typeof confidence === "number" && Number.isFinite(confidence) ? confidence : undefined
+  const resolvedLevel = level ?? (numeric === undefined ? "baixa" : numeric >= 75 ? "alta" : numeric >= 50 ? "media" : "baixa")
+  const className =
+    resolvedLevel === "alta"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : resolvedLevel === "media"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-red-200 bg-red-50 text-red-900"
+
+  return (
+    <Badge variant="outline" className={`rounded-full ${className}`}>
+      {resolvedLevel} confianca{numeric !== undefined ? ` (${numeric}%)` : ""}
+    </Badge>
+  )
+}
+
+function FieldWarnings({ warnings, missingFields }: { warnings?: string[]; missingFields?: string[] }) {
+  const visibleWarnings = warnings?.filter(Boolean) ?? []
+  const visibleMissing = missingFields?.filter(Boolean) ?? []
+  if (visibleWarnings.length === 0 && visibleMissing.length === 0) return null
+
+  return (
+    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+      {visibleWarnings.map((warning) => (
+        <p key={warning}>{warning}</p>
+      ))}
+      {visibleMissing.length > 0 && <p>Campos para revisar: {visibleMissing.join(", ")}.</p>}
+    </div>
+  )
 }
 
 function EntityActionButton({
@@ -208,14 +241,40 @@ function ContractExtractionCards({
     <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
       <div>
         <p className="font-semibold">Contrato analisado: {preview.sourceFile}</p>
-        <p className="mt-1 text-muted-foreground">
-          Confianca estimada: {preview.confidence}%. Nenhum dado foi gravado. Revise as informacoes antes de cadastrar.
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <ConfidenceBadge confidence={preview.confidence} />
+          <span className="text-muted-foreground">Nenhum dado foi gravado.</span>
+        </div>
       </div>
+
+      {preview.extractedParties?.lessor && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold">Locadora</p>
+            <ConfidenceBadge
+              confidence={preview.extractedParties.lessor.confidence}
+              level={preview.extractedParties.lessor.confidenceLevel}
+            />
+          </div>
+          <div className="mt-2 space-y-1 text-muted-foreground">
+            <p>{preview.extractedParties.lessor.legalName || "Razao social nao identificada"}</p>
+            <p>CNPJ/Documento: {preview.extractedParties.lessor.documentNumber || "-"}</p>
+            <p>Endereco: {preview.extractedParties.lessor.address || "-"}</p>
+            <p>Representante: {preview.extractedParties.lessor.representative || "-"}</p>
+          </div>
+          <FieldWarnings
+            warnings={preview.extractedParties.lessor.warnings}
+            missingFields={preview.extractedParties.lessor.missingFields}
+          />
+        </div>
+      )}
 
       {client && (
         <div className="rounded-2xl bg-muted/60 p-3">
-          <p className="font-semibold">Cliente / Locataria</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold">Cliente / Locataria</p>
+            <ConfidenceBadge confidence={client.confidence} level={client.confidenceLevel} />
+          </div>
           <div className="mt-2 space-y-1 text-muted-foreground">
             <p>{client.legalName || "Razao social nao identificada"}</p>
             <p>CNPJ/Documento: {client.documentNumber || "-"}</p>
@@ -225,8 +284,13 @@ function ContractExtractionCards({
             </p>
             {client.address && <p>Endereco: {client.address}</p>}
             {client.representative && <p>Representante: {client.representative}</p>}
+            {client.representativeDocument && <p>Documento do representante: {client.representativeDocument}</p>}
+            {client.phone && <p>Telefone: {client.phone}</p>}
+            {client.email && <p>E-mail: {client.email}</p>}
+            {client.primaryContact && <p>Contato principal: {client.primaryContact}</p>}
             {client.guarantor && <p>Fiador: {client.guarantor}</p>}
           </div>
+          <FieldWarnings warnings={client.warnings} missingFields={client.missingFields} />
           <EntityActionButton
             disabled={false}
             onClick={() =>
@@ -242,6 +306,10 @@ function ContractExtractionCards({
                 },
                 source,
                 requiresNoDocumentConfirmation: !client.documentNumber,
+                requiresExtraConfirmation:
+                  client.confidenceLevel === "baixa"
+                    ? "Confirmo que revisei manualmente os campos de baixa confianca antes de gravar."
+                    : undefined,
               })
             }
           >
@@ -252,21 +320,36 @@ function ContractExtractionCards({
 
       {contract && (
         <div className="rounded-2xl bg-muted/60 p-3">
-          <p className="font-semibold">Contrato</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold">Contrato</p>
+            <ConfidenceBadge confidence={contract.confidence} level={contract.confidenceLevel} />
+          </div>
           <div className="mt-2 space-y-1 text-muted-foreground">
+            <p>Titulo: {contract.title || "-"}</p>
             <p>Tipo: {contract.contractType || "-"}</p>
             <p>Locadora: {contract.lessor || "-"}</p>
             <p>Locataria: {contract.lessee || "-"}</p>
             <p>Valor mensal: {formatMoney(contract.monthlyValue)}</p>
+            <p>Valor total: {formatMoney(contract.totalValue)}</p>
             <p>Prazo: {contract.termMonths ? `${contract.termMonths} meses` : "-"}</p>
+            <p>Vigencia: {contract.validity || "-"}</p>
             <p>Inicio provavel: {contract.probableStartDate || "-"}</p>
-            <p>Final previsto: {contract.calculatedEndDate || "-"}</p>
+            <p>Final: {contract.endDate || contract.calculatedEndDate || "-"}</p>
             <p>Vencimento: {contract.monthlyDueDay ? `dia ${contract.monthlyDueDay}` : "-"}</p>
             <p>Caucao: {formatMoney(contract.depositValue)}</p>
+            <p>Entrada: {formatMoney(contract.entryValue)}</p>
+            <p>Recorrencia: {contract.recurrence || "-"}</p>
             <p>Indice de reajuste: {contract.adjustmentIndex || "-"}</p>
+            <p>Regra de reajuste: {contract.adjustmentRule || "-"}</p>
             <p>Multa/rescisao: {contract.terminationFine || "-"}</p>
+            <p>Juros: {contract.interest || "-"}</p>
+            <p>Aviso previo: {contract.noticePeriod || "-"}</p>
             <p>Foro: {contract.venue || "-"}</p>
+            {contract.intelligentNotes && contract.intelligentNotes.length > 0 && (
+              <p>Observacoes: {contract.intelligentNotes.join(" ")}</p>
+            )}
           </div>
+          <FieldWarnings warnings={contract.warnings} missingFields={contract.missingFields} />
           <EntityActionButton>Cadastrar contrato</EntityActionButton>
         </div>
       )}
@@ -279,8 +362,10 @@ function ContractExtractionCards({
               <p key={`${item.description}-${index}`}>
                 {item.quantity ? `${item.quantity}x ` : ""}
                 {item.description}
+                {item.configuration ? ` - ${item.configuration}` : ""}
                 {item.unitValue ? ` - unitario ${formatMoney(item.unitValue)}` : ""}
                 {item.totalValue ? ` - total ${formatMoney(item.totalValue)}` : ""}
+                {item.confidenceLevel ? ` - ${item.confidenceLevel} confianca` : ""}
               </p>
             ))}
             {preview.extractedEquipment.length > 8 && (
@@ -388,9 +473,12 @@ function FinancialOcrCards({
     <div className="space-y-3 rounded-3xl border border-border bg-white p-4">
       <div>
         <p className="font-semibold">OCR financeiro: {preview.sourceFile}</p>
-        <p className="mt-1 text-muted-foreground">
-          Tipo detectado: {preview.detectedType}. Confianca estimada: {preview.confidence}%.
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="rounded-full">
+            {preview.detectedType}
+          </Badge>
+          <ConfidenceBadge confidence={preview.confidence} />
+        </div>
         <p className="mt-1 text-muted-foreground">
           Nenhum dado foi gravado. Revise as informacoes antes de qualquer cadastro.
         </p>
@@ -408,6 +496,41 @@ function FinancialOcrCards({
         </div>
         <EntityActionButton>Salvar analise</EntityActionButton>
       </div>
+
+      {preview.diagnostics.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Diagnostico inteligente</p>
+          <div className="mt-2 space-y-2 text-muted-foreground">
+            {preview.diagnostics.slice(0, 5).map((diagnostic) => (
+              <div key={`${diagnostic.type}-${diagnostic.title}`} className="rounded-xl bg-white/70 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-foreground">{diagnostic.title}</p>
+                  <ConfidenceBadge confidence={diagnostic.confidence} level={diagnostic.confidenceLevel} />
+                </div>
+                <p className="mt-1">{diagnostic.description}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {diagnostic.suggestedActions.map((action) => (
+                    <Badge key={action} variant="outline" className="rounded-full">
+                      {action}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {preview.extractedDreRows.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Linhas DRE / gerenciais</p>
+          <PreviewTable
+            rows={preview.extractedDreRows}
+            columns={["label", "rowKind", "category", "total", "confidenceLevel"]}
+          />
+          <EntityActionButton>Criar lancamentos sugeridos</EntityActionButton>
+        </div>
+      )}
 
       <div className="rounded-2xl bg-muted/60 p-3">
         <p className="font-semibold">Clientes encontrados</p>
@@ -675,6 +798,48 @@ function CosPreviewPanel({
         <div className="space-y-2">
           <p className="font-semibold">Possiveis equipamentos</p>
           <PreviewTable rows={preview.equipment} columns={["name", "category", "quantity_total", "status"]} />
+        </div>
+      )}
+
+      {preview.normalizedExtractions.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-semibold">Schema operacional normalizado</p>
+          <PreviewTable
+            rows={preview.normalizedExtractions.map((item) => ({
+              sourceType: item.sourceType,
+              file: item.sourceFile.name,
+              confidenceLevel: item.confidenceLevel,
+              confidence: item.confidence,
+              parties: Object.values(item.extractedParties).filter(Boolean).length,
+              dreRows: item.extractedDreRows.length,
+              diagnostics: item.diagnostics.length,
+            }))}
+            columns={["sourceType", "file", "confidenceLevel", "confidence", "parties", "dreRows", "diagnostics"]}
+          />
+        </div>
+      )}
+
+      {preview.diagnostics.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-semibold">Diagnosticos</p>
+          <div className="space-y-2">
+            {preview.diagnostics.slice(0, 6).map((diagnostic) => (
+              <div key={`${diagnostic.type}-${diagnostic.title}`} className="rounded-2xl bg-muted/60 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{diagnostic.title}</p>
+                  <ConfidenceBadge confidence={diagnostic.confidence} level={diagnostic.confidenceLevel} />
+                </div>
+                <p className="mt-1 text-muted-foreground">{diagnostic.description}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {diagnostic.suggestedActions.map((action) => (
+                    <Badge key={action} variant="outline" className="rounded-full">
+                      {action}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1047,6 +1212,8 @@ export function Header() {
     !String(cosActionPayload.due_date ?? "").trim()
   const cosActionNeedsNoDocumentConfirmation =
     cosActionReview?.requiresNoDocumentConfirmation && !cosActionConfirmNoDocument
+  const cosActionNeedsExtraConfirmation =
+    Boolean(cosActionReview?.requiresExtraConfirmation) && !cosActionConfirmNoDocument
   const cosActionNeedsFile =
     cosActionReview?.kind === "attach_document" &&
     (!cosActionReview.fileName || !cosUploadedFiles[cosActionReview.fileName])
@@ -1055,6 +1222,7 @@ export function Header() {
     !cosActionSubmitting &&
     !cosActionNeedsDate &&
     !cosActionNeedsNoDocumentConfirmation &&
+    !cosActionNeedsExtraConfirmation &&
     !cosActionNeedsFile
 
   return (
@@ -1467,6 +1635,18 @@ export function Header() {
                   <span>
                     Confirmo que desejo cadastrar este cliente mesmo sem CNPJ/CPF identificado na extracao.
                   </span>
+                </label>
+              )}
+
+              {cosActionReview.requiresExtraConfirmation && !cosActionReview.requiresNoDocumentConfirmation && (
+                <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={cosActionConfirmNoDocument}
+                    onChange={(event) => setCosActionConfirmNoDocument(event.target.checked)}
+                  />
+                  <span>{cosActionReview.requiresExtraConfirmation}</span>
                 </label>
               )}
 
