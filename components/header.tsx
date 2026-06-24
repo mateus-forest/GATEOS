@@ -11,14 +11,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -1168,6 +1160,16 @@ export function Header() {
     persistCosMessages(cosMessages)
   }, [cosMessages])
 
+  useEffect(() => {
+    if (!cosActionReview || typeof document === "undefined") return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [cosActionReview])
+
   const unreadCount = notifications.filter((notification) => !notification.read).length
 
   const searchResults = useMemo(() => {
@@ -1848,116 +1850,143 @@ export function Header() {
         document.body
       )}
 
-      <Dialog open={Boolean(cosActionReview)} onOpenChange={(open) => (!open ? closeCosActionReview() : undefined)}>
-        <DialogContent className="z-[1301] flex max-h-[calc(100vh-32px)] max-w-2xl flex-col overflow-hidden p-0">
-          <DialogHeader>
-            <div className="px-6 pt-6 sm:px-8 sm:pt-8">
-              <DialogTitle>{cosActionReview?.title ?? "Revisar acao do COS"}</DialogTitle>
-              <DialogDescription>
-              {cosActionReview?.description ?? "Revise os dados antes de gravar."} Nenhuma acao sera executada sem esta confirmacao.
-              </DialogDescription>
-            </div>
-          </DialogHeader>
+      {cosActionReview &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-black/45 p-3 backdrop-blur-sm sm:p-4">
+            <button
+              type="button"
+              aria-label="Fechar revisao do COS"
+              className="absolute inset-0 cursor-default"
+              onClick={closeCosActionReview}
+              disabled={cosActionSubmitting}
+            />
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="cos-action-review-title"
+              aria-describedby="cos-action-review-description"
+              className="relative z-[10000] flex h-auto max-h-[min(90vh,760px)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border/80 bg-white text-foreground shadow-[0_32px_120px_rgba(15,23,42,0.34)]"
+            >
+              <div className="shrink-0 border-b border-border bg-white px-5 py-4 pr-14 sm:px-7 sm:py-5">
+                <h2 id="cos-action-review-title" className="text-lg font-semibold tracking-normal sm:text-xl">
+                  {cosActionReview.title ?? "Revisar acao do COS"}
+                </h2>
+                <p id="cos-action-review-description" className="mt-1 text-sm text-muted-foreground">
+                  {cosActionReview.description ?? "Revise os dados antes de gravar."} Nenhuma acao sera executada sem esta confirmacao.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Fechar revisao"
+                  className="absolute right-4 top-4 rounded-2xl"
+                  onClick={closeCosActionReview}
+                  disabled={cosActionSubmitting}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
 
-          {cosActionReview && (
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-2 sm:px-8">
-              <div className="rounded-2xl border border-border bg-muted/50 p-4 text-sm">
-                <p className="font-semibold">Origem</p>
-                <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2 [overflow-wrap:anywhere]">
-                  <p>Arquivo: {cosActionReview.source.fileName || cosActionReview.fileName || "-"}</p>
-                  <p>Tipo: {cosActionReview.source.detectedType || cosActionReview.source.type || "-"}</p>
-                  <p>Confianca: {cosActionReview.source.confidence ?? "-"}%</p>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 sm:px-7 sm:py-5">
+                <div className="rounded-2xl border border-border bg-muted/50 p-4 text-sm">
+                  <p className="font-semibold">Origem</p>
+                  <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2 [overflow-wrap:anywhere]">
+                    <p>Arquivo: {cosActionReview.source.fileName || cosActionReview.fileName || "-"}</p>
+                    <p>Tipo: {cosActionReview.source.detectedType || cosActionReview.source.type || "-"}</p>
+                    <p>Confianca: {cosActionReview.source.confidence ?? "-"}%</p>
+                  </div>
                 </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {cosReviewFields.map((field) => {
+                    const value = cosActionPayload[field.key] ?? ""
+                    const isLong = field.type === "textarea"
+                    return (
+                      <label key={field.key} className={isLong ? "sm:col-span-2" : ""}>
+                        <span className="mb-1 block text-xs font-medium text-muted-foreground">
+                          {field.label}
+                          {field.required ? " *" : ""}
+                        </span>
+                        {isLong ? (
+                          <textarea
+                            className="min-h-24 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm [overflow-wrap:anywhere]"
+                            value={value}
+                            onChange={(event) =>
+                              setCosActionPayload((current) => ({ ...current, [field.key]: event.target.value }))
+                            }
+                          />
+                        ) : (
+                          <Input
+                            type={field.type === "date" ? "date" : "text"}
+                            value={value}
+                            onChange={(event) =>
+                              setCosActionPayload((current) => ({ ...current, [field.key]: event.target.value }))
+                            }
+                          />
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {cosActionNeedsDate && (
+                  <p className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">
+                    Informe competencia ou data de vencimento antes de criar o lancamento financeiro.
+                  </p>
+                )}
+
+                {cosActionValidationError && (
+                  <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-900">
+                    {cosActionValidationError}
+                  </p>
+                )}
+
+                {cosActionReview.requiresNoDocumentConfirmation && (
+                  <label className="flex items-start gap-3 rounded-2xl border border-border p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={cosActionConfirmNoDocument}
+                      onChange={(event) => setCosActionConfirmNoDocument(event.target.checked)}
+                    />
+                    <span>
+                      Confirmo que desejo cadastrar este cliente mesmo sem CNPJ/CPF identificado na extracao.
+                    </span>
+                  </label>
+                )}
+
+                {cosActionReview.requiresExtraConfirmation && !cosActionReview.requiresNoDocumentConfirmation && (
+                  <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={cosActionConfirmNoDocument}
+                      onChange={(event) => setCosActionConfirmNoDocument(event.target.checked)}
+                    />
+                    <span>{cosActionReview.requiresExtraConfirmation}</span>
+                  </label>
+                )}
+
+                {cosActionNeedsFile && (
+                  <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-900">
+                    O arquivo original nao esta mais disponivel nesta sessao do COS. Envie o arquivo novamente para anexar.
+                  </p>
+                )}
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {cosReviewFields.map((field) => {
-                  const value = cosActionPayload[field.key] ?? ""
-                  const isLong = field.type === "textarea"
-                  return (
-                    <label key={field.key} className={isLong ? "sm:col-span-2" : ""}>
-                      <span className="mb-1 block text-xs font-medium text-muted-foreground">
-                        {field.label}
-                        {field.required ? " *" : ""}
-                      </span>
-                      {isLong ? (
-                        <textarea
-                          className="min-h-24 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm [overflow-wrap:anywhere]"
-                          value={value}
-                          onChange={(event) =>
-                            setCosActionPayload((current) => ({ ...current, [field.key]: event.target.value }))
-                          }
-                        />
-                      ) : (
-                        <Input
-                          type={field.type === "date" ? "date" : "text"}
-                          value={value}
-                          onChange={(event) =>
-                            setCosActionPayload((current) => ({ ...current, [field.key]: event.target.value }))
-                          }
-                        />
-                      )}
-                    </label>
-                  )
-                })}
+              <div className="shrink-0 border-t border-border bg-white px-5 py-4 sm:flex sm:justify-end sm:gap-3 sm:px-7">
+                <Button type="button" variant="outline" onClick={closeCosActionReview} disabled={cosActionSubmitting} className="w-full sm:w-auto">
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={executeCosAction} disabled={!cosActionCanConfirm} className="mt-2 w-full sm:mt-0 sm:w-auto">
+                  {cosActionSubmitting ? "Gravando..." : "Confirmar e gravar"}
+                </Button>
               </div>
-
-              {cosActionNeedsDate && (
-                <p className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-900">
-                  Informe competencia ou data de vencimento antes de criar o lancamento financeiro.
-                </p>
-              )}
-
-              {cosActionValidationError && (
-                <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-900">
-                  {cosActionValidationError}
-                </p>
-              )}
-
-              {cosActionReview.requiresNoDocumentConfirmation && (
-                <label className="flex items-start gap-3 rounded-2xl border border-border p-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={cosActionConfirmNoDocument}
-                    onChange={(event) => setCosActionConfirmNoDocument(event.target.checked)}
-                  />
-                  <span>
-                    Confirmo que desejo cadastrar este cliente mesmo sem CNPJ/CPF identificado na extracao.
-                  </span>
-                </label>
-              )}
-
-              {cosActionReview.requiresExtraConfirmation && !cosActionReview.requiresNoDocumentConfirmation && (
-                <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={cosActionConfirmNoDocument}
-                    onChange={(event) => setCosActionConfirmNoDocument(event.target.checked)}
-                  />
-                  <span>{cosActionReview.requiresExtraConfirmation}</span>
-                </label>
-              )}
-
-              {cosActionNeedsFile && (
-                <p className="rounded-2xl bg-red-50 p-3 text-sm text-red-900">
-                  O arquivo original nao esta mais disponivel nesta sessao do COS. Envie o arquivo novamente para anexar.
-                </p>
-              )}
-            </div>
-          )}
-
-          <DialogFooter className="shrink-0 border-t border-border bg-background px-6 pb-6 sm:px-8">
-            <Button type="button" variant="outline" onClick={closeCosActionReview} disabled={cosActionSubmitting}>
-              Cancelar
-            </Button>
-            <Button type="button" onClick={executeCosAction} disabled={!cosActionCanConfirm}>
-              {cosActionSubmitting ? "Gravando..." : "Confirmar e gravar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </section>
+          </div>,
+          document.body
+        )}
 
     </header>
   )
