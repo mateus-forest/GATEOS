@@ -803,19 +803,58 @@ function CosPreviewPanel({
 
       {preview.normalizedExtractions.length > 0 && (
         <div className="space-y-2">
-          <p className="font-semibold">Schema operacional normalizado</p>
+          <p className="font-semibold">Inteligencia operacional</p>
           <PreviewTable
             rows={preview.normalizedExtractions.map((item) => ({
-              sourceType: item.sourceType,
+              documentType: item.operationalIntelligence.documentTypeLabel,
               file: item.sourceFile.name,
               confidenceLevel: item.confidenceLevel,
               confidence: item.confidence,
-              parties: Object.values(item.extractedParties).filter(Boolean).length,
-              dreRows: item.extractedDreRows.length,
-              diagnostics: item.diagnostics.length,
+              entities: item.operationalIntelligence.businessEntities.length,
+              modules: item.operationalIntelligence.operationalMappings.map((mapping) => mapping.gateModule).join(", "),
             }))}
-            columns={["sourceType", "file", "confidenceLevel", "confidence", "parties", "dreRows", "diagnostics"]}
+            columns={["documentType", "file", "confidenceLevel", "confidence", "entities", "modules"]}
           />
+          <div className="space-y-2">
+            {preview.normalizedExtractions.slice(0, 4).map((item) => (
+              <div key={`${item.sourceFile.name}-${item.sourceType}`} className="rounded-2xl bg-muted/60 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{item.operationalIntelligence.documentTypeLabel}</p>
+                  <ConfidenceBadge confidence={item.confidence} level={item.confidenceLevel} />
+                </div>
+                <p className="mt-1 text-muted-foreground">{item.operationalIntelligence.executiveSummary}</p>
+                {item.operationalIntelligence.logicalStructure.length > 0 && (
+                  <p className="mt-2 text-muted-foreground">
+                    Estrutura: {item.operationalIntelligence.logicalStructure.map((section) => section.name).join(", ")}.
+                  </p>
+                )}
+                {item.operationalIntelligence.businessEntities.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.operationalIntelligence.businessEntities.slice(0, 10).map((entity, index) => (
+                      <Badge key={`${entity.entityType}-${entity.label}-${index}`} variant="outline" className="rounded-full">
+                        {entity.entityType}: {entity.label}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {item.operationalIntelligence.missingData.length > 0 && (
+                  <p className="mt-2 text-amber-900">Dados ausentes: {item.operationalIntelligence.missingData.join(", ")}.</p>
+                )}
+                {item.operationalIntelligence.possibleDivergences.length > 0 && (
+                  <p className="mt-2 text-amber-900">
+                    Divergencias possiveis: {item.operationalIntelligence.possibleDivergences.join(" ")}
+                  </p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {item.operationalIntelligence.operationalMappings.slice(0, 8).map((mapping) => (
+                    <Badge key={`${mapping.entityType}-${mapping.gateModule}`} variant="secondary" className="rounded-full">
+                      {mapping.entityType} {"->"} {mapping.gateModule}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

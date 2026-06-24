@@ -4,6 +4,72 @@ import { inflateRawSync } from "node:zlib"
 type TabularRow = Record<string, unknown>
 type CosConfidenceLevel = "alta" | "media" | "baixa"
 type CosActionStatus = "preview" | "requires_review" | "next_step"
+type CosDocumentType =
+  | "contract"
+  | "dre"
+  | "financial_report"
+  | "cash_flow"
+  | "accounts_payable"
+  | "accounts_receivable"
+  | "bank_statement"
+  | "commercial_proposal"
+  | "corporate_document"
+  | "invoice"
+  | "operational_spreadsheet"
+  | "image"
+  | "print"
+  | "other"
+
+type CosGateEntityType =
+  | "Cliente"
+  | "Contrato"
+  | "Equipamento"
+  | "Financeiro"
+  | "Documento"
+  | "Fornecedor"
+  | "Banco"
+  | "DRE"
+  | "Socio"
+
+type CosLogicalSection = {
+  name: string
+  role: string
+  confidence: number
+  sourceSnippet?: string
+  children?: CosLogicalSection[]
+}
+
+type CosBusinessEntity = CosEntityMetadata & {
+  entityType: CosGateEntityType
+  label: string
+  gateModule: string
+  relationship?: string
+  values?: Record<string, unknown>
+}
+
+type CosOperationalMapping = {
+  entityType: CosGateEntityType
+  gateModule: string
+  modulePath: string
+  suggestedAction: string
+  actionStatus: CosActionStatus
+  reason: string
+}
+
+type CosOperationalIntelligence = {
+  documentType: CosDocumentType
+  documentTypeLabel: string
+  classificationReason: string
+  logicalStructure: CosLogicalSection[]
+  businessEntities: CosBusinessEntity[]
+  operationalMappings: CosOperationalMapping[]
+  executiveSummary: string
+  foundData: string[]
+  missingData: string[]
+  possibleProblems: string[]
+  possibleDivergences: string[]
+  nextActions: string[]
+}
 
 type CosEntityMetadata = {
   sourceFileName?: string
@@ -222,6 +288,8 @@ export type CosNormalizedExtraction = {
     | "document"
   confidence: number
   confidenceLevel: CosConfidenceLevel
+  documentType: CosDocumentType
+  operationalIntelligence: CosOperationalIntelligence
   sourceFile: {
     name: string
     type: string
@@ -446,6 +514,167 @@ function metadata(args: {
 
 function uniqueText(values: Array<string | undefined>) {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))))
+}
+
+function documentTypeLabel(documentType: CosDocumentType) {
+  const labels: Record<CosDocumentType, string> = {
+    contract: "Contrato",
+    dre: "DRE",
+    financial_report: "Relatorio financeiro",
+    cash_flow: "Fluxo de caixa",
+    accounts_payable: "Contas a pagar",
+    accounts_receivable: "Contas a receber",
+    bank_statement: "Extrato bancario",
+    commercial_proposal: "Proposta comercial",
+    corporate_document: "Documento societario",
+    invoice: "Nota fiscal",
+    operational_spreadsheet: "Planilha operacional",
+    image: "Imagem",
+    print: "Print",
+    other: "Outro",
+  }
+  return labels[documentType]
+}
+
+function gateModuleForEntity(entityType: CosGateEntityType) {
+  const modules: Record<CosGateEntityType, { module: string; path: string }> = {
+    Cliente: { module: "Clientes", path: "/clientes" },
+    Contrato: { module: "Contratos", path: "/contratos" },
+    Equipamento: { module: "Equipamentos", path: "/equipamentos" },
+    Financeiro: { module: "Financeiro", path: "/financeiro" },
+    Documento: { module: "Documentos", path: "/documentos" },
+    Fornecedor: { module: "Financeiro", path: "/financeiro" },
+    Banco: { module: "Financeiro", path: "/financeiro" },
+    DRE: { module: "DRE", path: "/dre" },
+    Socio: { module: "Socios", path: "/socios" },
+  }
+  return modules[entityType]
+}
+
+function classifyDocumentText(text: string, fallback: CosDocumentType = "other") {
+  const normalized = normalizeLoose(text)
+  const scores: Array<{ type: CosDocumentType; score: number; reason: string }> = [
+    { type: "contract", score: CONTRACT_TERMS.filter((term) => normalized.includes(term)).length * 10, reason: "termos de contrato e clausulas" },
+    { type: "dre", score: (normalized.includes("dre") ? 25 : 0) + (normalized.includes("receita") && normalized.includes("despesa") ? 25 : 0) + (normalized.includes("resultado operacional") ? 15 : 0), reason: "receitas, despesas e resultado" },
+    { type: "cash_flow", score: (normalized.includes("fluxo de caixa") ? 35 : 0) + (normalized.includes("saldo inicial") ? 15 : 0) + (normalized.includes("saldo final") ? 15 : 0), reason: "fluxo e saldos" },
+    { type: "accounts_payable", score: (normalized.includes("contas a pagar") ? 40 : 0) + (normalized.includes("fornecedor") ? 10 : 0), reason: "contas a pagar e fornecedores" },
+    { type: "accounts_receivable", score: (normalized.includes("contas a receber") ? 40 : 0) + (normalized.includes("cliente") ? 10 : 0), reason: "contas a receber e clientes" },
+    { type: "bank_statement", score: (normalized.includes("extrato") ? 25 : 0) + (normalized.includes("banco") ? 12 : 0) + (normalized.includes("agencia") || normalized.includes("conta corrente") ? 12 : 0), reason: "banco, conta e saldos" },
+    { type: "commercial_proposal", score: (normalized.includes("proposta comercial") ? 40 : 0) + (normalized.includes("validade da proposta") ? 10 : 0), reason: "proposta comercial" },
+    { type: "corporate_document", score: (normalized.includes("contrato social") ? 40 : 0) + (normalized.includes("socio") ? 15 : 0), reason: "socios e documento societario" },
+    { type: "invoice", score: (normalized.includes("nota fiscal") ? 40 : 0) + (normalized.includes("chave de acesso") ? 15 : 0), reason: "nota fiscal" },
+    { type: "financial_report", score: normalized.includes("granatum") || normalized.includes("relatorio financeiro") ? 35 : 0, reason: "relatorio financeiro ou Granatum" },
+  ]
+  const best = scores.sort((a, b) => b.score - a.score)[0]
+  if (!best || best.score <= 0) return { documentType: fallback, confidence: 45, reason: "classificacao por tipo do arquivo" }
+  return { documentType: best.type, confidence: Math.min(96, 45 + best.score), reason: best.reason }
+}
+
+function makeSection(name: string, role: string, snippet?: string, children?: CosLogicalSection[]): CosLogicalSection {
+  return {
+    name,
+    role,
+    confidence: snippet ? Math.min(94, 55 + Math.min(snippet.length, 400) / 10) : 35,
+    sourceSnippet: snippet?.slice(0, 500),
+    children,
+  }
+}
+
+function makeBusinessEntity(args: {
+  entityType: CosGateEntityType
+  label: string
+  relationship?: string
+  values?: Record<string, unknown>
+  fileName?: string
+  snippet?: string
+  confidence: number
+  warnings?: string[]
+  missingFields?: string[]
+  suggestedAction?: string
+  actionStatus?: CosActionStatus
+}): CosBusinessEntity {
+  const gate = gateModuleForEntity(args.entityType)
+  return {
+    entityType: args.entityType,
+    label: args.label,
+    gateModule: gate.module,
+    relationship: args.relationship,
+    values: args.values,
+    ...metadata({
+      fileName: args.fileName,
+      snippet: args.snippet,
+      confidence: args.confidence,
+      warnings: args.warnings,
+      missingFields: args.missingFields,
+      suggestedAction: args.suggestedAction,
+      actionStatus: args.actionStatus ?? "preview",
+    }),
+  }
+}
+
+function buildOperationalMappings(entities: CosBusinessEntity[]) {
+  const seen = new Set<string>()
+  const mappings: CosOperationalMapping[] = []
+
+  for (const entity of entities) {
+    const key = `${entity.entityType}:${entity.gateModule}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const gate = gateModuleForEntity(entity.entityType)
+    const suggestedAction =
+      entity.entityType === "Cliente"
+        ? "Cadastrar cliente"
+        : entity.entityType === "Contrato"
+          ? "Cadastrar contrato"
+          : entity.entityType === "Equipamento"
+            ? "Cadastrar equipamentos"
+            : entity.entityType === "Financeiro"
+              ? "Criar lancamento financeiro"
+              : entity.entityType === "Documento"
+                ? "Anexar documento"
+                : entity.entityType === "DRE"
+                  ? "Salvar como analise"
+                  : "Ver detalhes"
+
+    mappings.push({
+      entityType: entity.entityType,
+      gateModule: gate.module,
+      modulePath: gate.path,
+      suggestedAction,
+      actionStatus: ["Cliente", "Financeiro", "Documento"].includes(entity.entityType) ? "requires_review" : "next_step",
+      reason: `${entity.label} deve ser tratado no modulo ${gate.module}.`,
+    })
+  }
+
+  return mappings
+}
+
+function buildOperationalIntelligence(args: {
+  documentType: CosDocumentType
+  classificationReason: string
+  logicalStructure: CosLogicalSection[]
+  businessEntities: CosBusinessEntity[]
+  foundData: string[]
+  missingData: string[]
+  possibleProblems: string[]
+  possibleDivergences: string[]
+  nextActions: string[]
+  executiveSummary: string
+}) {
+  return {
+    documentType: args.documentType,
+    documentTypeLabel: documentTypeLabel(args.documentType),
+    classificationReason: args.classificationReason,
+    logicalStructure: args.logicalStructure,
+    businessEntities: args.businessEntities,
+    operationalMappings: buildOperationalMappings(args.businessEntities),
+    executiveSummary: args.executiveSummary,
+    foundData: args.foundData,
+    missingData: args.missingData,
+    possibleProblems: args.possibleProblems,
+    possibleDivergences: args.possibleDivergences,
+    nextActions: args.nextActions,
+  }
 }
 
 function normalizeDocumentText(value: string) {
@@ -1665,11 +1894,330 @@ function normalizedSourceTypeFromLabel(label?: string): CosNormalizedExtraction[
   return "spreadsheet"
 }
 
-function normalizeContractExtraction(file: File, extraction: CosContractExtractionPreview): CosNormalizedExtraction {
+function contractLogicalStructure(text: string): CosLogicalSection[] {
+  const objectBlock = extractContractObjectBlock(text)
+  return [
+    makeSection("Partes", "Identifica locadora, locataria e fiador", undefined, [
+      makeSection("Locadora", "Empresa que cede ou presta a locacao", extractPartyBlock(text, "lessor")),
+      makeSection("Locataria", "Cliente que contrata a locacao ou servico", extractPartyBlock(text, "lessee")),
+      makeSection("Fiador", "Garantidor da operacao, quando existir", extractPartyBlock(text, "guarantor")),
+    ]),
+    makeSection("Objeto", "Define o que esta sendo contratado", objectBlock),
+    makeSection("Prazo", "Define inicio, final e vigencia", extractLabeledBlock(text, /PRAZO|VIGENCIA/i, [/PRECO|VALOR|PAGAMENTO|MULTA|FORO|CLAUSULA|CL.USULA/i], 1400)),
+    makeSection("Preco", "Define valor, vencimento, recorrencia e caucao", extractLabeledBlock(text, /PRECO|VALOR|PAGAMENTO|ALUGUEL|CAUCAO|CAU..O/i, [/MULTA|RESCISAO|FORO|ASSINATURA|CLAUSULA|CL.USULA/i], 1600)),
+    makeSection("Garantias", "Define caucao, fiador ou garantias", extractLabeledBlock(text, /GARANTIA|CAUCAO|CAU..O|FIADOR/i, [/MULTA|FORO|ASSINATURA|CLAUSULA|CL.USULA/i], 1200)),
+    makeSection("Multas", "Define multa, juros e aviso previo", extractLabeledBlock(text, /MULTA|JUROS|AVISO/i, [/FORO|ASSINATURA|CLAUSULA|CL.USULA/i], 1200)),
+    makeSection("Foro", "Define comarca e jurisdicao", extractLabeledBlock(text, /FORO/i, [/ASSINATURA|TESTEMUNHA|CLAUSULA|CL.USULA/i], 900)),
+    makeSection("Assinaturas", "Confirma fechamento formal do documento", extractLabeledBlock(text, /ASSINATURA|TESTEMUNHA/i, [/$^/], 900)),
+  ]
+}
+
+function contractBusinessEntities(file: File, extraction: CosContractExtractionPreview) {
+  const entities: CosBusinessEntity[] = []
+  const client = extraction.extractedClient
+  const contract = extraction.extractedContract
+
+  if (client?.legalName || client?.documentNumber) {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Cliente",
+        label: client.legalName || client.documentNumber || "Cliente identificado",
+        relationship: "Locataria do contrato",
+        values: client,
+        fileName: file.name,
+        confidence: client.confidence ?? (client.legalName && client.documentNumber ? 82 : 48),
+        warnings: client.warnings,
+        missingFields: client.missingFields,
+        suggestedAction: "Cadastrar cliente",
+        actionStatus: "requires_review",
+      })
+    )
+  }
+
+  if (contract) {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Contrato",
+        label: contract.title || contract.contractType || "Contrato identificado",
+        relationship: client?.legalName ? `Contrato vinculado ao cliente ${client.legalName}` : "Contrato sem cliente confirmado",
+        values: contract,
+        fileName: file.name,
+        confidence: contract.confidence ?? extraction.confidence,
+        warnings: contract.warnings,
+        missingFields: contract.missingFields,
+        suggestedAction: "Cadastrar contrato",
+        actionStatus: "next_step",
+      })
+    )
+  }
+
+  extraction.extractedEquipment.slice(0, 12).forEach((item) => {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Equipamento",
+        label: item.description,
+        relationship: client?.legalName ? `Equipamento locado para ${client.legalName}` : "Equipamento vinculado ao contrato",
+        values: item,
+        fileName: file.name,
+        snippet: item.sourceSnippet,
+        confidence: item.confidence ?? 60,
+        warnings: item.warnings,
+        missingFields: item.missingFields,
+        suggestedAction: "Cadastrar equipamentos",
+        actionStatus: "next_step",
+      })
+    )
+  })
+
+  extraction.extractedFinancialEntries.forEach((entry) => {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Financeiro",
+        label: entry.description,
+        relationship: client?.legalName ? `Receita vinculada ao cliente ${client.legalName}` : "Receita vinculada ao contrato",
+        values: entry,
+        fileName: file.name,
+        confidence: entry.value && (entry.firstCompetence || entry.dueDay) ? 78 : 52,
+        missingFields: [!entry.value ? "valor" : "", !entry.firstCompetence && !entry.dueDay ? "competencia_ou_vencimento" : ""].filter(Boolean),
+        suggestedAction: "Criar lancamento financeiro",
+        actionStatus: "requires_review",
+      })
+    )
+  })
+
+  entities.push(
+    makeBusinessEntity({
+      entityType: "Documento",
+      label: extraction.extractedDocument.fileName,
+      relationship: "Documento suporte do cliente e do contrato",
+      values: extraction.extractedDocument,
+      fileName: file.name,
+      confidence: extraction.confidence,
+      missingFields: [],
+      suggestedAction: "Anexar documento",
+      actionStatus: "requires_review",
+    })
+  )
+
+  return entities
+}
+
+function contractOperationalIntelligence(file: File, extraction: CosContractExtractionPreview, text: string): CosOperationalIntelligence {
+  const classification = classifyDocumentText(text, "contract")
+  const entities = contractBusinessEntities(file, extraction)
+  const contract = extraction.extractedContract
+  const client = extraction.extractedClient
+  const foundData = [
+    contract?.contractType ? `Tipo: ${contract.contractType}` : "",
+    client?.legalName ? `Cliente/locataria: ${client.legalName}` : "",
+    contract?.monthlyValue ? `Receita mensal: ${contract.monthlyValue}` : "",
+    contract?.termMonths ? `Prazo: ${contract.termMonths} meses` : "",
+    extraction.extractedEquipment.length ? `${extraction.extractedEquipment.length} equipamento(s) identificado(s)` : "",
+  ].filter(Boolean)
+  const missingData = uniqueText([
+    ...(client?.missingFields ?? []),
+    ...(contract?.missingFields ?? []),
+    extraction.extractedEquipment.length === 0 ? "equipamentos_estruturados" : undefined,
+  ])
+  const possibleProblems = [
+    !client?.documentNumber ? "Cliente sem CNPJ/CPF confiavel." : "",
+    !contract?.termMonths && !contract?.endDate && !contract?.calculatedEndDate ? "Contrato sem prazo ou data final confiavel." : "",
+    extraction.extractedEquipment.some((item) => !item.quantity) ? "Existe equipamento sem quantidade." : "",
+  ].filter(Boolean)
+  const possibleDivergences = [
+    extraction.extractedParties?.lessor?.documentNumber && client?.documentNumber && extraction.extractedParties.lessor.documentNumber === client.documentNumber
+      ? "Locadora e locataria parecem compartilhar o mesmo documento. Revisar papeis das partes."
+      : "",
+    contract?.monthlyValue && extraction.extractedFinancialEntries.length === 0 ? "Valor mensal detectado sem receita sugerida correspondente." : "",
+    extraction.extractedEquipment.length === 0 ? "Contrato detectado sem equipamentos estruturados." : "",
+  ].filter(Boolean)
+
+  return buildOperationalIntelligence({
+    documentType: classification.documentType,
+    classificationReason: classification.reason,
+    logicalStructure: contractLogicalStructure(text),
+    businessEntities: entities,
+    foundData,
+    missingData,
+    possibleProblems,
+    possibleDivergences,
+    nextActions: ["Revisar partes", "Cadastrar cliente", "Anexar documento", "Preparar contrato/equipamentos para etapa futura"],
+    executiveSummary:
+      contract?.monthlyValue && contract?.termMonths
+        ? `Identifiquei ${contract.contractType ?? "contrato"} com vigencia de ${contract.termMonths} meses e receita mensal de ${contract.monthlyValue}.`
+        : `Identifiquei ${contract?.contractType ?? "contrato"} e separei as entidades operacionais para revisao.`,
+  })
+}
+
+function financialLogicalStructure(dreRows: CosDreRow[], bankBalances: TabularRow[], detectedType?: string): CosLogicalSection[] {
+  const rowsByKind = (kind: string) => dreRows.filter((row) => row.rowKind.includes(kind))
+  return [
+    makeSection("Classificacao financeira", detectedType || "Documento financeiro"),
+    makeSection("Receitas", "Clientes, contratos ou entradas operacionais", rowsByKind("receita").map((row) => row.sourceSnippet).join("\n")),
+    makeSection("Custos e despesas", "Custos, impostos, pessoal, operacionais e financeiros", dreRows.filter((row) => row.rowKind.includes("despesa") || row.rowKind === "impostos").map((row) => row.sourceSnippet).join("\n")),
+    makeSection("Resultado", "Resultado operacional, lucro e diferencas", dreRows.filter((row) => row.rowKind.includes("resultado") || row.rowKind.includes("lucro") || row.rowKind === "diferenca").map((row) => row.sourceSnippet).join("\n")),
+    makeSection("Saldos", "Saldo anterior, banco e fechamento", bankBalances.map((row) => Object.values(row).join(" | ")).join("\n")),
+  ]
+}
+
+function possibleClientRevenueRows(dreRows: CosDreRow[]) {
+  return dreRows.filter((row) => {
+    const normalized = normalizeLoose(row.label)
+    return row.rowKind === "receita" && !normalized.includes("total") && !normalized.includes("receita bruta") && !normalized.includes("receita liquida")
+  })
+}
+
+function financialBusinessEntities(args: {
+  fileName: string
+  dreRows: CosDreRow[]
+  financialEntries: TabularRow[]
+  categories: string[]
+  bankBalances: TabularRow[]
+}) {
+  const entities: CosBusinessEntity[] = []
+
+  possibleClientRevenueRows(args.dreRows).slice(0, 20).forEach((row) => {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Cliente",
+        label: row.label,
+        relationship: "Cliente com receita identificada na DRE/relatorio",
+        values: { value: row.total, category: row.category, sourceRow: row.sourceRow },
+        fileName: args.fileName,
+        snippet: row.sourceSnippet,
+        confidence: row.confidence - (row.total ? 0 : 20),
+        missingFields: [!row.total ? "valor" : "", "contrato_correspondente"].filter(Boolean),
+        suggestedAction: "Ver detalhes",
+        actionStatus: "preview",
+      })
+    )
+  })
+
+  args.financialEntries.slice(0, 30).forEach((entry) => {
+    const missingFields = [
+      !entry.value ? "valor" : "",
+      !entry.description ? "descricao" : "",
+      !entry.competence_date && !entry.due_date ? "competencia_ou_vencimento" : "",
+    ].filter(Boolean)
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Financeiro",
+        label: String(entry.description ?? "Lancamento financeiro sugerido"),
+        relationship: "Receita ou despesa extraida para conferencia",
+        values: entry,
+        fileName: args.fileName,
+        confidence: Math.max(35, 82 - missingFields.length * 14),
+        missingFields,
+        suggestedAction: "Criar lancamento financeiro",
+        actionStatus: "requires_review",
+      })
+    )
+  })
+
+  args.categories.forEach((category) => {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "DRE",
+        label: category,
+        relationship: "Categoria gerencial detectada",
+        values: { category },
+        fileName: args.fileName,
+        confidence: 76,
+        suggestedAction: "Criar categorias DRE",
+        actionStatus: "next_step",
+      })
+    )
+  })
+
+  args.bankBalances.forEach((balance) => {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "Banco",
+        label: String(balance.label ?? "Saldo bancario"),
+        relationship: "Saldo usado para conciliacao operacional",
+        values: balance,
+        fileName: args.fileName,
+        confidence: 72,
+        suggestedAction: "Ver detalhes",
+        actionStatus: "preview",
+      })
+    )
+  })
+
+  if (args.dreRows.length > 0) {
+    entities.push(
+      makeBusinessEntity({
+        entityType: "DRE",
+        label: "Analise DRE / gerencial",
+        relationship: "Documento financeiro estruturado para auditoria operacional",
+        values: { rows: args.dreRows.length },
+        fileName: args.fileName,
+        confidence: 80,
+        suggestedAction: "Salvar como analise",
+        actionStatus: "next_step",
+      })
+    )
+  }
+
+  return entities
+}
+
+function financialOperationalIntelligence(args: {
+  fileName: string
+  detectedType?: string
+  documentType: CosDocumentType
+  classificationReason: string
+  dreRows: CosDreRow[]
+  financialEntries: TabularRow[]
+  categories: string[]
+  bankBalances: TabularRow[]
+  diagnostics: CosDiagnostic[]
+}) {
+  const entities = financialBusinessEntities(args)
+  const revenueRows = args.dreRows.filter((row) => row.rowKind === "receita")
+  const expenseRows = args.dreRows.filter((row) => row.rowKind.includes("despesa") || row.rowKind === "impostos")
+  const foundData = [
+    args.detectedType ? `Tipo: ${args.detectedType}` : "",
+    revenueRows.length ? `${revenueRows.length} linha(s) de receita` : "",
+    expenseRows.length ? `${expenseRows.length} linha(s) de custos/despesas` : "",
+    args.categories.length ? `${args.categories.length} categoria(s)` : "",
+    args.bankBalances.length ? `${args.bankBalances.length} saldo(s) bancario(s)` : "",
+  ].filter(Boolean)
+  const missingData = uniqueText([
+    args.financialEntries.some((entry) => !entry.competence_date && !entry.due_date) ? "competencia_ou_vencimento_em_lancamentos" : undefined,
+    possibleClientRevenueRows(args.dreRows).length ? "contratos_correspondentes_as_receitas" : undefined,
+    args.bankBalances.length ? "saldo_operacional_do_sistema_para_conciliacao" : undefined,
+  ])
+  const possibleProblems = [
+    args.dreRows.some((row) => row.warnings.length > 0) ? "Existem linhas com erro ou valor nao normalizado." : "",
+    args.financialEntries.some((entry) => !entry.value) ? "Existem lancamentos sugeridos sem valor confiavel." : "",
+  ].filter(Boolean)
+
+  return buildOperationalIntelligence({
+    documentType: args.documentType,
+    classificationReason: args.classificationReason,
+    logicalStructure: financialLogicalStructure(args.dreRows, args.bankBalances, args.detectedType),
+    businessEntities: entities,
+    foundData,
+    missingData,
+    possibleProblems,
+    possibleDivergences: args.diagnostics.map((diagnostic) => diagnostic.description),
+    nextActions: ["Ver detalhes", "Salvar como analise", "Criar categorias DRE", "Criar lancamentos sugeridos"],
+    executiveSummary:
+      revenueRows.length || expenseRows.length
+        ? `Identifiquei estrutura financeira operacional com ${revenueRows.length} linha(s) de receita e ${expenseRows.length} linha(s) de custos/despesas.`
+        : "Identifiquei documento financeiro para leitura operacional e conferencia manual.",
+  })
+}
+
+function normalizeContractExtraction(file: File, extraction: CosContractExtractionPreview, fullText = extraction.textSample): CosNormalizedExtraction {
+  const intelligence = contractOperationalIntelligence(file, extraction, fullText)
   return {
     sourceType: "contract",
     confidence: extraction.confidence,
     confidenceLevel: confidenceLevel(extraction.confidence),
+    documentType: intelligence.documentType,
+    operationalIntelligence: intelligence,
     sourceFile: { name: file.name, type: file.type || "contrato", size: file.size },
     extractedParties: extraction.extractedParties ?? {},
     extractedClient: extraction.extractedClient,
@@ -1693,10 +2241,25 @@ function normalizeContractExtraction(file: File, extraction: CosContractExtracti
 }
 
 function normalizeFinancialOcrExtraction(file: File, preview: CosFinancialOcrPreview): CosNormalizedExtraction {
+  const sourceType = normalizedSourceTypeFromLabel(preview.detectedType) === "spreadsheet" ? "image" : normalizedSourceTypeFromLabel(preview.detectedType)
+  const documentType = sourceType === "bank_statement" ? "bank_statement" : sourceType === "dre" ? "dre" : sourceType === "granatum" ? "financial_report" : "print"
+  const intelligence = financialOperationalIntelligence({
+    fileName: file.name,
+    detectedType: preview.detectedType,
+    documentType,
+    classificationReason: preview.detectedType,
+    dreRows: preview.extractedDreRows,
+    financialEntries: preview.extractedFinancialEntries,
+    categories: preview.extractedCategories,
+    bankBalances: [],
+    diagnostics: preview.diagnostics,
+  })
   return {
-    sourceType: normalizedSourceTypeFromLabel(preview.detectedType) === "spreadsheet" ? "image" : normalizedSourceTypeFromLabel(preview.detectedType),
+    sourceType,
     confidence: preview.confidence,
     confidenceLevel: confidenceLevel(preview.confidence),
+    documentType,
+    operationalIntelligence: intelligence,
     sourceFile: { name: file.name, type: file.type || "imagem/documento financeiro", size: file.size },
     extractedParties: {},
     extractedEquipment: [],
@@ -1720,11 +2283,26 @@ function normalizeSpreadsheetExtraction(file: File, workbookRows: WorkbookRows[]
   })
   const probableType = workbookRows.map((row) => row.sourceType).find(Boolean)
   const confidence = Math.min(94, 45 + (dreRows.length ? 20 : 0) + (financialEntries.length ? 12 : 0) + (clients.length ? 8 : 0) + (bankBalances.length ? 8 : 0))
+  const sourceType = normalizedSourceTypeFromLabel(probableType)
+  const documentType: CosDocumentType = sourceType === "dre" ? "dre" : sourceType === "bank_statement" ? "bank_statement" : sourceType === "financial_report" ? "financial_report" : "operational_spreadsheet"
+  const intelligence = financialOperationalIntelligence({
+    fileName: file.name,
+    detectedType: probableType,
+    documentType,
+    classificationReason: probableType || "estrutura tabular operacional",
+    dreRows,
+    financialEntries,
+    categories: uniqueText(dreRows.map((row) => row.category)),
+    bankBalances,
+    diagnostics,
+  })
 
   return {
-    sourceType: normalizedSourceTypeFromLabel(probableType),
+    sourceType,
     confidence,
     confidenceLevel: confidenceLevel(confidence),
+    documentType,
+    operationalIntelligence: intelligence,
     sourceFile: { name: file.name, type: file.type || "planilha", size: file.size },
     extractedParties: {},
     extractedEquipment: equipment,
@@ -2173,7 +2751,7 @@ export async function analyzeCosFiles(files: File[]) {
 
         if (isContract || contractExtraction.confidence >= 35) {
           contractExtractions.push(contractExtraction)
-          normalizedExtractions.push(normalizeContractExtraction(file, contractExtraction))
+          normalizedExtractions.push(normalizeContractExtraction(file, contractExtraction, extractedText))
         }
         if (financialOcr) {
           financialOcrAnalyses.push(financialOcr)
