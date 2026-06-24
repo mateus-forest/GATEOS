@@ -1,0 +1,34 @@
+CONTRATO DE LOCACAO DE EQUIPAMENTOS - ATIBAIA
+
+LOCADORA:
+Razao Social: Gamer Tech Importação Ltda
+CNPJ: 47.579.509/0001-02
+
+LOCATÁRIA:
+Razao Social: BELI GAMES, ENTRETENIMENTO, INOVACOES E SERVICOS LTDA
+CNPJ: 60.961.002/0001-79
+
+FIADOR:
+Nome: Wembley Gomes Costa
+CPF: 815.508.393-49
+
+CLÁUSULA 1 - DO OBJETO
+Tabela de equipamentos locados:
+Quantidade | Descricao dos bens
+8 | AMD Ryzen 5, RTX 3060, 16GB RAM, SSD 1TB, 650W
+4 | AMD Ryzen 5, RTX 3050, 16GB RAM, SSD 480GB, HD 1TB, 650W
+1 | AMD Ryzen 5, RTX 3060, 8GB RAM, SSD 1TB, 750W
+1 | AMD Ryzen 5, RTX 2060, 16GB RAM, SSD 480GB, HD 1TB, 650W
+10 | Monitor Gamer 165Hz 23.8”
+
+CLÁUSULA 2 - DO PRAZO
+O presente contrato tera prazo determinado de 36 meses, iniciando-se na data de assinatura.
+
+CLÁUSULA 3 - DO PRECO, PAGAMENTO E CAUCAO
+O valor mensal da locacao sera de R$ 3.697,33, com vencimento todo dia 15 de cada mes.
+A caucao corresponde a um aluguel, no valor de R$ 3.697,33.
+
+CLÁUSULA 4 - DO FORO
+Fica eleito o foro da comarca competente.
+
+Atibaia, 27/05/2025.

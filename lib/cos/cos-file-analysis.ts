@@ -1016,13 +1016,35 @@ function allDocumentNumbers(segment: string) {
   ])
 }
 
+function cleanExtractedName(value?: string) {
+  return value
+    ?.replace(/\s+/g, " ")
+    .replace(/^(?:LOCADORA|LOCATARIA|LOCATÁRIA|FIADOR|GARANTIDOR|RAZAO SOCIAL|RAZÃO SOCIAL|NOME|CLIENTE)\s*[:\-]?\s*/i, "")
+    .replace(/\s*(?:CNPJ|CPF|RG|ENDERECO|ENDEREÇO)\s*[:\-].*$/i, "")
+    .replace(/[;,]+$/, "")
+    .trim()
+}
+
+function labeledValue(segment: string, labels: string[]) {
+  for (const label of labels) {
+    const pattern = new RegExp(`${label}\\s*[:\\-]\\s*([^\\n;]+)`, "i")
+    const match = segment.match(pattern)
+    const value = cleanExtractedName(match?.[1])
+    if (value) return value
+  }
+  return undefined
+}
+
 function extractCompanyLoose(block: string) {
   const cnpjIndex = block.search(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)
   const candidates = [cnpjIndex >= 0 ? block.slice(Math.max(0, cnpjIndex - 360), cnpjIndex + 40) : "", block]
 
   for (const candidate of candidates) {
+    const labeled = labeledValue(candidate, ["razao social", "razão social", "empresa", "locadora", "locataria", "locatária", "contratante"])
+    if (labeled && /\b(LTDA|S\.A\.|SA|S\/A|EIRELI|ME|EPP)\b/i.test(labeled)) return labeled
+
     const matches = Array.from(
-      candidate.matchAll(/([A-Z0-9][A-Z0-9\s.,&'()/-]{8,}?(?:LTDA|S\.A\.|SA|S\/A|EIRELI|ME|EPP))/g)
+      candidate.matchAll(/([A-ZÀ-ÿ0-9][A-ZÀ-ÿa-z0-9\s.,&'()/-]{8,}?(?:LTDA|S\.A\.|SA|S\/A|EIRELI|ME|EPP))/g)
     )
     const best = matches
       .map((match) => match[1].replace(/\s+/g, " ").replace(/^[^A-Z0-9]+/, "").trim())
@@ -1032,6 +1054,15 @@ function extractCompanyLoose(block: string) {
   }
 
   return undefined
+}
+
+function extractPersonLoose(segment: string, labels: string[]) {
+  const labeled = labeledValue(segment, labels)
+  if (labeled) return labeled
+  return firstMatch(segment, [
+    /(?:FIADOR|GARANTIDOR)\s*[:\-]\s*([^,\n;]+)/i,
+    /nome\s*[:\-]\s*([^,\n;]+)/i,
+  ])
 }
 
 function extractRepresentativeDocument(segment: string) {
@@ -1136,12 +1167,12 @@ function extractLabeledBlock(text: string, startPattern: RegExp, endPatterns: Re
 
 function extractPartyBlock(text: string, role: "lessor" | "lessee" | "guarantor") {
   if (role === "lessor") {
-    return extractLabeledBlock(text, /LOCADORA|CONTRATADA|VENDEDORA/i, [/LOCAT.RIA|LOCATARIA|CONTRATANTE|COMPRADORA|FIADOR|CLAUSULA|CL.USULA/i], 1800)
+    return extractLabeledBlock(text, /LOCADORA\s*:|LOCADORA|CONTRATADA|VENDEDORA/i, [/LOCAT.RIA\s*:|LOCAT.RIA|LOCATARIA|CONTRATANTE|COMPRADORA|FIADOR|CLAUSULA|CL.USULA/i], 1800)
   }
   if (role === "lessee") {
-    return extractLabeledBlock(text, /LOCAT.RIA|LOCATARIA|CONTRATANTE|COMPRADORA/i, [/FIADOR|GARANTIDOR|LOCADORA|CLAUSULA|CL.USULA/i], 2200)
+    return extractLabeledBlock(text, /LOCAT.RIA\s*:|LOCAT.RIA|LOCATARIA|CONTRATANTE|COMPRADORA/i, [/FIADOR\s*:|FIADOR|GARANTIDOR|LOCADORA|CLAUSULA|CL.USULA/i], 2200)
   }
-  return extractLabeledBlock(text, /FIADOR|GARANTIDOR/i, [/CLAUSULA|CL.USULA|ASSINATURA|TESTEMUNHA/i], 1600)
+  return extractLabeledBlock(text, /FIADOR\s*:|FIADOR|GARANTIDOR/i, [/CLAUSULA\s*1|CL.USULA\s*1|CLAUSULA|CL.USULA|ASSINATURA|TESTEMUNHA/i], 1600)
 }
 
 function buildExtractedParty(fileName: string, text: string, role: "lessor" | "lessee" | "guarantor"): CosExtractedParty | undefined {
@@ -1153,7 +1184,10 @@ function buildExtractedParty(fileName: string, text: string, role: "lessor" | "l
 
   const address = role === "lessee" ? extractAddressFromLocatariaBlock(segment) : extractAddress(segment)
   const contacts = extractContactInfo(segment)
-  const legalName = extractCompanyLoose(segment) ?? fallback.company ?? (role === "guarantor" ? extractGuarantor(segment) : undefined)
+  const legalName =
+    role === "guarantor"
+      ? cleanExtractedName(extractPersonLoose(segment, ["fiador", "garantidor", "nome"])) ?? extractGuarantor(segment)
+      : extractCompanyLoose(segment) ?? fallback.company
   const documentNumber = allDocumentNumbers(segment)[0] ?? fallback.cnpj
   const representative = extractRepresentative(segment)
   const missingFields = [
@@ -1258,7 +1292,16 @@ function extractDepositValueAccurate(text: string) {
   ])
 }
 
+function extractContractClauseBlock(text: string, clauseNumber: number, maxLength = 2400) {
+  const start = new RegExp(`CLAUSULA\\s*${clauseNumber}|CL.USULA\\s*${clauseNumber}`, "i")
+  const end = new RegExp(`CLAUSULA\\s*${clauseNumber + 1}|CL.USULA\\s*${clauseNumber + 1}`, "i")
+  return extractLabeledBlock(text, start, [end], maxLength)
+}
+
 function extractContractObjectBlock(text: string) {
+  const clauseOne = extractContractClauseBlock(text, 1, 3600)
+  if (clauseOne && /equipamento|monitor|ryzen|rtx|ssd|ram/i.test(clauseOne)) return clauseOne
+
   const blocks = [
     extractLabeledBlock(text, /DO OBJETO|OBJETO|DESCRICAO DOS BENS|DESCRI..O DOS BENS/i, [/DO PRAZO|CLAUSULA\s*2|CL.USULA\s*2|OBRIGACOES|OBRIGA..ES/i], 3200),
     extractLabeledBlock(text, /TABELA DE EQUIPAMENTOS|EQUIPAMENTOS LOCADOS|BENS LOCADOS|ANEXO.*EQUIPAMENTOS/i, [/TOTAL GERAL|CONDI..ES|DO PRAZO|CLAUSULA|CL.USULA/i], 3600),
@@ -1275,18 +1318,19 @@ function extractEquipmentFromContract(text: string) {
 
   const lines = objectBlock
     .split(/\n+/)
-    .flatMap((line) => line.split(/\s+\|\s+/))
     .map((line) => line.trim())
     .filter(Boolean)
 
   for (const line of lines) {
     const normalized = normalizeLoose(line)
     const hasEquipmentSignal = EQUIPMENT_TERMS.some((term) => normalized.includes(normalizeLoose(term)))
-    const quantityMatch = line.match(/(?:^|\s)(\d{1,3})\s*(?:x|un|und|unid\.?|unidade|unidades|qtde|qtd)?(?:\s+|$)/i)
+    const tableMatch = line.match(/^\s*(\d{1,3})\s*(?:x|un|und|unid\.?|unidade|unidades|qtde|qtd)?\s*(?:\||-|–|—|:)\s*(.+)$/i)
+    const quantityMatch = tableMatch ?? line.match(/(?:^|\s)(\d{1,3})\s*(?:x|un|und|unid\.?|unidade|unidades|qtde|qtd)?(?:\s+|$)/i)
     if (!hasEquipmentSignal || !quantityMatch) continue
     if (LEGAL_EQUIPMENT_EXCLUSION_TERMS.some((term) => normalized.includes(normalizeLoose(term)))) continue
 
     const quantity = Number(quantityMatch[1])
+    const rawDescription = tableMatch?.[2] ?? line.replace(/^\d{1,3}\s*(?:x|un|und|unid\.?|unidade|unidades|qtde|qtd)?\s*/i, "")
     const moneyMatches = Array.from(line.matchAll(/R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})*,\d{2}/g)).map((match) =>
       parseBrazilianCurrency(match[0])
     )
@@ -1295,7 +1339,7 @@ function extractEquipmentFromContract(text: string) {
 
     equipment.push({
       quantity,
-      description: line.replace(/^\d{1,3}\s*(?:x|un|und|unidade|unidades)?\s*/i, "").trim(),
+      description: rawDescription.replace(/\s+/g, " ").replace(/[|;]+$/, "").trim(),
       configuration: firstMatch(line, [/(?:configura..o|config\.?)(?:\s*[:\-])?\s*([^|;\n]+)/i]),
       unitValue,
       totalValue,
@@ -1446,6 +1490,8 @@ function detectContractType(normalized: string) {
 
 function analyzeContractTextV2(file: File, text: string): CosContractExtractionPreview {
   const normalized = normalizeLoose(text)
+  const termBlock = extractContractClauseBlock(text, 2, 1800) || text
+  const priceBlock = extractContractClauseBlock(text, 3, 2200) || text
   const lessorParty = buildExtractedParty(file.name, text, "lessor")
   const lesseeParty = buildExtractedParty(file.name, text, "lessee")
   const guarantorParty = buildExtractedParty(file.name, text, "guarantor")
@@ -1457,13 +1503,13 @@ function analyzeContractTextV2(file: File, text: string): CosContractExtractionP
     parseDate(firstMatch(text, [/inicio[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /vigencia[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i])) ??
     signatureDate
   const explicitEndDate = parseDate(firstMatch(text, [/termino[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i, /data\s+final[\s\S]{0,120}?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i]))
-  const termMonths = extractTermMonthsAccurate(text)
+  const termMonths = extractTermMonthsAccurate(termBlock)
   const calculatedEndDate = explicitEndDate ?? addMonths(probableStartDate, termMonths)
-  const monthlyDueDay = Number(firstMatch(text, [/vencimento[\s\S]{0,120}?dia\s*(\d{1,2})/i, /todo\s+dia\s*(\d{1,2})/i, /dia\s*(\d{1,2})\s+de\s+cada\s+mes/i])) || undefined
-  const monthlyValue = currencyNear(text, ["preco", "valor mensal", "mensalidade", "aluguel"])
-  const depositValue = extractDepositValueAccurate(text)
-  const totalValue = currencyNear(text, ["valor total", "total do contrato", "valor global"])
-  const entryValue = currencyNear(text, ["entrada", "sinal"])
+  const monthlyDueDay = Number(firstMatch(priceBlock, [/vencimento[\s\S]{0,120}?dia\s*(\d{1,2})/i, /todo\s+dia\s*(\d{1,2})/i, /dia\s*(\d{1,2})\s+de\s+cada\s+mes/i])) || undefined
+  const monthlyValue = currencyNear(priceBlock, ["preco", "valor mensal", "mensalidade", "aluguel"])
+  const depositValue = extractDepositValueAccurate(priceBlock)
+  const totalValue = currencyNear(priceBlock, ["valor total", "total do contrato", "valor global"])
+  const entryValue = currencyNear(priceBlock, ["entrada", "sinal"])
   const adjustmentIndex = firstMatch(text, [/(IGP-M|IPCA|INPC|IPC|SELIC)/i])
   const adjustmentRule = firstMatch(text, [/reajust[ea][\s\S]{0,160}?([^.\n]+)/i])
   const terminationFine = firstMatch(text, [/multa[\s\S]{0,180}?((?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}%|[0-9]+\s*%)/i])
@@ -2697,6 +2743,10 @@ function docxFile(file: File) {
     file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     file.name.toLowerCase().endsWith(".docx")
   )
+}
+
+export function analyzeCosContractTextForValidation(fileName: string, text: string) {
+  return analyzeContractTextV2({ name: fileName, type: "text/plain", size: text.length } as File, normalizeDocumentText(text))
 }
 
 export async function analyzeCosFiles(files: File[]) {
