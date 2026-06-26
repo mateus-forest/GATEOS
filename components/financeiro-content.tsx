@@ -90,6 +90,22 @@ const financialTypeOptions = [
   { label: "Despesa", value: "despesa" },
 ] as const
 
+const recurrenceTypeOptions = [
+  { label: "Nao se repete", value: "none" },
+  { label: "Mais de uma vez", value: "fixed" },
+  { label: "Sempre", value: "infinite" },
+] as const
+
+const recurrenceIntervalOptions = [
+  { label: "Mensal", value: "monthly" },
+  { label: "Semanal", value: "weekly" },
+  { label: "Quinzenal", value: "biweekly" },
+  { label: "Bimestral", value: "bimonthly" },
+  { label: "Trimestral", value: "quarterly" },
+  { label: "Semestral", value: "semiannual" },
+  { label: "Anual", value: "annual" },
+] as const
+
 type SelectOption = { label: string; value: string }
 
 type NewLaunchForm = {
@@ -103,6 +119,9 @@ type NewLaunchForm = {
   clientId: string
   paymentMethod: string
   attachment: string
+  recurrenceType: string
+  recurrenceInterval: string
+  recurrenceCount: string
 }
 
 type BankAccountForm = {
@@ -187,6 +206,9 @@ const initialLaunchForm: NewLaunchForm = {
   clientId: "",
   paymentMethod: "PIX",
   attachment: "Comprovante",
+  recurrenceType: "none",
+  recurrenceInterval: "monthly",
+  recurrenceCount: "2",
 }
 
 const initialBankAccountForm: BankAccountForm = {
@@ -373,6 +395,15 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
     if (!form.dueDate) nextErrors.dueDate = "Informe a data de vencimento."
     if (!form.dreCategoryId) nextErrors.dreCategoryId = "Selecione a categoria DRE."
     if (!form.bankAccountId) nextErrors.bankAccountId = "Selecione a conta bancária."
+    if (form.recurrenceType !== "none" && !form.recurrenceInterval) {
+      nextErrors.recurrenceInterval = "Selecione a periodicidade."
+    }
+    if (form.recurrenceType === "fixed") {
+      const count = Number(form.recurrenceCount)
+      if (!Number.isInteger(count) || count <= 1) {
+        nextErrors.recurrenceCount = "Informe um numero inteiro maior que 1."
+      }
+    }
     setErrors(nextErrors)
     return Object.keys(nextErrors).length === 0
   }
@@ -381,6 +412,21 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
     if (!validate()) return
 
     const amount = Number(form.amount.replace(",", "."))
+
+    if (form.recurrenceType === "fixed") {
+      const message = "Parcelamento/recorrencia ainda nao esta habilitado para gravacao nesta versao. Use Nao se repete para criar um lancamento individual."
+      setSubmitError(message)
+      toast.error(message)
+      return
+    }
+
+    if (form.recurrenceType === "infinite") {
+      const message = "Recorrencia continua ainda nao esta habilitada nesta versao."
+      setSubmitError(message)
+      toast.error(message)
+      return
+    }
+
     setSaving(true)
     setSubmitError("")
     try {
@@ -479,6 +525,34 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
             {renderSelect("clientId", "Cliente ou fornecedor", selectOptions.clients)}
             {renderSelect("paymentMethod", "Forma de pagamento", paymentMethods)}
             {renderSelect("attachment", "Tipo de anexo", attachmentTypes)}
+            <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 md:col-span-2">
+              <div className="grid gap-2">
+                <Label>Repetir</Label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {recurrenceTypeOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      variant={form.recurrenceType === option.value ? "default" : "outline"}
+                      onClick={() => setField("recurrenceType", option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              {form.recurrenceType !== "none" && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {renderSelect("recurrenceInterval", "Periodicidade", recurrenceIntervalOptions)}
+                  {form.recurrenceType === "fixed" && renderInput("recurrenceCount", "Por quantas vezes", "number")}
+                </div>
+              )}
+              {form.recurrenceType !== "none" && (
+                <p className="text-xs text-muted-foreground">
+                  Esta versao prepara o parcelamento/recorrencia na tela, mas ainda grava apenas lancamentos individuais.
+                </p>
+              )}
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="new-launch-file">Arquivo anexado</Label>
               <Input id="new-launch-file" type="file" onChange={(event) => setAttachmentFile(event.target.files?.[0] ?? null)} />
