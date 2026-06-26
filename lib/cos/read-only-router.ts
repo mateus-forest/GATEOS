@@ -40,6 +40,7 @@ import {
   financialDiagnosisReadOnly,
   operationalHealthReadOnly,
 } from "@/lib/cos/read-only-diagnosis"
+import { relationshipGraphReadOnly } from "@/lib/cos/read-only-relationship-graph"
 import {
   candidateToRef,
   deepSearchReadOnly,
@@ -146,6 +147,37 @@ function detectReadOnlyCapability(message: string): ReadOnlyCapability | null {
     ])
   ) {
     return "operational_health"
+  }
+
+  if (
+    hasAny(text, [
+      "tudo relacionado",
+      "relacionado",
+      "relacionamentos",
+      "relacionamentos quebrados",
+      "vinculos quebrados",
+      "vinculos ausentes",
+      "sem vinculo",
+      "timeline",
+      "linha do tempo",
+      "historia operacional",
+      "histórico operacional",
+      "quem depende",
+      "quem utiliza",
+      "mostre impactos",
+      "impactos",
+      "o que depende",
+      "o que afeta",
+      "qual contrato originou",
+      "qual cliente",
+      "qual documento",
+      "onde aparece na dre",
+      "origem desta receita",
+      "origem da receita",
+      "essa despesa impacta",
+    ])
+  ) {
+    return "relationship_graph"
   }
 
   if (hasAny(text, ["o que falta para fechar", "checklist de fechamento", "validar fechamento", "pendencias para fechar", "posso fechar", "impede fechar"])) {
@@ -362,6 +394,15 @@ export async function answerReadOnlyFoundationQuestion(
         title: result.title,
         summary: result.answer,
         suggestions: ["filtrar por modulo", "filtrar por status", "informar periodo", "informar valor ou documento"],
+        context,
+      })
+    }
+    case "relationship_graph": {
+      const result = await relationshipGraphReadOnly(supabase, message, context)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["ver timeline", "ver impactos", "ver relacionamentos quebrados", "diagnosticar pendencias"],
         context,
       })
     }
