@@ -21,7 +21,7 @@ export type CosIntent =
   | "overview"
 
 export type CosAnswer = {
-  intent: CosIntent | "file_analysis"
+  intent: CosIntent | "file_analysis" | "read_only_foundation" | "read_only_write_blocked"
   answer: string
   sources: string[]
   preview?: unknown

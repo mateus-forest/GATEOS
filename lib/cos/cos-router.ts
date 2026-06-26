@@ -19,6 +19,7 @@ import {
   getMaintenanceSummary,
   getOverdueClientsSummary,
 } from "@/lib/cos/cos-tools"
+import { answerReadOnlyFoundationQuestion } from "@/lib/cos/read-only-router"
 
 function hasAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term))
@@ -53,6 +54,9 @@ export function detectCosIntent(message: string): CosIntent {
 }
 
 export async function answerCosQuestion(supabase: CosSupabaseClient, message: string): Promise<CosAnswer> {
+  const readOnlyAnswer = await answerReadOnlyFoundationQuestion(supabase, message)
+  if (readOnlyAnswer) return readOnlyAnswer
+
   const intent = detectCosIntent(message)
   const period = parseRequestedPeriod(message)
   const current = currentYearMonth()
