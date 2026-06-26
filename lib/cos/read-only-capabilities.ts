@@ -12,9 +12,11 @@ export type ReadOnlyCapability =
   | "contract_diagnosis"
   | "equipment_diagnosis"
   | "financial_diagnosis"
+  | "dashboard_diagnosis"
   | "bank_reconciliation_diagnosis"
   | "dre_diagnosis"
   | "monthly_closing_diagnosis"
+  | "operational_health"
   | "system_explanation"
 
 export const READ_ONLY_CAPABILITY_SOURCES: Record<ReadOnlyCapability, string[]> = {
@@ -31,9 +33,19 @@ export const READ_ONLY_CAPABILITY_SOURCES: Record<ReadOnlyCapability, string[]> 
   contract_diagnosis: ["contracts", "installments", "financial_entries", "contract_equipment"],
   equipment_diagnosis: ["equipment", "contracts", "contract_equipment", "maintenance_orders"],
   financial_diagnosis: ["financial_entries", "dre_categories", "bank_accounts"],
+  dashboard_diagnosis: ["dashboard_views", "financial_entries", "contracts", "equipment", "dre_categories"],
   bank_reconciliation_diagnosis: ["bank_accounts", "financial_entries"],
   dre_diagnosis: ["financial_entries", "dre_categories", "dre_manual_adjustments", "dashboard_views"],
   monthly_closing_diagnosis: ["financial_entries", "contracts", "installments", "equipment", "bank_accounts", "dre_categories"],
+  operational_health: [
+    "clients",
+    "contracts",
+    "equipment",
+    "financial_entries",
+    "bank_accounts",
+    "dre_categories",
+    "dashboard_views",
+  ],
   system_explanation: [
     "GATE_OS_COS_MASTER_KNOWLEDGE_BASE.md",
     "GATE_OS_COS_OPERATIONAL_PLAYBOOK.md",
@@ -41,4 +53,3 @@ export const READ_ONLY_CAPABILITY_SOURCES: Record<ReadOnlyCapability, string[]> 
     "GATE_OS_COS_CAPABILITY_MAP.md",
   ],
 }
-

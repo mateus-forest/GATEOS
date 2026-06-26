@@ -18,17 +18,24 @@ import {
   defaultContractSuggestions,
 } from "@/lib/cos/read-only-response-composer"
 import {
-  diagnoseBankReconciliationReadOnly,
-  diagnoseClosingReadOnly,
-  diagnoseDreReadOnly,
-  explainSystemReadOnly,
   clientRefFromRow,
+  explainSystemReadOnly,
   searchClientsReadOnly,
   searchContractsReadOnly,
   searchDocumentsReadOnly,
   searchEquipmentReadOnly,
   searchFinancialReadOnly,
 } from "@/lib/cos/read-only-tools"
+import {
+  bankDiagnosisReadOnly,
+  closingDiagnosisReadOnly,
+  contractDiagnosisReadOnly,
+  dashboardDiagnosisReadOnly,
+  dreDiagnosisReadOnly,
+  equipmentDiagnosisReadOnly,
+  financialDiagnosisReadOnly,
+  operationalHealthReadOnly,
+} from "@/lib/cos/read-only-diagnosis"
 
 function hasAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term))
@@ -78,7 +85,7 @@ function detectContextualNavigation(message: string, hasActiveClient: boolean): 
   if (hasAny(text, ["agora financeiro", "ver financeiro", "financeiro", "receitas", "despesas", "em aberto"])) return "financial_search"
   if (hasAny(text, ["agora documentos", "ver documentos", "documentos", "arquivos"])) return "document_search"
   if (hasAny(text, ["agora dre", "ver dre", "dre"])) return "dre_diagnosis"
-  if (hasAny(text, ["agora dashboard", "ver dashboard", "dashboard"])) return "system_explanation"
+  if (hasAny(text, ["agora dashboard", "ver dashboard", "dashboard"])) return "dashboard_diagnosis"
 
   return null
 }
@@ -90,8 +97,49 @@ function detectReadOnlyCapability(message: string): ReadOnlyCapability | null {
     return "bank_reconciliation_diagnosis"
   }
 
-  if (hasAny(text, ["o que falta para fechar", "checklist de fechamento", "validar fechamento", "pendencias para fechar"])) {
+  if (
+    hasAny(text, [
+      "maiores problemas",
+      "problemas operacionais",
+      "onde devo comecar",
+      "onde devo começar",
+      "saude operacional",
+      "saúde operacional",
+      "health score",
+      "diagnostico geral",
+      "diagnóstico geral",
+    ])
+  ) {
+    return "operational_health"
+  }
+
+  if (hasAny(text, ["o que falta para fechar", "checklist de fechamento", "validar fechamento", "pendencias para fechar", "posso fechar", "impede fechar"])) {
     return "monthly_closing_diagnosis"
+  }
+
+  if (
+    hasAny(text, ["financeiro esta consistente", "financeiro está consistente", "financeiro consistente", "lancamento duplicado", "lancamentos duplicados", "sem categoria", "sem conta bancaria", "sem conta bancária", "competencia incorreta", "competência incorreta"]) ||
+    (hasAny(text, ["financeiro"]) && hasAny(text, ["diagnostico", "diagnóstico", "inconsistente", "problema", "pendencia", "pendência"]))
+  ) {
+    return "financial_diagnosis"
+  }
+
+  if (
+    hasAny(text, ["contrato nao gera receita", "contrato não gera receita", "contratos inconsistentes", "contrato sem financeiro", "contrato sem equipamento", "contratos sem financeiro", "contratos sem equipamento", "contrato duplicado", "contratos duplicados"]) ||
+    (hasAny(text, ["contrato", "contratos"]) && hasAny(text, ["diagnostico", "diagnóstico", "inconsistente", "problema", "pendencia", "pendência"]))
+  ) {
+    return "contract_diagnosis"
+  }
+
+  if (
+    hasAny(text, ["estoque negativo", "equipamento locado sem contrato", "equipamentos locados sem contrato", "equipamento duplicado", "equipamentos duplicados"]) ||
+    (hasAny(text, ["estoque", "equipamento", "equipamentos"]) && hasAny(text, ["diagnostico", "diagnóstico", "inconsistente", "problema", "pendencia", "pendência"]))
+  ) {
+    return "equipment_diagnosis"
+  }
+
+  if (hasAny(text, ["dashboard esta consistente", "dashboard está consistente", "dashboard consistente", "dashboard nao bate", "dashboard não bate", "indicador divergente"])) {
+    return "dashboard_diagnosis"
   }
 
   if (
@@ -172,7 +220,7 @@ export async function answerReadOnlyFoundationQuestion(
   const blocked = detectReadOnlyBlockedIntent(message)
   if (blocked) {
     if (blocked.intent === "close_month") {
-      const closing = await diagnoseClosingReadOnly(supabase, message)
+      const closing = await closingDiagnosisReadOnly(supabase, message)
       return asAnswer(
         "monthly_closing_diagnosis",
         "Bloqueio read-only de fechamento",
@@ -257,12 +305,12 @@ export async function answerReadOnlyFoundationQuestion(
       })
     }
     case "bank_reconciliation_diagnosis": {
-      const result = await diagnoseBankReconciliationReadOnly(supabase, message)
+      const result = await bankDiagnosisReadOnly(supabase, message)
       return asAnswer(capability, result.title, result.answer)
     }
     case "dre_diagnosis": {
       setActiveFocus(context, "dre")
-      const result = await diagnoseDreReadOnly(supabase, message)
+      const result = await dreDiagnosisReadOnly(supabase, message)
       return asComposedAnswer(capability, {
         title: result.title,
         summary: result.answer,
@@ -270,9 +318,58 @@ export async function answerReadOnlyFoundationQuestion(
         context,
       })
     }
+    case "financial_diagnosis": {
+      setActiveFocus(context, "financial")
+      const result = await financialDiagnosisReadOnly(supabase, message)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["comparar banco", "comparar DRE", "ver lancamentos sem categoria", "ver contratos"],
+        context,
+      })
+    }
+    case "contract_diagnosis": {
+      setActiveFocus(context, "contracts")
+      const result = await contractDiagnosisReadOnly(supabase, message)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["ver contratos ativos", "ver financeiro", "ver equipamentos", "ver documentos"],
+        context,
+      })
+    }
+    case "equipment_diagnosis": {
+      setActiveFocus(context, "equipment")
+      const result = await equipmentDiagnosisReadOnly(supabase)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["ver disponibilidade", "ver contratos", "ver manutencoes", "validar fechamento"],
+        context,
+      })
+    }
+    case "dashboard_diagnosis": {
+      setActiveFocus(context, "dashboard")
+      const result = await dashboardDiagnosisReadOnly(supabase, message)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["comparar com DRE", "comparar com financeiro", "ver indicador especifico", "validar fechamento"],
+        context,
+      })
+    }
     case "monthly_closing_diagnosis": {
-      const result = await diagnoseClosingReadOnly(supabase, message)
+      const result = await closingDiagnosisReadOnly(supabase, message)
       return asAnswer(capability, result.title, result.answer)
+    }
+    case "operational_health": {
+      const result = await operationalHealthReadOnly(supabase, message)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["investigar contratos", "investigar financeiro", "investigar banco", "investigar estoque"],
+        context,
+      })
     }
     case "system_explanation": {
       if (normalizeText(message).includes("dashboard")) setActiveFocus(context, "dashboard")
