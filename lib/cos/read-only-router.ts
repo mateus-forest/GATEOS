@@ -1,12 +1,16 @@
 import { normalizeText, type CosAnswer, type CosSupabaseClient } from "@/lib/cos/cos-context"
 import { READ_ONLY_CAPABILITY_SOURCES, type ReadOnlyCapability } from "@/lib/cos/read-only-capabilities"
 import {
+  clearPendingResolution,
   getReadOnlyContext,
   resetReadOnlyContext,
   resolvePendingSelection,
   saveReadOnlyContext,
   setActiveClient,
+  setActiveContract,
+  setActiveEquipment,
   setActiveFocus,
+  setActivePeriod,
   setPendingResolution,
   shouldResetReadOnlyContext,
 } from "@/lib/cos/read-only-context"
@@ -36,9 +40,40 @@ import {
   financialDiagnosisReadOnly,
   operationalHealthReadOnly,
 } from "@/lib/cos/read-only-diagnosis"
+import {
+  candidateToRef,
+  deepSearchReadOnly,
+  resolveEntityCandidatesReadOnly,
+  type DeepSearchEntityType,
+} from "@/lib/cos/read-only-deep-search"
+import { parsePeriodRef, resolveReadOnlyPeriod } from "@/lib/cos/read-only-period"
 
 function hasAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term))
+}
+
+function hasPeriodSignal(message: string) {
+  const text = normalizeText(message)
+  return hasAny(text, [
+    "janeiro",
+    "fevereiro",
+    "marco",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+    "este mes",
+    "mes passado",
+    "ultimos 30 dias",
+    "ultimos 90 dias",
+    "este ano",
+    "trimestre",
+  ]) || /\b20\d{2}\b/.test(text)
 }
 
 function asAnswer(capability: ReadOnlyCapability, title: string, answer: string): CosAnswer {
@@ -157,6 +192,14 @@ function detectReadOnlyCapability(message: string): ReadOnlyCapability | null {
     return "document_search"
   }
 
+  if (hasAny(text, ["juridico", "juridico", "caso juridico", "processo", "prazo juridico", "risco juridico"])) {
+    return "legal_search"
+  }
+
+  if (hasAny(text, ["socio", "socios", "distribuicao", "distribuicao", "partner"])) {
+    return "partner_search"
+  }
+
   if (hasAny(text, ["cliente", "clientes", "cnpj", "cpf", "procure", "busque", "buscar", "quem e"])) {
     return "client_search"
   }
@@ -169,14 +212,24 @@ function detectReadOnlyCapability(message: string): ReadOnlyCapability | null {
     return "equipment_search"
   }
 
-  if (hasAny(text, ["financeiro", "receita", "receitas", "faturamento", "despesa", "despesas", "contas vencidas", "em aberto", "lancamentos"])) {
+  if (hasAny(text, ["financeiro", "receita", "receitas", "faturamento", "despesa", "despesas", "contas vencidas", "em aberto", "lancamentos", "pagamento", "pagamentos", "valor"])) {
     return "financial_search"
   }
 
   const bareEntitySearch = /^[a-z0-9\s.\/-]{3,80}$/.test(text) && text.split(/\s+/).filter(Boolean).length <= 5
-  if (bareEntitySearch) return "client_search"
+  if (bareEntitySearch) return "deep_search"
 
   return null
+}
+
+function shouldAskEntityChoice(type: DeepSearchEntityType, message: string, count: number) {
+  if (count <= 1) return false
+  const text = normalizeText(message)
+  if (type === "contract") return hasAny(text, ["contrato da", "contrato do", "contrato de", "o contrato", "mostre o contrato"])
+  if (type === "equipment") return hasAny(text, ["equipamento", "serial", "modelo"])
+  if (type === "financial") return hasAny(text, ["pagamento", "lancamento", "lançamento", "receita", "despesa", "valor"])
+  if (type === "document") return hasAny(text, ["documento", "arquivo", "comprovante"])
+  return false
 }
 
 export async function answerReadOnlyFoundationQuestion(
@@ -215,6 +268,50 @@ export async function answerReadOnlyFoundationQuestion(
         context,
       })
     }
+
+    if (selected.type === "contract") {
+      setActiveContract(context, selected)
+      return asComposedAnswer("contract_search", {
+        title: "Contrato selecionado",
+        summary: `Contexto atualizado para ${selected.name}.`,
+        details: selected.description ? [selected.description] : undefined,
+        suggestions: defaultContractSuggestions(),
+        context,
+      })
+    }
+
+    if (selected.type === "equipment") {
+      setActiveEquipment(context, selected)
+      return asComposedAnswer("equipment_search", {
+        title: "Equipamento selecionado",
+        summary: `Contexto atualizado para ${selected.name}.`,
+        details: selected.description ? [selected.description] : undefined,
+        suggestions: ["ver contratos", "ver manutencoes", "diagnosticar estoque", "ver disponibilidade"],
+        context,
+      })
+    }
+
+    if (selected.type === "period") {
+      const period = parsePeriodRef(selected)
+      if (period) {
+        setActivePeriod(context, period)
+        return asComposedAnswer("financial_search", {
+          title: "Periodo selecionado",
+          summary: `Contexto atualizado para ${period.label}.`,
+          suggestions: ["ver receitas", "ver despesas", "comparar com DRE", "validar fechamento"],
+          context,
+        })
+      }
+    }
+
+    clearPendingResolution(context)
+    return asComposedAnswer("deep_search", {
+      title: "Registro selecionado",
+      summary: `Selecao registrada para ${selected.name}.`,
+      details: selected.description ? [selected.description] : undefined,
+      suggestions: ["analisar contexto", "ver relacionados", "diagnosticar pendencias"],
+      context,
+    })
   }
 
   const blocked = detectReadOnlyBlockedIntent(message)
@@ -235,10 +332,39 @@ export async function answerReadOnlyFoundationQuestion(
     }
   }
 
+  if (hasPeriodSignal(message)) {
+    const periodResolution = resolveReadOnlyPeriod(message, context)
+    if (periodResolution.kind === "ambiguous") {
+      setPendingResolution(context, {
+        type: "period",
+        prompt: periodResolution.prompt,
+        options: periodResolution.options,
+      })
+      return {
+        intent: "read_only_foundation",
+        sources: [],
+        answer: composeAmbiguityResponse(periodResolution.prompt, periodResolution.options),
+      }
+    }
+
+    if (periodResolution.kind === "resolved") {
+      setActivePeriod(context, periodResolution.period)
+    }
+  }
+
   const capability = detectContextualNavigation(message, Boolean(context.activeClient)) ?? detectReadOnlyCapability(message)
   if (!capability) return null
 
   switch (capability) {
+    case "deep_search": {
+      const result = await deepSearchReadOnly(supabase, message, context)
+      return asComposedAnswer(capability, {
+        title: result.title,
+        summary: result.answer,
+        suggestions: ["filtrar por modulo", "filtrar por status", "informar periodo", "informar valor ou documento"],
+        context,
+      })
+    }
     case "client_search": {
       const result = await searchClientsReadOnly(supabase, message)
       if (result.matches?.length === 1) {
@@ -267,6 +393,21 @@ export async function answerReadOnlyFoundationQuestion(
     case "contract_search": {
       setActiveFocus(context, "contracts")
       const result = await searchContractsReadOnly(supabase, message, context)
+      if (result.matches?.length && shouldAskEntityChoice("contract", message, result.matches.length)) {
+        const options = (await resolveEntityCandidatesReadOnly(supabase, "contract", message, context, 5)).map(candidateToRef)
+        if (options.length > 1) {
+          setPendingResolution(context, {
+            type: "contract",
+            prompt: `Encontrei ${options.length} contratos possiveis. Qual deles voce deseja analisar?`,
+            options,
+          })
+          return {
+            intent: "read_only_foundation",
+            sources: READ_ONLY_CAPABILITY_SOURCES.contract_search,
+            answer: composeAmbiguityResponse(`Encontrei ${options.length} contratos possiveis. Qual deles voce deseja analisar?`, options),
+          }
+        }
+      }
       return asComposedAnswer(capability, {
         title: result.title,
         summary: result.answer,
@@ -277,6 +418,19 @@ export async function answerReadOnlyFoundationQuestion(
     case "equipment_search": {
       setActiveFocus(context, "equipment")
       const result = await searchEquipmentReadOnly(supabase, message, context)
+      const options = (await resolveEntityCandidatesReadOnly(supabase, "equipment", message, context, 5)).map(candidateToRef)
+      if (shouldAskEntityChoice("equipment", message, options.length)) {
+        setPendingResolution(context, {
+          type: "equipment",
+          prompt: `Encontrei ${options.length} equipamentos possiveis. Qual deles voce deseja analisar?`,
+          options,
+        })
+        return {
+          intent: "read_only_foundation",
+          sources: READ_ONLY_CAPABILITY_SOURCES.equipment_search,
+          answer: composeAmbiguityResponse(`Encontrei ${options.length} equipamentos possiveis. Qual deles voce deseja analisar?`, options),
+        }
+      }
       return asComposedAnswer(capability, {
         title: result.title,
         summary: result.answer,
@@ -287,6 +441,19 @@ export async function answerReadOnlyFoundationQuestion(
     case "financial_search": {
       setActiveFocus(context, "financial")
       const result = await searchFinancialReadOnly(supabase, message, context)
+      const options = (await resolveEntityCandidatesReadOnly(supabase, "financial", message, context, 5)).map(candidateToRef)
+      if (shouldAskEntityChoice("financial", message, options.length)) {
+        setPendingResolution(context, {
+          type: "financial",
+          prompt: `Encontrei ${options.length} lancamentos possiveis. Qual deles voce deseja analisar?`,
+          options,
+        })
+        return {
+          intent: "read_only_foundation",
+          sources: READ_ONLY_CAPABILITY_SOURCES.financial_search,
+          answer: composeAmbiguityResponse(`Encontrei ${options.length} lancamentos possiveis. Qual deles voce deseja analisar?`, options),
+        }
+      }
       return asComposedAnswer(capability, {
         title: result.title,
         summary: result.answer,
@@ -297,10 +464,71 @@ export async function answerReadOnlyFoundationQuestion(
     case "document_search": {
       setActiveFocus(context, "documents")
       const result = await searchDocumentsReadOnly(supabase, message, context)
+      const options = (await resolveEntityCandidatesReadOnly(supabase, "document", message, context, 5)).map(candidateToRef)
+      if (shouldAskEntityChoice("document", message, options.length)) {
+        setPendingResolution(context, {
+          type: "document",
+          prompt: `Encontrei ${options.length} documentos possiveis. Qual deles voce deseja analisar?`,
+          options,
+        })
+        return {
+          intent: "read_only_foundation",
+          sources: READ_ONLY_CAPABILITY_SOURCES.document_search,
+          answer: composeAmbiguityResponse(`Encontrei ${options.length} documentos possiveis. Qual deles voce deseja analisar?`, options),
+        }
+      }
       return asComposedAnswer(capability, {
         title: result.title,
         summary: result.answer,
         suggestions: ["ver contratos", "ver financeiro", "ver pendencias documentais"],
+        context,
+      })
+    }
+    case "legal_search": {
+      setActiveFocus(context, "legal")
+      const options = (await resolveEntityCandidatesReadOnly(supabase, "legal", message, context, 5)).map(candidateToRef)
+      if (options.length > 1) {
+        setPendingResolution(context, {
+          type: "legal",
+          prompt: `Encontrei ${options.length} casos juridicos possiveis. Qual deles voce deseja analisar?`,
+          options,
+        })
+        return {
+          intent: "read_only_foundation",
+          sources: READ_ONLY_CAPABILITY_SOURCES.legal_search,
+          answer: composeAmbiguityResponse(`Encontrei ${options.length} casos juridicos possiveis. Qual deles voce deseja analisar?`, options),
+        }
+      }
+      return asComposedAnswer(capability, {
+        title: "Busca juridica",
+        summary: options.length
+          ? `Encontrei 1 caso juridico possivel:\n- ${options[0].name}${options[0].description ? ` - ${options[0].description}` : ""}`
+          : "Nao encontrei caso juridico compativel. Voce pode informar cliente, contrato, numero do processo, status ou prazo.",
+        suggestions: ["filtrar por cliente", "filtrar por prazo", "ver financeiro", "ver documentos"],
+        context,
+      })
+    }
+    case "partner_search": {
+      setActiveFocus(context, "partners")
+      const options = (await resolveEntityCandidatesReadOnly(supabase, "partner", message, context, 5)).map(candidateToRef)
+      if (options.length > 1) {
+        setPendingResolution(context, {
+          type: "partner",
+          prompt: `Encontrei ${options.length} socios/lancamentos possiveis. Qual deles voce deseja analisar?`,
+          options,
+        })
+        return {
+          intent: "read_only_foundation",
+          sources: READ_ONLY_CAPABILITY_SOURCES.partner_search,
+          answer: composeAmbiguityResponse(`Encontrei ${options.length} socios/lancamentos possiveis. Qual deles voce deseja analisar?`, options),
+        }
+      }
+      return asComposedAnswer(capability, {
+        title: "Busca de socios",
+        summary: options.length
+          ? `Encontrei 1 registro de socio possivel:\n- ${options[0].name}${options[0].description ? ` - ${options[0].description}` : ""}`
+          : "Nao encontrei socio ou lancamento compativel. Voce pode informar nome, periodo ou tipo de distribuicao.",
+        suggestions: ["ver distribuicoes", "ver resultado", "validar fechamento"],
         context,
       })
     }

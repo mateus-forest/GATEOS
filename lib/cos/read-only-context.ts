@@ -1,7 +1,7 @@
 import { normalizeText } from "@/lib/cos/cos-context"
 
 export type ReadOnlyEntityRef = {
-  type: "client" | "contract" | "equipment" | "financial" | "document" | "legal" | "partner"
+  type: "client" | "contract" | "equipment" | "financial" | "document" | "legal" | "partner" | "period"
   id: string
   name: string
   description?: string
@@ -23,7 +23,7 @@ export type ReadOnlyOperationalContext = {
     month: number
     label: string
   }
-  activeFocus?: "client" | "contracts" | "equipment" | "financial" | "documents" | "dre" | "dashboard" | "closing"
+  activeFocus?: "client" | "contracts" | "equipment" | "financial" | "documents" | "legal" | "partners" | "dre" | "dashboard" | "closing"
   pendingResolution?: ReadOnlyPendingResolution
   updatedAt: number
 }
@@ -80,6 +80,38 @@ export function setActiveClient(context: ReadOnlyOperationalContext, client: Rea
   return saveReadOnlyContext(context)
 }
 
+export function setActiveContract(context: ReadOnlyOperationalContext, contract: ReadOnlyEntityRef) {
+  context.activeContract = contract
+  context.activeFocus = "contracts"
+  context.pendingResolution = undefined
+  return saveReadOnlyContext(context)
+}
+
+export function setActiveEquipment(context: ReadOnlyOperationalContext, equipment: ReadOnlyEntityRef) {
+  context.activeEquipment = equipment
+  context.activeFocus = "equipment"
+  context.pendingResolution = undefined
+  return saveReadOnlyContext(context)
+}
+
+export function setActivePeriod(
+  context: ReadOnlyOperationalContext,
+  period: {
+    year: number
+    month: number
+    label: string
+  }
+) {
+  context.activePeriod = period
+  context.pendingResolution = undefined
+  return saveReadOnlyContext(context)
+}
+
+export function clearPendingResolution(context: ReadOnlyOperationalContext) {
+  context.pendingResolution = undefined
+  return saveReadOnlyContext(context)
+}
+
 export function setPendingResolution(context: ReadOnlyOperationalContext, pending: ReadOnlyPendingResolution) {
   context.pendingResolution = pending
   return saveReadOnlyContext(context)
@@ -101,6 +133,22 @@ export function resolvePendingSelection(context: ReadOnlyOperationalContext, mes
     return pending.options[index] ?? null
   }
 
+  const ordinalMap: Record<string, number> = {
+    primeiro: 0,
+    primeira: 0,
+    segundo: 1,
+    segunda: 1,
+    terceiro: 2,
+    terceira: 2,
+    quarto: 3,
+    quarta: 3,
+    quinto: 4,
+    quinta: 4,
+  }
+  for (const [word, index] of Object.entries(ordinalMap)) {
+    if (text.includes(word)) return pending.options[index] ?? null
+  }
+
   return (
     pending.options.find((option) => {
       const optionText = normalizeText(`${option.name} ${option.description ?? ""}`)
@@ -117,4 +165,3 @@ export function contextLabel(context: ReadOnlyOperationalContext) {
   if (context.activePeriod) parts.push(`Periodo ativo: ${context.activePeriod.label}`)
   return parts.join(" | ")
 }
-

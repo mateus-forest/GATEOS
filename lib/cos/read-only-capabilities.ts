@@ -1,4 +1,5 @@
 export type ReadOnlyCapability =
+  | "deep_search"
   | "client_search"
   | "contract_search"
   | "equipment_search"
@@ -20,6 +21,7 @@ export type ReadOnlyCapability =
   | "system_explanation"
 
 export const READ_ONLY_CAPABILITY_SOURCES: Record<ReadOnlyCapability, string[]> = {
+  deep_search: ["clients", "contracts", "equipment", "financial_entries", "documents", "legal_cases", "partners", "partner_entries"],
   client_search: ["clients"],
   contract_search: ["contracts", "clients"],
   equipment_search: ["equipment", "contracts", "contract_equipment"],
