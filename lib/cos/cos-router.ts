@@ -20,6 +20,7 @@ import {
   getOverdueClientsSummary,
 } from "@/lib/cos/cos-tools"
 import { answerReadOnlyFoundationQuestion } from "@/lib/cos/read-only-router"
+import { answerStructuredInput } from "@/lib/cos/structured-input-actions"
 
 function hasAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term))
@@ -54,6 +55,9 @@ export function detectCosIntent(message: string): CosIntent {
 }
 
 export async function answerCosQuestion(supabase: CosSupabaseClient, message: string, userId?: string): Promise<CosAnswer> {
+  const structuredAnswer = answerStructuredInput(message)
+  if (structuredAnswer) return structuredAnswer
+
   const readOnlyAnswer = await answerReadOnlyFoundationQuestion(supabase, message, userId)
   if (readOnlyAnswer) return readOnlyAnswer
 

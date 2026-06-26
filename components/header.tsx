@@ -28,6 +28,7 @@ import { getInstallments } from "@/lib/data/installments"
 import { getNotifications, markNotificationAsRead } from "@/lib/data/notifications"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import type { CosFileAnalysisPreview } from "@/lib/cos/cos-file-analysis"
+import type { StructuredInputAction, StructuredInputPreview } from "@/lib/cos/structured-input-preview"
 
 type SearchRecord = Record<string, unknown>
 type SearchItem = { label: string; description: string; href: string }
@@ -45,8 +46,9 @@ type CosChatMessage = {
   role: "user" | "assistant"
   content: string
   attachments?: CosAttachment[]
-  preview?: CosFileAnalysisPreview
+  preview?: CosAssistantPreview
 }
+type CosAssistantPreview = CosFileAnalysisPreview | StructuredInputPreview
 type CosAttachment = {
   id: string
   name: string
@@ -891,13 +893,130 @@ function FinancialOcrCards({
   )
 }
 
+function StructuredValueList({ title, data }: { title: string; data?: Record<string, unknown> }) {
+  const rows = Object.entries(data ?? {}).filter(([, value]) => value !== undefined && value !== "")
+  if (!rows.length) return null
+
+  return (
+    <div className="rounded-2xl bg-muted/60 p-3">
+      <p className="font-semibold">{title}</p>
+      <div className="mt-2 space-y-1 text-muted-foreground [overflow-wrap:anywhere]">
+        {rows.map(([key, value]) => (
+          <p key={key}>
+            {COS_FIELD_LABELS[key] ?? key}: {formatPreviewValue(value)}
+          </p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function structuredActionToReview(action: StructuredInputAction): CosActionReview | null {
+  if (!action.enabled) return null
+  if (action.kind === "prepare_contract" || action.kind === "prepare_equipment") return null
+  return {
+    kind: action.kind,
+    title: action.title,
+    description: action.description,
+    endpoint: action.endpoint,
+    payload: action.payload,
+    source: action.source,
+    requiresNoDocumentConfirmation: action.requiresNoDocumentConfirmation,
+  }
+}
+
+function StructuredInputCards({
+  preview,
+  onAction,
+}: {
+  preview: StructuredInputPreview
+  onAction: (review: CosActionReview) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="font-semibold">Entrada estruturada operacional</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="rounded-full">
+            {preview.source.detectedType}
+          </Badge>
+          <ConfidenceBadge confidence={preview.source.confidence} />
+          <span className="text-muted-foreground">Nenhum dado foi gravado.</span>
+        </div>
+      </div>
+
+      <StructuredValueList title="Cliente identificado" data={preview.client as Record<string, unknown> | undefined} />
+      <StructuredValueList title="Contrato identificado" data={preview.contract as Record<string, unknown> | undefined} />
+      <StructuredValueList title="Financeiro identificado" data={preview.financial as Record<string, unknown> | undefined} />
+      <StructuredValueList title="Documento identificado" data={preview.document as Record<string, unknown> | undefined} />
+      <StructuredValueList title="DRE identificada" data={preview.dre as Record<string, unknown> | undefined} />
+
+      {preview.equipment.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Equipamentos identificados</p>
+          <div className="mt-2 space-y-1 text-muted-foreground [overflow-wrap:anywhere]">
+            {preview.equipment.map((item, index) => (
+              <p key={`${item.description}-${index}`}>
+                {item.quantity ? `${item.quantity}x ` : ""}
+                {item.description}
+                {item.brand_model ? ` - ${item.brand_model}` : ""}
+                {item.notes ? ` (${item.notes})` : ""}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {preview.pending.length > 0 && (
+        <div className="rounded-2xl bg-amber-50 p-3 text-amber-900">
+          <p className="font-semibold">Pendencias</p>
+          <div className="mt-2 space-y-1">
+            {preview.pending.map((item) => (
+              <p key={item}>- {item}</p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {preview.actions.length > 0 && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <p className="font-semibold">Acoes disponiveis</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {preview.actions.map((action) => {
+              const review = structuredActionToReview(action)
+              return (
+                <div key={action.title} className="rounded-xl bg-white/70 p-2">
+                  <EntityActionButton disabled={!review} onClick={review ? () => onAction(review) : undefined}>
+                    {action.title}
+                  </EntityActionButton>
+                  {!action.enabled && action.blockedReason && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">{action.blockedReason}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CosPreviewPanel({
   preview,
   onAction,
 }: {
-  preview: CosFileAnalysisPreview
+  preview: CosAssistantPreview
   onAction: (review: CosActionReview) => void
 }) {
+  if (preview.kind === "structured_input") {
+    return (
+      <div className="mt-4 space-y-4 rounded-3xl border border-border bg-white p-4 text-xs text-foreground">
+        <StructuredInputCards preview={preview} onAction={onAction} />
+      </div>
+    )
+  }
+
   return (
     <div className="mt-4 space-y-4 rounded-3xl border border-border bg-white p-4 text-xs text-foreground">
       <div>
@@ -1404,7 +1523,7 @@ export function Header() {
               body: JSON.stringify({ message }),
             })
       const payload = (await response.json().catch(() => null)) as
-        | { answer?: string; error?: string; preview?: CosFileAnalysisPreview }
+        | { answer?: string; error?: string; preview?: CosAssistantPreview }
         | null
 
       const assistantMessage: CosChatMessage = {
