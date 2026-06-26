@@ -19,7 +19,15 @@ import {
   getEquipmentSummary,
   getFinancialSummary,
 } from "@/lib/cos/cos-tools"
+import type { ReadOnlyOperationalContext } from "@/lib/cos/read-only-context"
 import type { SupabaseRow } from "@/lib/supabase/types"
+
+type ReadOnlyToolResult = {
+  title: string
+  answer: string
+  matches?: SupabaseRow[]
+  query?: string
+}
 
 function rowName(row: SupabaseRow) {
   return String(row.name ?? row.legal_name ?? row.company_name ?? row.fantasy_name ?? row.description ?? "sem nome")
@@ -86,7 +94,21 @@ function listLines(rows: string[]) {
   return rows.length ? rows.map((line) => `- ${line}`).join("\n") : "- nenhum registro encontrado"
 }
 
-export async function searchClientsReadOnly(supabase: CosSupabaseClient, message: string) {
+function scopedToClient(rows: SupabaseRow[], context?: ReadOnlyOperationalContext) {
+  if (!context?.activeClient?.id) return rows
+  return rows.filter((row) => String(row.client_id ?? row.customer_id ?? "") === context.activeClient?.id)
+}
+
+export function clientRefFromRow(row: SupabaseRow) {
+  return {
+    type: "client" as const,
+    id: rowId(row),
+    name: rowName(row),
+    description: [rowDocument(row), String(row.status ?? "")].filter(Boolean).join(" | "),
+  }
+}
+
+export async function searchClientsReadOnly(supabase: CosSupabaseClient, message: string): Promise<ReadOnlyToolResult> {
   const rows = await selectCosRows(supabase, "clients")
   const query = extractEntityQuery(message, [
     "procure",
@@ -112,6 +134,8 @@ export async function searchClientsReadOnly(supabase: CosSupabaseClient, message
   const matches = filtered.slice(0, 5)
   return {
     title: "Busca de cliente",
+    matches,
+    query,
     answer: matches.length
       ? `Encontrei ${filtered.length} cliente(s) compativeis em leitura read-only:\n${listLines(
           matches.map((row) => `${rowName(row)}${rowDocument(row) ? ` - ${rowDocument(row)}` : ""} (${String(row.status ?? "sem status")})`)
@@ -120,44 +144,60 @@ export async function searchClientsReadOnly(supabase: CosSupabaseClient, message
   }
 }
 
-export async function searchContractsReadOnly(supabase: CosSupabaseClient, message: string) {
+export async function searchContractsReadOnly(
+  supabase: CosSupabaseClient,
+  message: string,
+  context?: ReadOnlyOperationalContext
+): Promise<ReadOnlyToolResult> {
   const summary = await getContractsSummary(supabase)
   const normalized = normalizeText(message)
 
   if (normalized.includes("vencendo") || normalized.includes("vence") || normalized.includes("vencem")) {
+    const expiring = scopedToClient(summary.expiring, context)
     return {
       title: "Contratos vencendo",
-      answer: `Encontrei ${summary.expiring.length} contrato(s) vencendo nos proximos 30 dias. ${formatContractList(summary.expiring)}`,
+      matches: expiring,
+      answer: `Encontrei ${expiring.length} contrato(s) vencendo nos proximos 30 dias${context?.activeClient ? ` para ${context.activeClient.name}` : ""}. ${formatContractList(expiring)}`,
     }
   }
 
   if (normalized.includes("vencido")) {
+    const expired = scopedToClient(summary.expired, context)
     return {
       title: "Contratos vencidos",
-      answer: `Encontrei ${summary.expired.length} contrato(s) vencidos. ${formatContractList(summary.expired)}`,
+      matches: expired,
+      answer: `Encontrei ${expired.length} contrato(s) vencidos${context?.activeClient ? ` para ${context.activeClient.name}` : ""}. ${formatContractList(expired)}`,
     }
   }
 
   const rows = await selectCosRows(supabase, "contracts")
   const query = extractEntityQuery(message, ["contrato", "contratos", "ativo", "ativos", "encerrado", "encerrados", "da", "do"])
   const filtered = normalized.includes("ativo")
-    ? summary.active
+    ? scopedToClient(summary.active, context)
     : normalized.includes("encerrado")
-      ? rows.filter((row) => normalizeText(row.status).includes("encerr"))
-      : topMatches(rows, query, ["contract_number", "number", "client_name", "customer_name", "status", "type", "notes"])
+      ? scopedToClient(rows, context).filter((row) => normalizeText(row.status).includes("encerr"))
+      : context?.activeClient
+        ? scopedToClient(rows, context)
+        : topMatches(rows, query, ["contract_number", "number", "client_name", "customer_name", "status", "type", "notes"])
 
   const matches = filtered.slice(0, 5)
   return {
     title: "Busca de contrato",
+    matches,
+    query,
     answer: matches.length
-      ? `Encontrei ${filtered.length} contrato(s) compativeis:\n${listLines(
+      ? `Encontrei ${filtered.length} contrato(s) compativeis${context?.activeClient ? ` para ${context.activeClient.name}` : ""}:\n${listLines(
           matches.map((row) => `${contractNumber(row)} - ${contractClient(row)} - ${String(row.status ?? "sem status")} - fim ${formatDate(contractEndDate(row))}`)
         )}`
       : `Nao encontrei contrato compativel com "${query || message}".`,
   }
 }
 
-export async function searchEquipmentReadOnly(supabase: CosSupabaseClient, message: string) {
+export async function searchEquipmentReadOnly(
+  supabase: CosSupabaseClient,
+  message: string,
+  context?: ReadOnlyOperationalContext
+): Promise<ReadOnlyToolResult> {
   const rows = await selectCosRows(supabase, "equipment")
   const summary = await getEquipmentSummary(supabase)
   const normalized = normalizeText(message)
@@ -194,18 +234,25 @@ export async function searchEquipmentReadOnly(supabase: CosSupabaseClient, messa
   const matches = topMatches(rows, query, ["name", "category", "description", "brand", "model", "configuration", "status"], 6)
   return {
     title: "Busca de equipamento",
+    matches,
+    query,
     answer: matches.length
-      ? `Encontrei ${matches.length} equipamento(s) compativeis. Visao geral: ${summary.available} disponiveis, ${summary.rented} locados e ${summary.maintenance} em manutencao.\n${listLines(
+      ? `Encontrei ${matches.length} equipamento(s) compativeis${context?.activeClient ? ` enquanto analisamos ${context.activeClient.name}` : ""}. Visao geral: ${summary.available} disponiveis, ${summary.rented} locados e ${summary.maintenance} em manutencao.\n${listLines(
           matches.map((row) => `${rowName(row)} - ${String(row.category ?? "sem categoria")} - ${String(row.status ?? "sem status")}`)
         )}`
       : `Nao encontrei equipamento compativel com "${query || message}". Visao geral: ${summary.available} disponiveis, ${summary.rented} locados e ${summary.maintenance} em manutencao.`,
   }
 }
 
-export async function searchFinancialReadOnly(supabase: CosSupabaseClient, message: string) {
+export async function searchFinancialReadOnly(
+  supabase: CosSupabaseClient,
+  message: string,
+  context?: ReadOnlyOperationalContext
+): Promise<ReadOnlyToolResult> {
   const period = parseRequestedPeriod(message)
   const rows = await selectCosRows(supabase, "financial_entries")
-  const monthRows = rows.filter((row) => dateIsInMonth(row.competence_date ?? row.payment_date ?? row.due_date, period.year, period.month))
+  const scopedRows = scopedToClient(rows, context)
+  const monthRows = scopedRows.filter((row) => dateIsInMonth(row.competence_date ?? row.payment_date ?? row.due_date, period.year, period.month))
   const normalized = normalizeText(message)
   const typeRows = normalized.includes("receita") || normalized.includes("faturamento")
     ? monthRows.filter((row) => normalizeText(row.type) === "receita")
@@ -219,7 +266,30 @@ export async function searchFinancialReadOnly(supabase: CosSupabaseClient, messa
 
   return {
     title: "Busca financeira",
-    answer: `No periodo ${monthLabel(period.month)}/${period.year}, encontrei ${typeRows.length} lancamento(s) no criterio solicitado, totalizando ${formatCurrency(total)}. Existem ${openRows.length} lancamento(s) em aberto nesse recorte.\n${listLines(sample)}`,
+    matches: typeRows.slice(0, 5),
+    answer: `No periodo ${monthLabel(period.month)}/${period.year}${context?.activeClient ? ` para ${context.activeClient.name}` : ""}, encontrei ${typeRows.length} lancamento(s) no criterio solicitado, totalizando ${formatCurrency(total)}. Existem ${openRows.length} lancamento(s) em aberto nesse recorte.\n${listLines(sample)}`,
+  }
+}
+
+export async function searchDocumentsReadOnly(
+  supabase: CosSupabaseClient,
+  message: string,
+  context?: ReadOnlyOperationalContext
+): Promise<ReadOnlyToolResult> {
+  const rows = await selectCosRows(supabase, "documents")
+  const scopedRows = scopedToClient(rows, context)
+  const query = extractEntityQuery(message, ["documento", "documentos", "arquivo", "arquivos", "contrato", "comprovante", "mostre", "ver", "agora"])
+  const matches = context?.activeClient ? scopedRows.slice(0, 5) : topMatches(rows, query, ["name", "type", "file_name", "notes"], 5)
+
+  return {
+    title: "Busca de documentos",
+    matches,
+    query,
+    answer: matches.length
+      ? `Encontrei ${matches.length} documento(s)${context?.activeClient ? ` vinculados ao contexto de ${context.activeClient.name}` : " compativeis"}:\n${listLines(
+          matches.map((row) => `${String(row.name ?? row.file_name ?? "sem nome")} - ${String(row.type ?? "sem tipo")}`)
+        )}`
+      : `Nao encontrei documentos${context?.activeClient ? ` para ${context.activeClient.name}` : query ? ` compativeis com "${query}"` : ""}.`,
   }
 }
 

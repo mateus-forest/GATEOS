@@ -53,8 +53,8 @@ export function detectCosIntent(message: string): CosIntent {
   return "overview"
 }
 
-export async function answerCosQuestion(supabase: CosSupabaseClient, message: string): Promise<CosAnswer> {
-  const readOnlyAnswer = await answerReadOnlyFoundationQuestion(supabase, message)
+export async function answerCosQuestion(supabase: CosSupabaseClient, message: string, userId?: string): Promise<CosAnswer> {
+  const readOnlyAnswer = await answerReadOnlyFoundationQuestion(supabase, message, userId)
   if (readOnlyAnswer) return readOnlyAnswer
 
   const intent = detectCosIntent(message)

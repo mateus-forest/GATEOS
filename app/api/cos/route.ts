@@ -45,7 +45,7 @@ export async function POST(request: Request) {
         return NextResponse.json(response)
       }
 
-      const response = await answerCosQuestion(supabase, message)
+      const response = await answerCosQuestion(supabase, message, user.id)
       return NextResponse.json(response)
     }
 
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const response = await answerCosQuestion(supabase, message)
+    const response = await answerCosQuestion(supabase, message, user.id)
     return NextResponse.json(response)
   } catch (error) {
     console.error("[cos] Falha ao responder pergunta", error)
