@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Eye,
   FileText,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -50,11 +51,12 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ClientView } from "@/lib/mock-data"
-import { createClient, getClients } from "@/lib/data/clients"
+import { createClient, getClientRelationCounts, getClients, inactivateClient } from "@/lib/data/clients"
 import { formatCurrency, formatCPFCNPJ, formatPhone } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport } from "@/lib/cta-actions"
 import { buildClientsReport } from "@/lib/reports/report-builders"
+import { toast } from "sonner"
 
 function normalizeClient(item: Record<string, unknown>): ClientView {
   const name = String(item.name ?? item.trade_name ?? item.nome_fantasia ?? item.nomeFantasia ?? item.razao_social ?? item.razaoSocial ?? "")
@@ -124,6 +126,36 @@ export function ClientesContent() {
   const activeClients = clients.filter((c) => c.status === "ativo").length
   const totalRevenue = clients.reduce((sum, c) => sum + c.monthlyRevenue, 0)
   const averageTicket = activeClients > 0 ? totalRevenue / activeClients : 0
+
+  const refreshClients = async () => {
+    const refreshed = await getClients()
+    setClients(refreshed.map((item) => normalizeClient(item as Record<string, unknown>)))
+  }
+
+  const handleSafeDeleteClient = async (client: ClientView) => {
+    if (!client.id) {
+      toast.error("Cliente sem ID real. Nao foi possivel executar a acao.")
+      return
+    }
+
+    try {
+      const counts = await getClientRelationCounts(client.id)
+      if (counts.total > 0) {
+        toast.error(
+          `Cliente possui vinculos e nao pode ser excluido: ${counts.contracts} contrato(s), ${counts.financialEntries} lancamento(s), ${counts.documents} documento(s), ${counts.legalCases} caso(s) juridico(s).`
+        )
+        return
+      }
+
+      if (!window.confirm(`Inativar o cliente ${client.name}? Nenhum dado vinculado sera excluido.`)) return
+
+      await inactivateClient(client.id)
+      await refreshClients()
+      toast.success("Cliente inativado com seguranca.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel verificar ou inativar o cliente.")
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -403,6 +435,10 @@ export function ClientesContent() {
                           <DropdownMenuItem onClick={() => { window.location.href = "/contratos" }}>
                             <FileText className="mr-2 h-4 w-4" />
                             Ver contratos
+                          </DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onClick={() => handleSafeDeleteClient(client)}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir cliente
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

@@ -14,17 +14,30 @@ export function friendlyLabel(record: DisplayRecord, keys: string[], fallback = 
 }
 
 export function clientLabel(record: DisplayRecord) {
-  return friendlyLabel(record, ["name", "legal_name", "company_name", "email"], "Cliente sem nome")
+  return friendlyLabel(record, [
+    "name",
+    "legal_name",
+    "company_name",
+    "razao_social",
+    "razaoSocial",
+    "trade_name",
+    "nome_fantasia",
+    "nomeFantasia",
+    "email",
+  ], "Cliente sem nome")
 }
 
 export function dreCategoryLabel(record: DisplayRecord) {
-  const name = friendlyLabel(record, ["name", "description", "nome", "descricao", "label"])
+  const name = friendlyLabel(record, ["name", "category_name", "description", "nome", "categoria", "descricao", "label"])
   const group = friendlyLabel(record, ["group_name", "groupName", "grupo"], "")
   return group ? `${group} - ${name}` : name
 }
 
 export function bankAccountLabel(record: DisplayRecord) {
-  return friendlyLabel(record, ["name", "bank_name", "account_name", "nome", "description", "descricao"])
+  const name = friendlyLabel(record, ["name", "account_name", "nome", "description", "descricao"], "")
+  const bank = friendlyLabel(record, ["bank_name", "bank", "banco"], "")
+  const account = friendlyLabel(record, ["account_number", "numero_conta", "conta"], "")
+  return [name, bank, account].filter(Boolean).join(" - ") || "Conta sem nome"
 }
 
 export function contractLabel(record: DisplayRecord) {

@@ -472,21 +472,29 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
   }
 
   const renderSelect = (field: keyof NewLaunchForm, label: string, options: readonly (string | SelectOption)[]) => (
-    <div className="grid gap-2">
-      <Label>{label}</Label>
-      <Select value={String(form[field])} onValueChange={(value) => setField(field, value)}>
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={label} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => {
-            const item = typeof option === "string" ? { label: option, value: option } : option
-            return <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-          })}
-        </SelectContent>
-      </Select>
-      {errors[field] && <p className="text-xs text-destructive">{errors[field]}</p>}
-    </div>
+    (() => {
+      const normalizedOptions = options.map((option) => (typeof option === "string" ? { label: option, value: option } : option))
+      const selected = normalizedOptions.find((option) => option.value === String(form[field]))
+
+      return (
+        <div className="grid gap-2">
+          <Label>{label}</Label>
+          <Select value={String(form[field])} onValueChange={(value) => setField(field, value)}>
+            <SelectTrigger className="w-full">
+              <span data-slot="select-value" className={selected ? "flex flex-1 text-left" : "flex flex-1 text-left text-muted-foreground"}>
+                {selected?.label ?? label}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {normalizedOptions.map((item) => (
+                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {errors[field] && <p className="text-xs text-destructive">{errors[field]}</p>}
+        </div>
+      )
+    })()
   )
 
   const renderInput = (field: keyof NewLaunchForm, label: string, type = "text") => (

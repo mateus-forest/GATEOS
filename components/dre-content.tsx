@@ -1115,6 +1115,12 @@ export function DREContent() {
       return
     }
 
+    const trimmedReason = reason.trim()
+    if (!trimmedReason) {
+      toast.error("Informe o motivo do ajuste.")
+      return
+    }
+
     try {
       const created = await createDreManualAdjustment({
         year: Number(year),
@@ -1122,7 +1128,7 @@ export function DREContent() {
         dre_category_id: editTarget.row.categoryId,
         previous_value: editTarget.currentValue,
         new_value: parsedValue,
-        reason,
+        reason: trimmedReason,
         responsible,
       }) as SupabaseRow
 
@@ -1136,7 +1142,7 @@ export function DREContent() {
           monthIndex: editTarget.monthIndex,
           previousValue: editTarget.currentValue,
           newValue: parsedValue,
-          reason,
+          reason: trimmedReason,
           responsible,
         },
         ...current,
