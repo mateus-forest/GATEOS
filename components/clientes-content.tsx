@@ -51,7 +51,7 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ClientView } from "@/lib/mock-data"
-import { createClient, getClientRelationCounts, getClients, inactivateClient } from "@/lib/data/clients"
+import { createClient, deleteClient, getClientDeleteBlockMessage, getClientRelationCounts, getClients, inactivateClient } from "@/lib/data/clients"
 import { formatCurrency, formatCPFCNPJ, formatPhone } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport } from "@/lib/cta-actions"
@@ -132,7 +132,7 @@ export function ClientesContent() {
     setClients(refreshed.map((item) => normalizeClient(item as Record<string, unknown>)))
   }
 
-  const handleSafeDeleteClient = async (client: ClientView) => {
+  const handleDeleteClient = async (client: ClientView) => {
     if (!client.id) {
       toast.error("Cliente sem ID real. Nao foi possivel executar a acao.")
       return
@@ -141,14 +141,27 @@ export function ClientesContent() {
     try {
       const counts = await getClientRelationCounts(client.id)
       if (counts.total > 0) {
-        const confirmed = window.confirm(
-          `Cliente possui vinculos e nao pode ser excluido fisicamente: ${counts.contracts} contrato(s), ${counts.financialEntries} lancamento(s), ${counts.documents} documento(s), ${counts.legalCases} caso(s) juridico(s). Deseja inativar o cliente mesmo assim?`
-        )
-        if (!confirmed) return
-      } else {
-        if (!window.confirm(`Inativar o cliente ${client.name}? Nenhum dado vinculado sera excluido.`)) return
+        toast.error(getClientDeleteBlockMessage(counts))
+        return
       }
 
+      if (!window.confirm(`Excluir permanentemente o cliente ${client.name}? Esta acao nao pode ser desfeita.`)) return
+      await deleteClient(client.id)
+      await refreshClients()
+      toast.success("Cliente excluido com sucesso.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel excluir o cliente.")
+    }
+  }
+
+  const handleInactivateClient = async (client: ClientView) => {
+    if (!client.id) {
+      toast.error("Cliente sem ID real. Nao foi possivel executar a acao.")
+      return
+    }
+
+    try {
+      if (!window.confirm(`Inativar o cliente ${client.name}? Nenhum dado vinculado sera excluido.`)) return
       await inactivateClient(client.id)
       await refreshClients()
       toast.success("Cliente inativado com seguranca.")
@@ -436,7 +449,11 @@ export function ClientesContent() {
                             <FileText className="mr-2 h-4 w-4" />
                             Ver contratos
                           </DropdownMenuItem>
-                          <DropdownMenuItem variant="destructive" onClick={() => handleSafeDeleteClient(client)}>
+                          <DropdownMenuItem onClick={() => handleInactivateClient(client)}>
+                            <User className="mr-2 h-4 w-4" />
+                            Inativar cliente
+                          </DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onClick={() => handleDeleteClient(client)}>
                             <Trash2 className="mr-2 h-4 w-4" />
                             Excluir cliente
                           </DropdownMenuItem>
