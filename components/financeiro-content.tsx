@@ -17,6 +17,10 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  MoreHorizontal,
+  Eye,
+  Edit,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -37,6 +41,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
@@ -60,7 +70,7 @@ import {
 } from "recharts"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { createBankAccount, createFinancialEntry, getFinancialEntries, getFinancialSelectOptions } from "@/lib/data/financial"
+import { createBankAccount, createFinancialEntry, deleteFinancialEntry, getFinancialEntries, getFinancialSelectOptions, updateFinancialEntry } from "@/lib/data/financial"
 import { getClients } from "@/lib/data/clients"
 import { getContracts } from "@/lib/data/contracts"
 import { getInstallments, markInstallmentAsPaid } from "@/lib/data/installments"
@@ -75,6 +85,7 @@ import {
   financialStatusValues,
   getFinancialStatusForEntry,
   getFinancialStatusLabel,
+  isFinancialStatusReceived,
   normalizeFinancialStatus,
   type FinancialStatus,
 } from "@/lib/data/financial-status"
@@ -89,6 +100,17 @@ const financialTypeOptions = [
   { label: "Receita", value: "receita" },
   { label: "Despesa", value: "despesa" },
 ] as const
+
+const transactionTypeFilterOptions = [
+  { label: "Todos", value: "all" },
+  { label: "Receita", value: "income" },
+  { label: "Despesa", value: "expense" },
+] as const
+
+const transactionStatusFilterOptions = [
+  { label: "Todos", value: "all" },
+  ...financialStatusValues.map((status) => ({ label: getFinancialStatusLabel(status), value: status })),
+]
 
 const recurrenceTypeOptions = [
   { label: "Nao se repete", value: "none" },
@@ -141,9 +163,17 @@ type TransactionRow = {
   description: string
   amount: number
   date: string
+  dueDate: string
+  paymentDate: string
   status: FinancialStatus
+  bankAccountId?: string
+  clientId?: string
+  dreCategoryId?: string
+  paymentMethod?: string
   contractId?: string
 }
+
+type PeriodMode = "month" | "year"
 
 function parseLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number)
@@ -198,7 +228,13 @@ function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow 
     description: String(item.description ?? item.descricao ?? ""),
     amount: Number(item.value ?? item.amount ?? item.valor ?? 0),
     date: String(item.competence_date ?? item.date ?? item.data ?? ""),
+    dueDate: String(item.due_date ?? item.vencimento ?? item.competence_date ?? ""),
+    paymentDate: String(item.payment_date ?? ""),
     status: normalizeFinancialStatus(item.status),
+    bankAccountId: item.bank_account_id ? String(item.bank_account_id) : undefined,
+    clientId: item.client_id ? String(item.client_id) : undefined,
+    dreCategoryId: item.dre_category_id ? String(item.dre_category_id) : undefined,
+    paymentMethod: item.payment_method ? String(item.payment_method) : undefined,
     contractId: item.contract_id ? String(item.contract_id) : undefined,
   }
 }
@@ -227,6 +263,35 @@ function getBankConnectionBalance(account: SupabaseRow) {
   const value = account.current_balance ?? account.opening_balance ?? 0
   const number = Number(value)
   return Number.isFinite(number) ? number : 0
+}
+
+function getFriendlyBankAccountLabel(account: SupabaseRow) {
+  const parts = [
+    String(account.name ?? "").trim(),
+    String(account.bank_name ?? "").trim(),
+    String(account.account_number ?? "").trim(),
+  ].filter(Boolean)
+  const uniqueParts = parts.filter((part, index) =>
+    parts.findIndex((candidate) => candidate.toLowerCase() === part.toLowerCase()) === index
+  )
+  return uniqueParts.join(" - ") || "Conta sem nome"
+}
+
+function getEntryStatusForOpen(type: string): FinancialStatus {
+  return String(type).toLowerCase() === "despesa" ? "a_pagar" : "a_receber"
+}
+
+function monthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7)
+}
+
+function rowMatchesPeriod(dateValue: string, mode: PeriodMode, selectedMonth: string, selectedYear: string) {
+  if (!dateValue) return false
+  return mode === "month" ? dateValue.slice(0, 7) === selectedMonth : dateValue.slice(0, 4) === selectedYear
+}
+
+function periodDate(mode: PeriodMode, selectedMonth: string, selectedYear: string) {
+  return new Date(`${mode === "month" ? selectedMonth : `${selectedYear}-01`}-01T00:00:00`)
 }
 
 function getBankLastSync(account: SupabaseRow) {
@@ -408,7 +473,7 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
       }
       const bankOption = (item: unknown): SelectOption => {
         const record = item as Record<string, unknown>
-        return { label: bankAccountLabel(record), value: String(record.id ?? "") }
+        return { label: getFriendlyBankAccountLabel(record), value: String(record.id ?? "") }
       }
       const clientOption = (item: unknown): SelectOption => {
         const record = item as Record<string, unknown>
@@ -483,12 +548,12 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
 
       const created = await createFinancialEntry({
         type: form.type,
-        status: getFinancialStatusForEntry(form.type, Boolean(form.paymentDate)),
+        status: getEntryStatusForOpen(form.type),
         description: recurrenceCount > 1 ? `${form.description} ${index + 1}/${recurrenceCount}` : form.description,
         value: amount,
         competence_date: occurrenceDate,
         due_date: occurrenceDate,
-        payment_date: form.paymentDate || null,
+        payment_date: null,
         bank_account_id: form.bankAccountId,
         dre_category_id: form.dreCategoryId,
         client_id: form.clientId || null,
@@ -579,7 +644,6 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
             {renderInput("description", "Descrição")}
             {renderInput("amount", "Valor", "number")}
             {renderInput("dueDate", "Data de vencimento", "date")}
-            {renderInput("paymentDate", "Data de pagamento", "date")}
             {renderSelect("dreCategoryId", "Categoria DRE", selectOptions.dreCategories)}
             {renderSelect("bankAccountId", "Conta bancária", selectOptions.bankAccounts)}
             {renderSelect("clientId", "Cliente ou fornecedor", selectOptions.clients)}
@@ -637,12 +701,28 @@ export function FinanceiroContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month")
+  const [selectedMonth, setSelectedMonth] = useState(monthKey())
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()))
   const [financialEntries, setFinancialEntries] = useState<TransactionRow[]>([])
   const [rawFinancialEntries, setRawFinancialEntries] = useState<SupabaseRow[]>([])
   const [contracts, setContracts] = useState<SupabaseRow[]>([])
   const [clients, setClients] = useState<SupabaseRow[]>([])
   const [installments, setInstallments] = useState<SupabaseRow[]>([])
   const [bankAccounts, setBankAccounts] = useState<SupabaseRow[]>([])
+  const [viewingTransaction, setViewingTransaction] = useState<TransactionRow | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<TransactionRow | null>(null)
+  const [editForm, setEditForm] = useState({
+    type: "receita",
+    description: "",
+    amount: "",
+    dueDate: "",
+    competenceDate: "",
+    bankAccountId: "",
+    dreCategoryId: "",
+    clientId: "",
+    status: "a_receber",
+  })
 
   const loadFinanceData = async () => {
     const [entries, contractRows, installmentRows, clientRows, options] = await Promise.all([
@@ -677,15 +757,20 @@ export function FinanceiroContent() {
   }, [])
 
   const allTransactions = financialEntries
-  const currentRevenue = calculateMonthlyRevenueMetrics(contracts, rawFinancialEntries)
+  const selectedPeriodDate = periodDate(periodMode, selectedMonth, selectedYear)
+  const currentRevenue = calculateMonthlyRevenueMetrics(contracts, rawFinancialEntries, selectedPeriodDate)
   const currentMonthKey = currentRevenue.monthKey
   const clientById = new Map(clients.map((client) => [String(client.id ?? ""), client]))
   const contractById = new Map(contracts.map((contract) => [String(contract.id ?? ""), contract]))
-  const currentMonthTransactions = allTransactions.filter((transaction) => transaction.date.slice(0, 7) === currentMonthKey)
+  const periodTransactions = allTransactions.filter((transaction) => rowMatchesPeriod(transaction.date, periodMode, selectedMonth, selectedYear))
   const chartRows = allTransactions.reduce((acc, transaction) => {
     const month = transaction.date ? transaction.date.slice(0, 7) : "Sem data"
     const current = acc.get(month) ?? { month, receitas: 0, despesas: 0, balance: 0 }
-    if (transaction.type === "income" && transaction.status === "recebido") {
+    if (!isFinancialStatusReceived(transaction.status)) {
+      acc.set(month, current)
+      return acc
+    }
+    if (transaction.type === "income") {
       current.receitas += transaction.amount
       current.balance += transaction.amount
     } else if (transaction.type === "expense") {
@@ -702,7 +787,7 @@ export function FinanceiroContent() {
     return items
   }, [] as Array<{ date: string; balance: number }>)
 
-  const filteredTransactions = allTransactions.filter((t) => {
+  const filteredTransactions = periodTransactions.filter((t) => {
     const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.category.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = typeFilter === "all" || t.type === typeFilter
@@ -710,13 +795,18 @@ export function FinanceiroContent() {
     return matchesSearch && matchesType && matchesStatus
   })
 
-  const totalReceitas = currentRevenue.totalRevenue
-  
-  const totalDespesas = calculateMonthlyExpense(rawFinancialEntries, currentMonthKey)
-  const pendingReceivables = currentMonthTransactions.filter((t) => t.type === "income" && ["a_receber", "parcial"].includes(t.status))
-  const pendingPayables = currentMonthTransactions.filter((t) => t.type === "expense" && ["a_pagar", "parcial"].includes(t.status))
+  const totalReceitas = periodTransactions
+    .filter((t) => t.type === "income" && isFinancialStatusReceived(t.status))
+    .reduce((sum, t) => sum + t.amount, 0)
+   
+  const totalDespesas = periodTransactions
+    .filter((t) => t.type === "expense" && isFinancialStatusReceived(t.status))
+    .reduce((sum, t) => sum + t.amount, 0)
+  const pendingReceivables = periodTransactions.filter((t) => t.type === "income" && ["a_receber", "parcial"].includes(t.status))
+  const pendingPayables = periodTransactions.filter((t) => t.type === "expense" && ["a_pagar", "parcial"].includes(t.status))
   const installmentReceivables = installments
     .filter(isOpenInstallment)
+    .filter((installment) => rowMatchesPeriod(String(installment.due_date ?? ""), periodMode, selectedMonth, selectedYear))
     .map((installment) => {
       const contract = contractById.get(String(installment.contract_id ?? ""))
       const client = clientById.get(String(installment.client_id ?? ""))
@@ -736,6 +826,15 @@ export function FinanceiroContent() {
     installmentReceivables.reduce((sum, item) => sum + item.amount, 0)
 
   const saldo = totalReceitas - totalDespesas
+
+  const calculatedBankBalance = (account: SupabaseRow) => {
+    const accountId = String(account.id ?? "")
+    const openingBalance = Number(account.opening_balance ?? 0)
+    const movementBalance = allTransactions
+      .filter((transaction) => transaction.bankAccountId === accountId && isFinancialStatusReceived(transaction.status))
+      .reduce((sum, transaction) => sum + (transaction.type === "income" ? transaction.amount : -transaction.amount), 0)
+    return (Number.isFinite(openingBalance) ? openingBalance : 0) + movementBalance
+  }
 
   const confirmInstallmentReceipt = async (item: (typeof installmentReceivables)[number]) => {
     const today = new Date().toISOString().slice(0, 10)
@@ -761,6 +860,78 @@ export function FinanceiroContent() {
       toast.success("Recebimento confirmado e lancamento financeiro criado.")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar o recebimento.")
+    }
+  }
+
+  const confirmFinancialEntryPayment = async (transaction: TransactionRow) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const paymentDate = window.prompt("Data de pagamento/recebimento (AAAA-MM-DD)", today)
+    if (!paymentDate) return
+
+    try {
+      await updateFinancialEntry(transaction.id, {
+        status: transaction.type === "income" ? "recebido" : "pago",
+        payment_date: paymentDate,
+      })
+      await loadFinanceData()
+      toast.success(transaction.type === "income" ? "Recebimento confirmado." : "Pagamento confirmado.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel confirmar a baixa.")
+    }
+  }
+
+  const openEditTransaction = (transaction: TransactionRow) => {
+    setEditingTransaction(transaction)
+    setEditForm({
+      type: transaction.type === "income" ? "receita" : "despesa",
+      description: transaction.description,
+      amount: String(transaction.amount),
+      dueDate: transaction.dueDate || transaction.date,
+      competenceDate: transaction.date,
+      bankAccountId: transaction.bankAccountId ?? "",
+      dreCategoryId: transaction.dreCategoryId ?? "",
+      clientId: transaction.clientId ?? "",
+      status: transaction.status,
+    })
+  }
+
+  const handleSaveTransactionEdit = async () => {
+    if (!editingTransaction) return
+    const amount = Number(editForm.amount.replace(",", "."))
+    if (!editForm.description.trim() || !Number.isFinite(amount) || amount <= 0 || !editForm.competenceDate) {
+      toast.error("Informe descricao, valor e competencia validos.")
+      return
+    }
+
+    try {
+      await updateFinancialEntry(editingTransaction.id, {
+        type: editForm.type,
+        status: editForm.status,
+        description: editForm.description,
+        value: amount,
+        amount,
+        competence_date: editForm.competenceDate,
+        due_date: editForm.dueDate || editForm.competenceDate,
+        bank_account_id: editForm.bankAccountId || null,
+        dre_category_id: editForm.dreCategoryId || null,
+        client_id: editForm.clientId || null,
+      })
+      await loadFinanceData()
+      setEditingTransaction(null)
+      toast.success("Lancamento atualizado.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel atualizar o lancamento.")
+    }
+  }
+
+  const handleDeleteTransaction = async (transaction: TransactionRow) => {
+    if (!window.confirm(`Excluir lancamento "${transaction.description}"?`)) return
+    try {
+      await deleteFinancialEntry(transaction.id)
+      await loadFinanceData()
+      toast.success("Lancamento excluido.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel excluir o lancamento.")
     }
   }
 
@@ -900,7 +1071,7 @@ export function FinanceiroContent() {
         <CardContent>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             {[
-              ["Receita prevista por contratos", formatCurrency(currentRevenue.contractExpectedRevenue)],
+              ["Receita prevista por contratos", formatCurrency(currentRevenue.mrr)],
               ["Receita realizada", formatCurrency(currentRevenue.financialRealizedRevenue)],
               ["Receita pendente lancada", formatCurrency(currentRevenue.financialPendingRevenue)],
               ["Contratos ativos", currentRevenue.activeContracts.length],
@@ -929,10 +1100,10 @@ export function FinanceiroContent() {
               {bankAccounts.map((account) => {
                 const status = getBankConnectionStatus(account)
                 return (
-                  <div key={String(account.id ?? bankAccountLabel(account))} className="rounded-lg border p-4">
+                  <div key={String(account.id ?? getFriendlyBankAccountLabel(account))} className="rounded-lg border p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-medium">{bankAccountLabel(account)}</p>
+                        <p className="font-medium">{getFriendlyBankAccountLabel(account)}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
                           Ultima sincronizacao: {getBankLastSync(account)}
                         </p>
@@ -949,8 +1120,8 @@ export function FinanceiroContent() {
                         {status}
                       </Badge>
                     </div>
-                    <p className="mt-4 text-2xl font-bold">{formatCurrency(getBankConnectionBalance(account))}</p>
-                    <p className="text-xs text-muted-foreground">Status da conexao</p>
+                    <p className="mt-4 text-2xl font-bold">{formatCurrency(calculatedBankBalance(account))}</p>
+                    <p className="text-xs text-muted-foreground">Saldo inicial + lancamentos confirmados</p>
                   </div>
                 )
               })}
@@ -964,6 +1135,36 @@ export function FinanceiroContent() {
               </p>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
+            <div className="grid gap-2">
+              <Label>Período</Label>
+              <Select value={periodMode} onValueChange={(value) => setPeriodMode(value as PeriodMode)}>
+                <SelectTrigger className="w-40">
+                  <span>{periodMode === "month" ? "Mês/Ano" : "Ano"}</span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">Mês/Ano</SelectItem>
+                  <SelectItem value="year">Ano</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {periodMode === "month" ? (
+              <div className="grid gap-2">
+                <Label>Mês/Ano</Label>
+                <Input type="month" value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} className="w-44" />
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label>Ano</Label>
+                <Input type="number" min="2000" max="2100" value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)} className="w-32" />
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -990,22 +1191,21 @@ export function FinanceiroContent() {
                 </div>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
                   <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Tipo" />
+                    <span>{transactionTypeFilterOptions.find((item) => item.value === typeFilter)?.label ?? "Tipo"}</span>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos os tipos</SelectItem>
-                    <SelectItem value="income">Receitas</SelectItem>
-                    <SelectItem value="expense">Despesas</SelectItem>
+                    {transactionTypeFilterOptions.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Status" />
+                    <span>{transactionStatusFilterOptions.find((item) => item.value === statusFilter)?.label ?? "Status"}</span>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {financialStatusValues.map((status) => (
-                      <SelectItem key={status} value={status}>{getFinancialStatusLabel(status)}</SelectItem>
+                    {transactionStatusFilterOptions.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1025,6 +1225,7 @@ export function FinanceiroContent() {
                     <TableHead>Tipo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1056,6 +1257,29 @@ export function FinanceiroContent() {
                       }`}>
                         {transaction.type === "income" ? "+" : "-"}
                         {formatCurrency(transaction.amount)}
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setViewingTransaction(transaction)}>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Visualizar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditTransaction(transaction)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem variant="destructive" onClick={() => handleDeleteTransaction(transaction)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1138,7 +1362,7 @@ export function FinanceiroContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-emerald-600">Contas a Receber</CardTitle>
-                    <CardDescription>Próximos vencimentos</CardDescription>
+                    <CardDescription>Vencimentos do periodo selecionado</CardDescription>
                   </div>
                   <Badge className="bg-emerald-100 text-emerald-700">{pendingReceivables.length + installmentReceivables.length} pendentes</Badge>
                 </div>
@@ -1153,8 +1377,8 @@ export function FinanceiroContent() {
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-emerald-600">{formatCurrency(item.amount)}</p>
-                        <Button variant="link" size="sm" className="h-auto p-0 text-xs">
-                          Registrar pagamento
+                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => confirmFinancialEntryPayment(item)}>
+                          Confirmar recebimento
                         </Button>
                       </div>
                     </div>
@@ -1182,7 +1406,7 @@ export function FinanceiroContent() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="text-red-600">Contas a Pagar</CardTitle>
-                    <CardDescription>Próximos vencimentos</CardDescription>
+                    <CardDescription>Vencimentos do periodo selecionado</CardDescription>
                   </div>
                   <Badge className="bg-red-100 text-red-700">{pendingPayables.length} pendentes</Badge>
                 </div>
@@ -1197,7 +1421,7 @@ export function FinanceiroContent() {
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-red-600">{formatCurrency(item.amount)}</p>
-                        <Button variant="link" size="sm" className="h-auto p-0 text-xs">
+                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => confirmFinancialEntryPayment(item)}>
                           Pagar conta
                         </Button>
                       </div>
@@ -1209,6 +1433,92 @@ export function FinanceiroContent() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={Boolean(viewingTransaction)} onOpenChange={(open) => !open && setViewingTransaction(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalhes do lancamento</DialogTitle>
+            <DialogDescription>{viewingTransaction?.description}</DialogDescription>
+          </DialogHeader>
+          {viewingTransaction && (
+            <div className="grid gap-3 text-sm">
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Data</span><span>{formatDate(viewingTransaction.date)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Vencimento</span><span>{formatDate(viewingTransaction.dueDate)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Tipo</span><span>{viewingTransaction.type === "income" ? "Receita" : "Despesa"}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Status</span><span>{getFinancialStatusLabel(viewingTransaction.status)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Valor</span><span className="font-semibold">{formatCurrency(viewingTransaction.amount)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Categoria</span><span>{viewingTransaction.category}</span></div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setViewingTransaction(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingTransaction)} onOpenChange={(open) => !open && setEditingTransaction(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Editar lancamento</DialogTitle>
+            <DialogDescription>Atualize os dados principais do lancamento financeiro.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>Tipo</Label>
+              <Select value={editForm.type} onValueChange={(value) => setEditForm((current) => ({ ...current, type: value, status: getEntryStatusForOpen(value) }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="receita">Receita</SelectItem>
+                  <SelectItem value="despesa">Despesa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={editForm.status} onValueChange={(value) => setEditForm((current) => ({ ...current, status: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {financialStatusValues.map((status) => (
+                    <SelectItem key={status} value={status}>{getFinancialStatusLabel(status)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Descricao</Label>
+              <Input value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Valor</Label>
+              <Input type="number" min="0" step="0.01" value={editForm.amount} onChange={(event) => setEditForm((current) => ({ ...current, amount: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Competencia</Label>
+              <Input type="date" value={editForm.competenceDate} onChange={(event) => setEditForm((current) => ({ ...current, competenceDate: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Vencimento</Label>
+              <Input type="date" value={editForm.dueDate} onChange={(event) => setEditForm((current) => ({ ...current, dueDate: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Conta bancaria</Label>
+              <Select value={editForm.bankAccountId || "none"} onValueChange={(value) => setEditForm((current) => ({ ...current, bankAccountId: value === "none" ? "" : value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem conta</SelectItem>
+                  {bankAccounts.map((account) => (
+                    <SelectItem key={String(account.id ?? "")} value={String(account.id ?? "")}>{getFriendlyBankAccountLabel(account)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTransaction(null)}>Cancelar</Button>
+            <Button onClick={handleSaveTransactionEdit}>Salvar alteracoes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

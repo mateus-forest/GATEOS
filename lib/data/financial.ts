@@ -1,4 +1,4 @@
-import { insertRow, selectRowsStrict } from "@/lib/data/supabase-helpers"
+import { deleteRows, insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import { getDreCategories } from "@/lib/data/dre"
 import { normalizeFinancialStatus } from "@/lib/data/financial-status"
 import type { SupabaseRow } from "@/lib/supabase/types"
@@ -16,6 +16,22 @@ export async function createFinancialEntry(payload: SupabaseRow) {
     },
     { ...payload, id: crypto.randomUUID() }
   )
+}
+
+export async function updateFinancialEntry(id: string, payload: SupabaseRow) {
+  return updateRows(
+    "financial_entries",
+    {
+      ...payload,
+      status: payload.status ? normalizeFinancialStatus(payload.status) : payload.status,
+    },
+    { id },
+    [{ ...payload, id }]
+  )
+}
+
+export async function deleteFinancialEntry(id: string) {
+  return deleteRows("financial_entries", { id }, [])
 }
 
 export async function getFinancialSelectOptions() {
