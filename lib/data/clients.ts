@@ -37,5 +37,11 @@ export async function getClientRelationCounts(id: string) {
 
 export async function inactivateClient(id: string) {
   const rows = await updateClient(id, { status: "inativo" })
-  return rows[0] ?? null
+  const updatedClient = rows[0]
+
+  if (!updatedClient) {
+    throw new Error("Cliente nao foi inativado. Verifique se o registro existe e se a policy de update de clientes permite esta acao.")
+  }
+
+  return updatedClient
 }
