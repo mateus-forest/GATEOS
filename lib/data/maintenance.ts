@@ -1,4 +1,4 @@
-import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
+import { deleteRows, insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getMaintenanceOrders() {
@@ -11,4 +11,8 @@ export async function createMaintenanceOrder(payload: SupabaseRow) {
 
 export async function updateMaintenanceOrder(id: string, payload: SupabaseRow) {
   return updateRows("maintenance_orders", payload, { id }, [{ ...payload, id }])
+}
+
+export async function deleteMaintenanceOrder(id: string) {
+  return deleteRows("maintenance_orders", { id }, [])
 }
