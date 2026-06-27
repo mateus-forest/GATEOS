@@ -9,16 +9,27 @@ import {
   Printer,
   Wifi,
   CheckCircle2,
-  AlertCircle,
-  XCircle,
   MoreHorizontal,
   Wrench,
   MapPin,
+  Eye,
+  Edit,
+  Trash2,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -41,9 +52,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { EquipmentView } from "@/lib/mock-data"
-import { createEquipment, getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
-import { createAsset } from "@/lib/data/assets"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { createEquipment, deleteEquipment, getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity, updateEquipment } from "@/lib/data/equipment"
+import { createAsset, getAssets, updateAsset } from "@/lib/data/assets"
+import { formatCurrency } from "@/lib/utils"
 import { MockCreateDialog } from "@/components/mock-create-dialog"
 import { exportPdfReport } from "@/lib/cta-actions"
 import { buildEquipmentReport } from "@/lib/reports/report-builders"
@@ -55,10 +66,33 @@ type EquipmentInventoryView = EquipmentView & {
   maintenanceQuantity: number
 }
 
+type EquipmentFormState = {
+  name: string
+  category: string
+  description: string
+  quantity_total: string
+  status: string
+  purchase_value: string
+}
+
+const initialEquipmentForm: EquipmentFormState = {
+  name: "",
+  category: "outro",
+  description: "",
+  quantity_total: "1",
+  status: "disponivel",
+  purchase_value: "",
+}
+
+function moneyNumber(value: string | number | undefined) {
+  const parsed = Number(String(value ?? "").replace(",", "."))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function normalizeEquipment(item: Record<string, unknown>): EquipmentInventoryView {
   const name = String(item.name ?? item.nome ?? "")
   const code = String(item.code ?? item.codigo ?? "")
-  const value = Number(item.value ?? item.valor_compra ?? item.valorCompra ?? 0)
+  const value = Number(item.value ?? item.purchase_value ?? item.purchase_unit_value ?? item.valor_compra ?? item.valorCompra ?? 0)
   const status = String(item.status ?? "disponivel")
   const totalQuantity = getEquipmentTotalQuantity(item)
   const availableQuantity = getEquipmentAvailableQuantity(item)
@@ -105,10 +139,96 @@ export function EquipamentosContent() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [equipments, setEquipments] = useState<EquipmentInventoryView[]>([])
+  const [viewingEquipment, setViewingEquipment] = useState<EquipmentInventoryView | null>(null)
+  const [editingEquipment, setEditingEquipment] = useState<EquipmentInventoryView | null>(null)
+  const [editForm, setEditForm] = useState<EquipmentFormState>(initialEquipmentForm)
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     getEquipment().then((items) => setEquipments(items.map((item) => normalizeEquipment(item as Record<string, unknown>))))
   }, [])
+
+  const refreshEquipment = async () => {
+    const items = await getEquipment()
+    setEquipments(items.map((item) => normalizeEquipment(item as Record<string, unknown>)))
+  }
+
+  const openEditEquipment = (equipment: EquipmentInventoryView) => {
+    setEditingEquipment(equipment)
+    setEditForm({
+      name: equipment.name,
+      category: equipment.type || equipment.categoria || "outro",
+      description: equipment.description,
+      quantity_total: String(equipment.totalQuantity),
+      status: equipment.status || "disponivel",
+      purchase_value: String(equipment.value || ""),
+    })
+  }
+
+  const updateLinkedAssetValue = async (equipmentId: string, values: EquipmentFormState) => {
+    const assets = await getAssets()
+    const linkedAsset = assets.find((asset) => String((asset as Record<string, unknown>).equipment_id ?? "") === equipmentId) as Record<string, unknown> | undefined
+    if (!linkedAsset?.id) return
+
+    await updateAsset(String(linkedAsset.id), {
+      name: values.name,
+      category: values.category || "equipamento",
+      status: values.status,
+      description: values.description,
+      acquisition_value: moneyNumber(values.purchase_value),
+      current_value: moneyNumber(values.purchase_value),
+    })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingEquipment) return
+    const totalQuantity = Number(editForm.quantity_total)
+    if (!editForm.name.trim()) {
+      toast.error("Informe o nome do equipamento.")
+      return
+    }
+    if (!Number.isFinite(totalQuantity) || totalQuantity < 0) {
+      toast.error("Informe uma quantidade total valida.")
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      const payload = {
+        name: editForm.name,
+        category: editForm.category,
+        description: editForm.description,
+        quantity_total: totalQuantity,
+        quantity_available: Math.max(0, totalQuantity - editingEquipment.rentedQuantity),
+        status: editForm.status,
+        purchase_value: moneyNumber(editForm.purchase_value),
+        purchase_unit_value: moneyNumber(editForm.purchase_value),
+      }
+      const updated = await updateEquipment(editingEquipment.id, payload)
+      await updateLinkedAssetValue(editingEquipment.id, editForm)
+      setEquipments((current) =>
+        current.map((item) => item.id === editingEquipment.id ? normalizeEquipment((updated[0] ?? payload) as Record<string, unknown>) : item)
+      )
+      setEditingEquipment(null)
+      toast.success("Equipamento atualizado com sucesso.")
+      await refreshEquipment()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel atualizar o equipamento.")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleDeleteEquipment = async (equipment: EquipmentInventoryView) => {
+    if (!window.confirm(`Excluir o equipamento ${equipment.name}? Esta acao nao pode ser desfeita.`)) return
+    try {
+      await deleteEquipment(equipment.id)
+      setEquipments((current) => current.filter((item) => item.id !== equipment.id))
+      toast.success("Equipamento excluido com sucesso.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel excluir o equipamento.")
+    }
+  }
 
   const filteredEquipments = equipments.filter((e) => {
     const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -219,6 +339,7 @@ export function EquipamentosContent() {
                 title: "Quantidade",
                 fields: [
                   { name: "quantity_total", label: "Quantidade total", type: "number", required: true },
+                  { name: "purchase_value", label: "Valor do equipamento", type: "money" },
                 ],
               },
               {
@@ -244,6 +365,7 @@ export function EquipamentosContent() {
             ]}
             onSave={async (values) => {
               const totalQuantity = Number(values.quantity_total ?? 0)
+              const purchaseValue = moneyNumber(values.purchase_value)
               const created = await createEquipment({
                 name: values.name ?? "",
                 category: values.category ?? "",
@@ -254,6 +376,8 @@ export function EquipamentosContent() {
                 quantity_reserved: 0,
                 quantity_maintenance: 0,
                 status: values.status ?? "disponivel",
+                purchase_value: purchaseValue,
+                purchase_unit_value: purchaseValue,
                 notes: values.notes ?? "",
               })
               const equipmentId = String((created as Record<string, unknown>).id ?? "")
@@ -263,6 +387,8 @@ export function EquipamentosContent() {
                 category: values.category ?? "equipamento",
                 status: values.status ?? "disponivel",
                 description: values.description ?? "",
+                acquisition_value: purchaseValue,
+                current_value: purchaseValue,
               })
               setEquipments((current) => [normalizeEquipment(created as Record<string, unknown>), ...current])
             }}
@@ -434,9 +560,21 @@ export function EquipamentosContent() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setViewingEquipment(equipment)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver detalhes
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditEquipment(equipment)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Editar equipamento
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { window.location.href = "/manutencoes" }}>
                           <Wrench className="mr-2 h-4 w-4" />
                           Registrar manutenção
+                        </DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onClick={() => handleDeleteEquipment(equipment)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Excluir equipamento
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -457,6 +595,124 @@ export function EquipamentosContent() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(viewingEquipment)} onOpenChange={(open) => !open && setViewingEquipment(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detalhes do equipamento</DialogTitle>
+            <DialogDescription>{viewingEquipment?.name}</DialogDescription>
+          </DialogHeader>
+          {viewingEquipment && (
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <p className="text-muted-foreground">Categoria</p>
+                <p className="font-medium capitalize">{viewingEquipment.type || "-"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Status</p>
+                <div className="mt-1">{getStatusBadge(viewingEquipment.status)}</div>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Valor do equipamento</p>
+                <p className="font-medium">{formatCurrency(viewingEquipment.value)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Estoque</p>
+                <p className="font-medium">Total {viewingEquipment.totalQuantity} / Disponivel {viewingEquipment.availableQuantity}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-muted-foreground">Descricao</p>
+                <p className="font-medium">{viewingEquipment.description || "-"}</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingEquipment(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingEquipment)} onOpenChange={(open) => !open && setEditingEquipment(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Editar equipamento</DialogTitle>
+            <DialogDescription>Atualize os dados principais do equipamento.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="equipment-edit-name">Nome do equipamento</Label>
+              <Input
+                id="equipment-edit-name"
+                value={editForm.name}
+                onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Categoria</Label>
+              <Select value={editForm.category} onValueChange={(value) => setEditForm((current) => ({ ...current, category: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="servidor">Servidor</SelectItem>
+                  <SelectItem value="computador">Computador</SelectItem>
+                  <SelectItem value="impressora">Impressora</SelectItem>
+                  <SelectItem value="rede">Rede</SelectItem>
+                  <SelectItem value="telefonia">Telefonia</SelectItem>
+                  <SelectItem value="seguranca">Seguranca</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="equipment-edit-quantity">Quantidade total</Label>
+              <Input
+                id="equipment-edit-quantity"
+                type="number"
+                min="0"
+                value={editForm.quantity_total}
+                onChange={(event) => setEditForm((current) => ({ ...current, quantity_total: event.target.value }))}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="equipment-edit-value">Valor do equipamento</Label>
+              <Input
+                id="equipment-edit-value"
+                type="number"
+                min="0"
+                step="0.01"
+                value={editForm.purchase_value}
+                onChange={(event) => setEditForm((current) => ({ ...current, purchase_value: event.target.value }))}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={editForm.status} onValueChange={(value) => setEditForm((current) => ({ ...current, status: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disponivel">Disponivel</SelectItem>
+                  <SelectItem value="locado">Locado</SelectItem>
+                  <SelectItem value="reservado">Reservado</SelectItem>
+                  <SelectItem value="manutencao">Manutencao</SelectItem>
+                  <SelectItem value="vendido">Vendido</SelectItem>
+                  <SelectItem value="baixado">Baixado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2 md:col-span-2">
+              <Label htmlFor="equipment-edit-description">Observacoes</Label>
+              <textarea
+                id="equipment-edit-description"
+                className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={editForm.description}
+                onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingEquipment(null)} disabled={savingEdit}>Cancelar</Button>
+            <Button onClick={handleSaveEdit} disabled={savingEdit}>{savingEdit ? "Salvando..." : "Salvar alteracoes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

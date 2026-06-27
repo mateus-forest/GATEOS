@@ -1,4 +1,4 @@
-import { insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
+import { deleteRows, insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
 
 export async function getEquipment() {
@@ -11,6 +11,24 @@ export async function createEquipment(payload: SupabaseRow) {
 
 export async function updateEquipment(id: string, payload: SupabaseRow) {
   return updateRows("equipment", payload, { id }, [{ ...payload, id }])
+}
+
+export async function deleteEquipment(id: string) {
+  const [contractLinks, maintenanceOrders] = await Promise.all([
+    selectRowsStrict<SupabaseRow>("contract_equipment", { eq: { equipment_id: id } }),
+    selectRowsStrict<SupabaseRow>("maintenance_orders", { eq: { equipment_id: id } }),
+  ])
+
+  const blockers = [
+    contractLinks.length ? `${contractLinks.length} contrato(s) vinculado(s)` : "",
+    maintenanceOrders.length ? `${maintenanceOrders.length} chamado(s)/ordem(ns) de manutencao` : "",
+  ].filter(Boolean)
+
+  if (blockers.length) {
+    throw new Error(`Equipamento nao pode ser excluido porque possui ${blockers.join(" e ")}.`)
+  }
+
+  return deleteRows("equipment", { id }, [])
 }
 
 export function getEquipmentTotalQuantity(equipment: SupabaseRow) {
