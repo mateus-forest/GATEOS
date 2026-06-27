@@ -8,6 +8,10 @@ export async function getBankBalances() {
   return selectRowsStrict("v_bank_balances")
 }
 
+export async function getBankAccounts() {
+  return selectRowsStrict("bank_accounts")
+}
+
 export async function getContractsSummary() {
   return selectRowsStrict("v_contracts_summary")
 }
@@ -33,7 +37,7 @@ export async function getProfitDistribution() {
 }
 
 export async function getDashboardNotifications() {
-  return selectRowsStrict("notifications")
+  return selectRowsStrict("notifications", { orderBy: "created_at", ascending: false })
 }
 
 export async function getRevenueData() {

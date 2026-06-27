@@ -69,6 +69,7 @@ import { exportPdfReport } from "@/lib/cta-actions"
 import { buildDashboardReport } from "@/lib/reports/report-builders"
 import { formatCurrency } from "@/lib/utils"
 import {
+  getBankAccounts,
   getBankBalances,
   getContractsSummary,
   getDashboardFinancial,
@@ -85,9 +86,15 @@ import { getFinancialEntries } from "@/lib/data/financial"
 import { getInstallments } from "@/lib/data/installments"
 import { getMaintenanceOrders } from "@/lib/data/maintenance"
 import {
+  calculateMonthlyExpense,
   calculateMonthlyRevenueMetrics,
+  getEntryAmount,
+  getEntryMonthKey,
   getContractMonthlyValue,
+  isExpenseEntry,
+  isIncomeEntry,
 } from "@/lib/data/recurring-revenue"
+import { isFinancialStatusPending, isFinancialStatusReceived, normalizeFinancialStatus } from "@/lib/data/financial-status"
 import {
   createProfitDistributionRule,
   getProfitDistributionRules,
@@ -211,6 +218,127 @@ function isCurrentMonth(value: unknown) {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
 }
 
+function rowDate(row: Row, keys = ["created_at", "createdAt", "updated_at", "date", "competence_date", "payment_date", "due_date", "entry_date"]) {
+  for (const key of keys) {
+    const value = row[key]
+    if (!value) continue
+    const date = new Date(String(value))
+    if (!Number.isNaN(date.getTime())) return date
+  }
+  return null
+}
+
+function isCancelledStatus(value: unknown) {
+  return normalizeFinancialStatus(value) === "cancelado"
+}
+
+function isOpenFinancialEntry(row: Row) {
+  return isFinancialStatusPending(row.status) && !isCancelledStatus(row.status) && !isFinancialStatusReceived(row.status)
+}
+
+function getBankAccountBalance(row: Row) {
+  return num(row, ["current_balance", "balance", "saldo", "amount", "opening_balance"])
+}
+
+function monthLabelFromKey(monthKey: string) {
+  const [, month] = monthKey.split("-")
+  const labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+  const index = Number(month) - 1
+  return labels[index] ?? monthKey
+}
+
+function buildRevenueData(entries: Row[], dreRows: Row[]) {
+  const revenueByMonth = new Map<string, number>()
+
+  entries.forEach((row) => {
+    if (!isIncomeEntry(row) || !isFinancialStatusReceived(row.status)) return
+    const monthKey = getEntryMonthKey(row)
+    if (!monthKey) return
+    revenueByMonth.set(monthKey, (revenueByMonth.get(monthKey) ?? 0) + getEntryAmount(row))
+  })
+
+  if (revenueByMonth.size > 0) {
+    return Array.from(revenueByMonth.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([monthKey, revenue]) => ({
+        month: monthLabelFromKey(monthKey),
+        revenue,
+        target: revenue,
+      }))
+  }
+
+  return dreRows.slice(-12).map((row) => ({
+    month: text(row, ["month", "reference_month", "competence_month", "mes"], "-"),
+    revenue: num(row, ["revenue", "gross_revenue", "receita", "receita_total"]),
+    target: num(row, ["target", "meta", "revenue_target"], num(row, ["revenue", "gross_revenue", "receita", "receita_total"])),
+  }))
+}
+
+function buildRecentActivities(data: {
+  notifications: Row[]
+  clients: Row[]
+  contracts: Row[]
+  financialEntries: Row[]
+  maintenanceOrders: Row[]
+}) {
+  const activities = [
+    ...data.notifications.map((row, index) => ({
+      id: `notification-${text(row, ["id"], String(index))}`,
+      type: text(row, ["type", "tipo"], "notification"),
+      title: text(row, ["title", "titulo"], "Notificacao"),
+      description: text(row, ["message", "description", "mensagem"], ""),
+      date: rowDate(row, ["created_at", "createdAt", "time"]),
+      status: text(row, ["status", "severity"], "info"),
+    })),
+    ...data.clients.map((row, index) => ({
+      id: `client-${text(row, ["id"], String(index))}`,
+      type: "client",
+      title: `Cliente cadastrado: ${text(row, ["name", "company_name", "trade_name"], "Sem nome")}`,
+      description: text(row, ["document_number", "document", "email"], ""),
+      date: rowDate(row),
+      status: "success",
+    })),
+    ...data.contracts.map((row, index) => ({
+      id: `contract-${text(row, ["id"], String(index))}`,
+      type: "contract",
+      title: `Contrato ${text(row, ["contract_number", "number"], "sem numero")}`,
+      description: text(row, ["client_name", "customer_name", "type", "status"], ""),
+      date: rowDate(row),
+      status: text(row, ["status"], "info"),
+    })),
+    ...data.financialEntries.map((row, index) => ({
+      id: `financial-${text(row, ["id"], String(index))}`,
+      type: "payment",
+      title: text(row, ["description", "descricao"], isIncomeEntry(row) ? "Receita registrada" : "Despesa registrada"),
+      description: `${isIncomeEntry(row) ? "Receita" : "Despesa"} - ${formatCurrency(getEntryAmount(row))}`,
+      date: rowDate(row),
+      status: isFinancialStatusReceived(row.status) ? "success" : "warning",
+    })),
+    ...data.maintenanceOrders.map((row, index) => ({
+      id: `maintenance-${text(row, ["id"], String(index))}`,
+      type: "maintenance",
+      title: text(row, ["ticket_number", "problem"], "Manutencao registrada"),
+      description: text(row, ["status", "technician", "diagnosis"], ""),
+      date: rowDate(row),
+      status: text(row, ["status"], "info"),
+    })),
+  ]
+
+  return activities
+    .filter((activity) => activity.date)
+    .sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0))
+    .slice(0, 6)
+    .map((activity) => ({
+      id: activity.id,
+      type: activity.type,
+      title: activity.title,
+      description: activity.description,
+      time: formatActivityTime(activity.date?.toISOString() ?? ""),
+      status: activity.status,
+    }))
+}
+
 function sumRows(rows: Row[], amountKeys: string[], predicate: (row: Row) => boolean) {
   return rows.filter(predicate).reduce((sum, row) => sum + num(row, amountKeys), 0)
 }
@@ -321,6 +449,7 @@ export function DashboardContent() {
   const [data, setData] = useState({
     financialSummary: [] as Row[],
     bankBalanceRows: [] as Row[],
+    bankAccounts: [] as Row[],
     contractSummaryRows: [] as Row[],
     overdueRows: [] as Row[],
     equipmentSummaryRows: [] as Row[],
@@ -345,6 +474,7 @@ export function DashboardContent() {
         const [
           financialSummary,
           bankBalanceRows,
+          bankAccounts,
           contractSummaryRows,
           overdueRows,
           equipmentSummaryRows,
@@ -360,6 +490,7 @@ export function DashboardContent() {
         ] = await Promise.all([
           getDashboardFinancial(),
           getBankBalances(),
+          getBankAccounts(),
           getContractsSummary(),
           getOverdueInstallmentsSummary(),
           getEquipmentSummary(),
@@ -378,6 +509,7 @@ export function DashboardContent() {
         setData({
           financialSummary: asRows(financialSummary),
           bankBalanceRows: asRows(bankBalanceRows),
+          bankAccounts: asRows(bankAccounts),
           contractSummaryRows: asRows(contractSummaryRows),
           overdueRows: asRows(overdueRows),
           equipmentSummaryRows: asRows(equipmentSummaryRows),
@@ -423,25 +555,12 @@ export function DashboardContent() {
     const financial = data.financialSummary[0]
     const equipmentSummary = data.equipmentSummaryRows[0]
     const profit = data.profitRows[0]
-    const currentMonthExpensesFromEntries = sumRows(
-      data.financialEntries,
-      ["amount", "valor", "value"],
-      (row) =>
-        isCurrentMonth(row.competence_date ?? row.due_date ?? row.date ?? row.created_at) &&
-        ["despesa", "expense", "saida"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase())
-    )
-    const currentMonthReceivedRevenue = sumRows(
-      data.financialEntries,
-      ["amount", "valor", "value"],
-      (row) =>
-        isCurrentMonth(row.competence_date ?? row.payment_date ?? row.due_date ?? row.date ?? row.created_at) &&
-        ["receita", "income", "entrada"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase()) &&
-        ["recebido", "received", "completed"].includes(text(row, ["status"]).toLowerCase())
-    )
     const activeContractsFromTable = data.contracts.filter((row) =>
       ["ativo", "active"].includes(text(row, ["status"]).toLowerCase())
     )
     const revenueMetrics = calculateMonthlyRevenueMetrics(data.contracts, data.financialEntries)
+    const currentMonthKey = revenueMetrics.monthKey
+    const currentMonthEntries = data.financialEntries.filter((row) => getEntryMonthKey(row) === currentMonthKey)
     const activeContractMonthlyValue = activeContractsFromTable.reduce((sum, row) => sum + getContractMonthlyValue(row), 0)
     const overdueAmount = data.overdueRows.length
       ? sumRows(data.overdueRows, ["amount", "valor", "value", "total_amount"], () => true)
@@ -453,34 +572,30 @@ export function DashboardContent() {
             return Boolean(row.due_date ?? row.vencimento) && dueDate < new Date() && !row.paid_at && !row.payment_date
           }
         )
+    const currentMonthPendingReceivables = currentMonthEntries
+      .filter((row) => isIncomeEntry(row) && isOpenFinancialEntry(row))
+      .reduce((sum, row) => sum + getEntryAmount(row), 0)
+    const currentMonthPendingPayables = currentMonthEntries
+      .filter((row) => isExpenseEntry(row) && isOpenFinancialEntry(row))
+      .reduce((sum, row) => sum + getEntryAmount(row), 0)
     const receivableAmount = sumRows(
       data.installments,
       ["updated_value", "original_value", "installment_value", "amount", "valor", "value"],
       (row) => !row.paid_at && !row.payment_date && !["paga", "cancelada"].includes(text(row, ["status"]).toLowerCase())
-    )
-    const bankBalances = data.bankBalanceRows.map((row, index) => ({
+    ) + currentMonthPendingReceivables
+    const bankSourceRows = data.bankAccounts.length > 0 ? data.bankAccounts : data.bankBalanceRows
+    const bankBalances = bankSourceRows.map((row, index) => ({
       name: text(row, ["name", "account_name", "bank_name", "description"], `Conta ${index + 1}`),
-      amount: num(row, ["balance", "amount", "saldo", "current_balance"]),
+      amount: getBankAccountBalance(row),
     }))
-    const revenueData: RevenuePoint[] = data.dreRows.slice(-12).map((row) => ({
-      month: text(row, ["month", "reference_month", "competence_month", "mes"], "-"),
-      revenue: num(row, ["revenue", "gross_revenue", "receita", "receita_total"]),
-      target: num(row, ["target", "meta", "revenue_target"], num(row, ["revenue", "gross_revenue", "receita", "receita_total"])),
-    }))
+    const revenueData: RevenuePoint[] = buildRevenueData(data.financialEntries, data.dreRows)
     const statusCounts = new Map<string, number>()
     data.contracts.forEach((row) => {
       const status = text(row, ["status"], "Sem status")
       statusCounts.set(status, (statusCounts.get(status) ?? 0) + 1)
     })
     const contractsByStatus: StatusPoint[] = Array.from(statusCounts.entries()).map(([name, value]) => ({ name, value }))
-    const recentActivities: Activity[] = data.notifications.slice(0, 6).map((row, index) => ({
-      id: text(row, ["id"], String(index)),
-      type: text(row, ["type", "tipo"], "notification"),
-      title: text(row, ["title", "titulo"], "Notificacao"),
-      description: text(row, ["message", "description", "mensagem"], ""),
-      time: formatActivityTime(text(row, ["time", "created_at", "createdAt"], "")),
-      status: text(row, ["status", "severity"], "info"),
-    }))
+    const recentActivities: Activity[] = buildRecentActivities(data)
     const today = new Date()
     const sevenDays = new Date()
     sevenDays.setDate(today.getDate() + 7)
@@ -498,8 +613,8 @@ export function DashboardContent() {
         status: text(row, ["status"], "pending"),
       }))
     const totalBankBalance = bankBalances.reduce((sum, item) => sum + item.amount, 0)
-    const monthlyRevenue = currentMonthReceivedRevenue
-    const monthlyExpenses = num(financial, ["monthly_expenses", "expenses_month", "expenses", "despesas_mensais"], currentMonthExpensesFromEntries)
+    const monthlyRevenue = revenueMetrics.financialRealizedRevenue
+    const monthlyExpenses = calculateMonthlyExpense(data.financialEntries, currentMonthKey)
     const profitDistribution = {
       revenue: num(profit, ["revenue", "receita"], monthlyRevenue),
       costs: num(profit, ["costs", "expenses", "custos", "despesas"], monthlyExpenses),
@@ -558,7 +673,7 @@ export function DashboardContent() {
 
     return {
       monthlyRevenue,
-      forecastRevenue: revenueMetrics.contractExpectedRevenue,
+      forecastRevenue: revenueMetrics.mrr || activeContractMonthlyValue,
       monthlyExpenses,
       monthlyProfit: operatingProfit,
       activeContracts: revenueMetrics.activeContracts.length || num(data.contractSummaryRows[0], ["active_contracts", "ativos"], activeContractsFromTable.length),
@@ -594,10 +709,10 @@ export function DashboardContent() {
       delinquencyRate: receivableAmount > 0 ? Math.min(100, (overdueAmount / receivableAmount) * 100) : 0,
       receivableAmount,
       payableAmount: sumRows(
-        data.financialEntries,
-        ["amount", "valor", "value"],
-        (row) => ["despesa", "expense", "saida"].includes(text(row, ["type", "tipo", "entry_type"]).toLowerCase()) && !row.paid_at && !row.payment_date
-      ),
+        currentMonthEntries,
+        ["value", "amount", "valor"],
+        (row) => isExpenseEntry(row) && isOpenFinancialEntry(row)
+      ) || currentMonthPendingPayables,
       expiringContracts: data.contracts.filter((row) => {
         const endDate = new Date(String(row.end_date ?? row.data_fim ?? ""))
         const limit = new Date()
