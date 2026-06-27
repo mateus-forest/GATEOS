@@ -1,7 +1,7 @@
 "use client"
 
 import { FormEvent, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Calendar, CheckCircle2, Clock, FileText, Loader2, Mail, Phone, Wrench } from "lucide-react"
+import { AlertTriangle, Calendar, CheckCircle2, FileText, Loader2, Mail, Phone, Wrench } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,7 @@ type PublicData = {
   contract: Row
   client: Row | null
   equipment: Row[]
+  equipmentQuantity: number
   installments: Row[]
   maintenanceOrders: Row[]
 }
@@ -82,7 +83,29 @@ function numberValue(row: Row | null | undefined, keys: string[]) {
 
 function dateValue(row: Row, keys: string[]) {
   const raw = text(row, keys, "")
-  return raw ? formatDate(raw) : "-"
+  return raw ? formatLocalDate(raw) : "-"
+}
+
+function formatLocalDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`
+  return formatDate(value)
+}
+
+function contractDueDay(row: Row) {
+  const day = Number(text(row, ["due_day", "dia_vencimento"], ""))
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? `Dia ${day}` : "-"
+}
+
+function contractTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    locacao: "Locação",
+    venda: "Venda",
+    servico: "Serviço",
+    manutencao: "Manutenção",
+    suporte: "Suporte",
+  }
+  return labels[type.toLowerCase()] ?? (type || "-")
 }
 
 function normalizeStatus(status: string) {
@@ -158,6 +181,10 @@ async function loadPublicContract(token: string): Promise<PublicData> {
 
   const linkedRows = (contractEquipmentResult.data ?? []) as Row[]
   const linkedEquipmentIds = linkedRows.map((item) => text(item, ["equipment_id"], "")).filter(Boolean)
+  const linkedQuantity = linkedRows.reduce((total, item) => {
+    const quantity = Number(item.quantity ?? item.quantidade ?? item.qty ?? 1)
+    return total + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1)
+  }, 0)
   let linkedEquipment: Row[] = []
   if (linkedEquipmentIds.length > 0) {
     const { data } = await supabase.from("equipment").select("*").in("id", linkedEquipmentIds)
@@ -173,6 +200,7 @@ async function loadPublicContract(token: string): Promise<PublicData> {
     contract: contractRow,
     client: (clientResult.data as Row | null) ?? null,
     equipment: Array.from(equipmentById.values()),
+    equipmentQuantity: linkedQuantity || equipmentById.size,
     installments: (installmentsResult.data ?? []) as Row[],
     maintenanceOrders: (maintenanceResult.data ?? []) as Row[],
   }
@@ -365,7 +393,7 @@ export function PublicContractPage({ token }: { token: string }) {
             <CardContent className="p-4">
               <FileText className="mb-3 h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Plano/serviço</p>
-              <p className="font-semibold">{text(contract, ["type", "tipo", "description", "descricao"], "Contrato GATE")}</p>
+              <p className="font-semibold">{contractTypeLabel(text(contract, ["type", "tipo", "description", "descricao"], "Contrato GATE"))}</p>
             </CardContent>
           </Card>
           <Card>
@@ -373,13 +401,14 @@ export function PublicContractPage({ token }: { token: string }) {
               <Calendar className="mb-3 h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Valor</p>
               <p className="font-semibold">{formatCurrency(numberValue(contract, ["monthly_value", "valor_mensal", "total_value", "valor_total"]))}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Vencimento: {contractDueDay(contract)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <Wrench className="mb-3 h-5 w-5 text-primary" />
               <p className="text-sm text-muted-foreground">Máquinas vinculadas</p>
-              <p className="font-semibold">{data.equipment.length}</p>
+              <p className="font-semibold">{data.equipmentQuantity}</p>
             </CardContent>
           </Card>
           <Card>
@@ -524,7 +553,7 @@ export function PublicContractPage({ token }: { token: string }) {
                 <div className="grid gap-2">
                   <Label>Prioridade</Label>
                   <Select value={form.priority} onValueChange={(value) => setField("priority", value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><span>{ticketPriorityLabels[form.priority] ?? form.priority}</span></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Baixa</SelectItem>
                       <SelectItem value="medium">Média</SelectItem>
@@ -542,9 +571,6 @@ export function PublicContractPage({ token }: { token: string }) {
                   value={form.description}
                   onChange={(event) => setField("description", event.target.value)}
                 />
-              </div>
-              <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-                Anexos/fotos serão habilitados quando o fluxo público de upload no Storage estiver liberado.
               </div>
             </form>
           )}
