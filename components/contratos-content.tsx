@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import {
   Search,
@@ -13,6 +13,7 @@ import {
   XCircle,
   MoreHorizontal,
   Eye,
+  Edit,
   Trash2,
   RefreshCw,
   Copy,
@@ -58,7 +59,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ContractView } from "@/lib/mock-data"
 import { getClients } from "@/lib/data/clients"
 import type { Contrato } from "@/lib/types"
-import { createContract, createContractEquipment, deleteContract, getContracts, recalculateEquipmentInventory } from "@/lib/data/contracts"
+import { createContract, createContractEquipment, deleteContract, getContracts, recalculateEquipmentInventory, updateContract } from "@/lib/data/contracts"
 import { getEquipment, getEquipmentAvailableQuantity, getEquipmentTotalQuantity } from "@/lib/data/equipment"
 import { createInstallment } from "@/lib/data/installments"
 import { uploadDocumentFile } from "@/lib/data/documents"
@@ -72,6 +73,8 @@ import { clientLabel, equipmentLabel } from "@/lib/data/display-labels"
 type ContractWithPublicLink = ContractView & {
   public_access_token?: string
   public_access_enabled?: boolean
+  dueDay?: number
+  clientCity?: string
 }
 
 type ClientOption = { label: string; value: string }
@@ -103,7 +106,7 @@ function buildFriendlyPublicToken(...parts: string[]) {
 }
 
 function normalizeContractStatus(status: unknown) {
-  const value = String(status ?? "ativo")
+  const value = String(status ?? "ativo").trim().toLowerCase()
   const map: Record<string, string> = {
     active: "ativo",
     closed: "encerrado",
@@ -112,10 +115,47 @@ function normalizeContractStatus(status: unknown) {
     overdue: "inadimplente",
     legal: "inadimplente",
     juridico: "inadimplente",
-    expiring: "ativo",
+    expiring: "vencendo",
     draft: "ativo",
+    renewed: "renovado",
+    renovacao: "renovado",
+    renovado: "renovado",
+    vencendo: "vencendo",
   }
   return map[value] ?? value
+}
+
+function typeLabel(type: string) {
+  const labels: Record<string, string> = {
+    locacao: "Locação",
+    venda: "Venda",
+    servico: "Serviço",
+    manutencao: "Manutenção",
+    suporte: "Suporte",
+  }
+  return labels[type] ?? type
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ativo: "Ativo",
+    vencendo: "Vencendo",
+    renovado: "Renovado",
+    inadimplente: "Inadimplente",
+    encerrado: "Encerrado",
+    cancelado: "Cancelado",
+  }
+  return labels[status] ?? status
+}
+
+function contractDisplayName(contract: ContractWithPublicLink) {
+  return [contract.clientName, contract.clientCity].filter(Boolean).join(" / ") || contract.number
+}
+
+function isContractExpiring(contract: ContractWithPublicLink) {
+  if (contract.status !== "ativo" || !contract.endDate) return false
+  const diffDays = (new Date(`${contract.endDate}T00:00:00`).getTime() - Date.now()) / 86400000
+  return diffDays >= 0 && diffDays <= 30
 }
 
 function toNumber(value: string | undefined) {
@@ -174,6 +214,7 @@ function normalizeContract(item: Record<string, unknown>, clients: SupabaseRow[]
   const clientId = String(item.clienteId ?? item.client_id ?? "")
   const rawClientName = String(item.clientName ?? item.client_name ?? item.client ?? item.nome_fantasia ?? "")
   const linkedClient = clients.find((client) => String(client.id ?? "") === clientId)
+  const clientCity = linkedClient ? String(linkedClient.city ?? linkedClient.address_city ?? linkedClient.cidade ?? "") : ""
   const clientName = rawClientName && !isUuidLike(rawClientName)
     ? rawClientName
     : linkedClient ? clientLabel(linkedClient) : "Cliente nao encontrado"
@@ -204,9 +245,11 @@ function normalizeContract(item: Record<string, unknown>, clients: SupabaseRow[]
     status,
     startDate,
     endDate,
+    dueDay: Number(item.dueDay ?? item.due_day ?? item.dia_vencimento ?? 1),
     monthlyValue,
     totalValue: Number(item.totalValue ?? item.total_value ?? item.valor_total ?? monthlyValue),
     description: String(item.description ?? item.descricao ?? ""),
+    clientCity,
     public_access_token: item.public_access_token ? String(item.public_access_token) : undefined,
     public_access_enabled: Boolean(item.public_access_enabled),
   }
@@ -232,7 +275,7 @@ function NewContractDialog({
     status: "ativo",
     start_date: "",
     end_date: "",
-    due_date: "",
+    due_day: "",
     monthly_value: "",
   })
   const [contractFile, setContractFile] = useState<File | null>(null)
@@ -259,7 +302,8 @@ function NewContractDialog({
     if (!values.type) return "Selecione o tipo de contrato."
     if (!values.status) return "Selecione o status do contrato."
     if (!values.start_date) return "Informe a data inicial."
-    if (!values.due_date) return "Informe a data de vencimento."
+    const dueDay = Number(values.due_day)
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) return "Informe o dia de vencimento de 1 a 31."
     if (!toNumber(values.monthly_value)) return "Informe um valor mensal valido."
 
     const filledDrafts = equipmentDrafts.filter((item) => item.equipmentId)
@@ -287,7 +331,7 @@ function NewContractDialog({
       status: "ativo",
       start_date: "",
       end_date: "",
-      due_date: "",
+      due_day: "",
       monthly_value: "",
     })
     setContractFile(null)
@@ -311,7 +355,7 @@ function NewContractDialog({
         clientOptions.find((client) => client.value === values.client_id)?.label ?? "cliente",
         contractNumber
       )
-      const dueDate = new Date(`${values.due_date}T00:00:00`)
+      const dueDay = Number(values.due_day)
       const created = await createContract({
         client_id: values.client_id,
         contract_number: contractNumber,
@@ -319,7 +363,7 @@ function NewContractDialog({
         status: values.status,
         start_date: values.start_date,
         end_date: values.end_date || null,
-        due_day: dueDate.getDate(),
+        due_day: dueDay,
         monthly_value: toNumber(values.monthly_value),
         total_value: toNumber(values.monthly_value),
         public_access_token: publicToken,
@@ -330,7 +374,7 @@ function NewContractDialog({
       const contractId = String((created as SupabaseRow).id ?? "")
       createdContractId = contractId
       const monthlyValue = toNumber(values.monthly_value) ?? 0
-      const installmentDates = buildContractInstallmentDates(values.start_date, values.end_date || null, dueDate.getDate())
+      const installmentDates = buildContractInstallmentDates(values.start_date, values.end_date || null, dueDay)
       for (const [index, installmentDate] of installmentDates.entries()) {
         await createInstallment({
           contract_id: contractId,
@@ -438,6 +482,8 @@ function NewContractDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="vencendo">Vencendo</SelectItem>
+                    <SelectItem value="renovado">Renovado</SelectItem>
                     <SelectItem value="encerrado">Encerrado</SelectItem>
                     <SelectItem value="cancelado">Cancelado</SelectItem>
                     <SelectItem value="inadimplente">Inadimplente</SelectItem>
@@ -451,9 +497,9 @@ function NewContractDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="locacao">Locacao</SelectItem>
+                    <SelectItem value="locacao">Locação</SelectItem>
                     <SelectItem value="venda">Venda</SelectItem>
-                    <SelectItem value="servico">Servico</SelectItem>
+                    <SelectItem value="servico">Serviço</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -466,8 +512,15 @@ function NewContractDialog({
                 <Input id="contract-end" type="date" value={values.end_date} onChange={(event) => setValue("end_date", event.target.value)} />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="contract-due">Data de vencimento *</Label>
-                <Input id="contract-due" type="date" value={values.due_date} onChange={(event) => setValue("due_date", event.target.value)} />
+                <Label htmlFor="contract-due">Dia de vencimento *</Label>
+                <Input
+                  id="contract-due"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={values.due_day}
+                  onChange={(event) => setValue("due_day", event.target.value)}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="contract-value">Valor mensal *</Label>
@@ -595,6 +648,33 @@ export function ContratosContent() {
   const [contracts, setContracts] = useState<ContractWithPublicLink[]>([])
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([])
   const [equipmentOptions, setEquipmentOptions] = useState<EquipmentOption[]>([])
+  const [editingContract, setEditingContract] = useState<ContractWithPublicLink | null>(null)
+  const [statusContract, setStatusContract] = useState<ContractWithPublicLink | null>(null)
+  const [editValues, setEditValues] = useState({
+    client_id: "",
+    type: "locacao",
+    status: "ativo",
+    start_date: "",
+    end_date: "",
+    due_day: "1",
+    monthly_value: "",
+  })
+  const [nextStatus, setNextStatus] = useState("ativo")
+
+  const refreshContracts = useCallback(async () => {
+    const [contractRows, clientRows] = await Promise.all([getContracts(), getClients()])
+    const clients = clientRows as SupabaseRow[]
+    setContracts(contractRows.map((item) => normalizeContract(item as Record<string, unknown>, clients)))
+    setClientOptions(
+      clients.map((item) => {
+        const record = item as Record<string, unknown>
+        return {
+          label: clientLabel(record),
+          value: String(record.id ?? ""),
+        }
+      }).filter((item) => item.value)
+    )
+  }, [])
 
   useEffect(() => {
     Promise.all([getContracts(), getClients()]).then(([contractRows, clientRows]) => {
@@ -635,17 +715,15 @@ export function ContratosContent() {
   const filteredContracts = contracts.filter((c) => {
     const matchesSearch = c.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.clientName.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || c.status === statusFilter
+    const matchesStatus = statusFilter === "all" ||
+      c.status === statusFilter ||
+      (statusFilter === "vencendo" && isContractExpiring(c))
     const matchesType = typeFilter === "all" || c.type === typeFilter
     return matchesSearch && matchesStatus && matchesType
   })
 
   const activeContracts = contracts.filter((c) => c.status === "ativo").length
-  const expiringContracts = contracts.filter((contract) => {
-    if (contract.status !== "ativo" || !contract.endDate) return false
-    const diffDays = (new Date(`${contract.endDate}T00:00:00`).getTime() - Date.now()) / 86400000
-    return diffDays >= 0 && diffDays <= 30
-  }).length
+  const expiringContracts = contracts.filter(isContractExpiring).length
   const totalMonthlyValue = contracts
     .filter((c) => c.status === "ativo")
     .reduce((sum, c) => sum + c.monthlyValue, 0)
@@ -709,16 +787,97 @@ export function ContratosContent() {
       return
     }
 
-    const updated = normalizeContract(data as Record<string, unknown>)
+    const updated = normalizeContract({ ...(data as Record<string, unknown>), client_name: contract.clientName })
     setContracts((current) => current.map((item) => (item.id === contract.id ? updated : item)))
     await navigator.clipboard.writeText(getPublicContractUrl(token))
     toast.success("Link do cliente gerado e copiado.")
+  }
+
+  const openEditContract = (contract: ContractWithPublicLink) => {
+    setEditingContract(contract)
+    setEditValues({
+      client_id: contract.clienteId,
+      type: contract.type,
+      status: contract.status,
+      start_date: contract.startDate,
+      end_date: contract.endDate,
+      due_day: String(contract.dueDay ?? 1),
+      monthly_value: String(contract.monthlyValue ?? 0),
+    })
+  }
+
+  const handleSaveEditContract = async () => {
+    if (!editingContract) return
+    const dueDay = Number(editValues.due_day)
+    const monthlyValue = toNumber(editValues.monthly_value)
+    if (!editValues.client_id) {
+      toast.error("Selecione um cliente.")
+      return
+    }
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
+      toast.error("Informe o dia de vencimento de 1 a 31.")
+      return
+    }
+    if (!monthlyValue) {
+      toast.error("Informe um valor mensal valido.")
+      return
+    }
+
+    try {
+      await updateContract(editingContract.id, {
+        client_id: editValues.client_id,
+        type: editValues.type,
+        status: editValues.status,
+        start_date: editValues.start_date,
+        end_date: editValues.end_date || null,
+        due_day: dueDay,
+        monthly_value: monthlyValue,
+        total_value: monthlyValue,
+      })
+      await refreshContracts()
+      setEditingContract(null)
+      toast.success("Contrato atualizado.")
+    } catch (error) {
+      toast.error(friendlyContractSaveError(error))
+    }
+  }
+
+  const handleDeleteContract = async (contract: ContractWithPublicLink) => {
+    if (!window.confirm(`Excluir contrato ${contractDisplayName(contract)}? Esta acao nao pode ser desfeita.`)) return
+    try {
+      await deleteContract(contract.id)
+      await refreshContracts()
+      toast.success("Contrato excluido.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel excluir o contrato.")
+    }
+  }
+
+  const openStatusContract = (contract: ContractWithPublicLink) => {
+    setStatusContract(contract)
+    setNextStatus(contract.status)
+  }
+
+  const handleSaveContractStatus = async () => {
+    if (!statusContract) return
+    try {
+      await updateContract(statusContract.id, { status: nextStatus })
+      await refreshContracts()
+      setStatusContract(null)
+      toast.success("Status do contrato atualizado.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel mudar o status.")
+    }
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ativo":
         return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Ativo</Badge>
+      case "vencendo":
+        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Vencendo</Badge>
+      case "renovado":
+        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">Renovado</Badge>
       case "inadimplente":
         return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100">Inadimplente</Badge>
       case "encerrado":
@@ -734,6 +893,10 @@ export function ContratosContent() {
     switch (status) {
       case "ativo":
         return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+      case "vencendo":
+        return <Clock className="h-4 w-4 text-blue-600" />
+      case "renovado":
+        return <RefreshCw className="h-4 w-4 text-purple-600" />
       case "inadimplente":
         return <AlertCircle className="h-4 w-4 text-amber-600" />
       case "cancelado":
@@ -889,12 +1052,13 @@ export function ContratosContent() {
         </Card>
       </div>
 
-      <Tabs defaultValue="todos" className="space-y-4">
+      <Tabs value="todos" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="todos">Todos</TabsTrigger>
-          <TabsTrigger value="ativos">Ativos</TabsTrigger>
-          <TabsTrigger value="vencendo">Vencendo</TabsTrigger>
-          <TabsTrigger value="renovacoes">Renovações</TabsTrigger>
+          <TabsTrigger value="todos" onClick={() => setStatusFilter("all")}>Todos</TabsTrigger>
+          <TabsTrigger value="ativos" onClick={() => setStatusFilter("ativo")}>Ativos</TabsTrigger>
+          <TabsTrigger value="vencendo" onClick={() => setStatusFilter("vencendo")}>Vencendo</TabsTrigger>
+          <TabsTrigger value="renovado" onClick={() => setStatusFilter("renovado")}>Renovado</TabsTrigger>
+          <TabsTrigger value="inadimplentes" onClick={() => setStatusFilter("inadimplente")}>Inadimplentes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="todos" className="space-y-4">
@@ -918,9 +1082,11 @@ export function ContratosContent() {
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
                     <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="vencendo">Vencendo</SelectItem>
+                    <SelectItem value="renovado">Renovado</SelectItem>
+                    <SelectItem value="inadimplente">Inadimplente</SelectItem>
                     <SelectItem value="encerrado">Encerrado</SelectItem>
                     <SelectItem value="cancelado">Cancelado</SelectItem>
-                    <SelectItem value="inadimplente">Inadimplente</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -959,18 +1125,21 @@ export function ContratosContent() {
                     <TableRow key={contract.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {getStatusIcon(contract.status)}
-                          <span className="font-mono font-medium">{contract.number}</span>
+                          {getStatusIcon(isContractExpiring(contract) ? "vencendo" : contract.status)}
+                          <div className="min-w-0">
+                            <p className="truncate font-medium" title={contractDisplayName(contract)}>{contractDisplayName(contract)}</p>
+                            <p className="truncate font-mono text-xs text-muted-foreground" title={contract.number}>{contract.number}</p>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium">{contract.clientName}</p>
-                          <p className="text-sm text-muted-foreground">{contract.description}</p>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium" title={contract.clientName}>{contract.clientName}</p>
+                          <p className="truncate text-sm text-muted-foreground" title={contract.description}>{contract.description}</p>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="capitalize">{contract.type}</Badge>
+                        <Badge variant="outline">{typeLabel(contract.type)}</Badge>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
@@ -994,7 +1163,7 @@ export function ContratosContent() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          {getStatusBadge(contract.status)}
+                          {getStatusBadge(isContractExpiring(contract) ? "vencendo" : contract.status)}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1009,6 +1178,14 @@ export function ContratosContent() {
                               <Eye className="mr-2 h-4 w-4" />
                               Ver detalhes
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditContract(contract)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar contrato
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openStatusContract(contract)}>
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Mudar status
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleCopyClientLink(contract)}>
                               <Copy className="mr-2 h-4 w-4" />
                               Copiar link do cliente
@@ -1016,6 +1193,10 @@ export function ContratosContent() {
                             <DropdownMenuItem onClick={() => handleGenerateClientLink(contract)}>
                               <RefreshCw className="mr-2 h-4 w-4" />
                               Gerar/regenerar link
+                            </DropdownMenuItem>
+                            <DropdownMenuItem variant="destructive" onClick={() => handleDeleteContract(contract)}>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir contrato
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1062,6 +1243,100 @@ export function ContratosContent() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={Boolean(editingContract)} onOpenChange={(open) => !open && setEditingContract(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Editar contrato</DialogTitle>
+            <DialogDescription>Atualize os dados principais do contrato.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Cliente</Label>
+              <Select value={editValues.client_id} onValueChange={(value) => setEditValues((current) => ({ ...current, client_id: value }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
+                <SelectContent>
+                  {clientOptions.map((client) => (
+                    <SelectItem key={client.value} value={client.value}>{client.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={editValues.status} onValueChange={(value) => setEditValues((current) => ({ ...current, status: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="vencendo">Vencendo</SelectItem>
+                  <SelectItem value="renovado">Renovado</SelectItem>
+                  <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                  <SelectItem value="encerrado">Encerrado</SelectItem>
+                  <SelectItem value="cancelado">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Tipo</Label>
+              <Select value={editValues.type} onValueChange={(value) => setEditValues((current) => ({ ...current, type: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="locacao">Locação</SelectItem>
+                  <SelectItem value="venda">Venda</SelectItem>
+                  <SelectItem value="servico">Serviço</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Data inicial</Label>
+              <Input type="date" value={editValues.start_date} onChange={(event) => setEditValues((current) => ({ ...current, start_date: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Data final</Label>
+              <Input type="date" value={editValues.end_date} onChange={(event) => setEditValues((current) => ({ ...current, end_date: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Dia de vencimento</Label>
+              <Input type="number" min="1" max="31" value={editValues.due_day} onChange={(event) => setEditValues((current) => ({ ...current, due_day: event.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Valor mensal</Label>
+              <Input type="number" min="0" step="0.01" value={editValues.monthly_value} onChange={(event) => setEditValues((current) => ({ ...current, monthly_value: event.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingContract(null)}>Cancelar</Button>
+            <Button onClick={handleSaveEditContract}>Salvar alteracoes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(statusContract)} onOpenChange={(open) => !open && setStatusContract(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mudar status</DialogTitle>
+            <DialogDescription>{statusContract ? contractDisplayName(statusContract) : "Contrato"}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label>Status</Label>
+            <Select value={nextStatus} onValueChange={setNextStatus}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ativo">Ativo</SelectItem>
+                <SelectItem value="vencendo">Vencendo</SelectItem>
+                <SelectItem value="renovado">Renovado</SelectItem>
+                <SelectItem value="inadimplente">Inadimplente</SelectItem>
+                <SelectItem value="encerrado">Encerrado</SelectItem>
+                <SelectItem value="cancelado">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusContract(null)}>Cancelar</Button>
+            <Button onClick={handleSaveContractStatus}>Salvar status</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

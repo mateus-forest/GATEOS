@@ -379,47 +379,47 @@ export function ClientesContent() {
 
       {/* Clients Table */}
       <Card>
-        <CardContent className="p-0">
-          <Table>
+        <CardContent className="overflow-hidden p-0">
+          <Table className="min-w-[920px] table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>CNPJ/CPF</TableHead>
-                <TableHead>Contato</TableHead>
-                <TableHead>Contratos</TableHead>
-                <TableHead>Receita Mensal</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="w-[28%]">Cliente</TableHead>
+                <TableHead className="w-[15%]">CNPJ/CPF</TableHead>
+                <TableHead className="w-[24%]">Contato</TableHead>
+                <TableHead className="w-[11%]">Contratos</TableHead>
+                <TableHead className="w-[13%]">Receita Mensal</TableHead>
+                <TableHead className="w-[9%]">Status</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredClients.map((client) => (
                 <TableRow key={client.id}>
-                  <TableCell>
+                  <TableCell className="min-w-0 whitespace-normal">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-primary/10 text-primary">
                           {client.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <p className="font-medium">{client.name}</p>
-                        <p className="text-sm text-muted-foreground">{client.segment}</p>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium" title={client.name}>{client.name}</p>
+                        <p className="truncate text-sm text-muted-foreground" title={client.segment}>{client.segment}</p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-sm">
+                  <TableCell className="truncate font-mono text-sm" title={formatCPFCNPJ(client.document)}>
                     {formatCPFCNPJ(client.document)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="min-w-0 whitespace-normal">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm">
+                      <div className="flex min-w-0 items-center gap-2 text-sm">
                         <Mail className="h-3 w-3 text-muted-foreground" />
-                        {client.email}
+                        <span className="truncate" title={client.email}>{client.email}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
                         <Phone className="h-3 w-3" />
-                        {formatPhone(client.phone)}
+                        <span className="truncate" title={formatPhone(client.phone)}>{formatPhone(client.phone)}</span>
                       </div>
                     </div>
                   </TableCell>
@@ -474,28 +474,28 @@ export function ClientesContent() {
                                   {selectedClient.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                                 </AvatarFallback>
                               </Avatar>
-                              <div>
-                                <h3 className="text-xl font-bold">{selectedClient.name}</h3>
-                                <p className="text-muted-foreground">{selectedClient.segment}</p>
+                              <div className="min-w-0">
+                                <h3 className="break-words text-xl font-bold">{selectedClient.name}</h3>
+                                <p className="break-words text-muted-foreground">{selectedClient.segment}</p>
                                 {getStatusBadge(selectedClient.status)}
                               </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1">
                                 <p className="text-sm text-muted-foreground">CNPJ/CPF</p>
-                                <p className="font-mono">{formatCPFCNPJ(selectedClient.document)}</p>
+                                <p className="break-all font-mono">{formatCPFCNPJ(selectedClient.document)}</p>
                               </div>
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1">
                                 <p className="text-sm text-muted-foreground">E-mail</p>
-                                <p>{selectedClient.email}</p>
+                                <p className="break-all">{selectedClient.email}</p>
                               </div>
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1">
                                 <p className="text-sm text-muted-foreground">Telefone</p>
-                                <p>{formatPhone(selectedClient.phone)}</p>
+                                <p className="break-words">{formatPhone(selectedClient.phone)}</p>
                               </div>
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1">
                                 <p className="text-sm text-muted-foreground">Endereço</p>
-                                <p>{selectedClient.address}</p>
+                                <p className="break-words">{selectedClient.address}</p>
                               </div>
                               <div className="space-y-1">
                                 <p className="text-sm text-muted-foreground">Contratos Ativos</p>

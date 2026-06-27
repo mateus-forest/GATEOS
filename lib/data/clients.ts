@@ -1,8 +1,24 @@
 import { deleteRows, insertRow, selectRowsStrict, updateRows } from "@/lib/data/supabase-helpers"
 import type { SupabaseRow } from "@/lib/supabase/types"
+import { getContractMonthlyValue, isActiveContract } from "@/lib/data/recurring-revenue"
 
 export async function getClients() {
-  return selectRowsStrict("clients", { orderBy: "created_at", ascending: false })
+  const [clients, contracts] = await Promise.all([
+    selectRowsStrict<SupabaseRow>("clients", { orderBy: "created_at", ascending: false }),
+    selectRowsStrict<SupabaseRow>("contracts"),
+  ])
+
+  return clients.map((client) => {
+    const id = String(client.id ?? "")
+    const clientContracts = contracts.filter((contract) => String(contract.client_id ?? "") === id)
+    const activeContracts = clientContracts.filter(isActiveContract)
+
+    return {
+      ...client,
+      contracts_count: clientContracts.length,
+      monthly_revenue: activeContracts.reduce((sum, contract) => sum + getContractMonthlyValue(contract), 0),
+    }
+  })
 }
 
 export async function getClientById(id: string) {
