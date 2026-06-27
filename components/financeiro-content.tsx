@@ -145,6 +145,49 @@ type TransactionRow = {
   contractId?: string
 }
 
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day)
+}
+
+function formatLocalDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+function addMonthsClamped(date: Date, months: number) {
+  const target = new Date(date)
+  const originalDay = target.getDate()
+  target.setDate(1)
+  target.setMonth(target.getMonth() + months)
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
+  target.setDate(Math.min(originalDay, lastDay))
+  return target
+}
+
+function addRecurrenceInterval(date: Date, interval: string, index: number) {
+  const target = new Date(date)
+  switch (interval) {
+    case "weekly":
+      target.setDate(target.getDate() + 7 * index)
+      return target
+    case "biweekly":
+      target.setDate(target.getDate() + 15 * index)
+      return target
+    case "bimonthly":
+      return addMonthsClamped(date, 2 * index)
+    case "quarterly":
+      return addMonthsClamped(date, 3 * index)
+    case "semiannual":
+      return addMonthsClamped(date, 6 * index)
+    case "annual":
+      return addMonthsClamped(date, 12 * index)
+    case "monthly":
+    default:
+      return addMonthsClamped(date, index)
+  }
+}
+
 function normalizeFinancialEntry(item: Record<string, unknown>): TransactionRow {
   const type = String(item.type ?? "").trim().toLowerCase()
 
@@ -413,13 +456,6 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
 
     const amount = Number(form.amount.replace(",", "."))
 
-    if (form.recurrenceType === "fixed") {
-      const message = "Parcelamento/recorrencia ainda nao esta habilitado para gravacao nesta versao. Use Nao se repete para criar um lancamento individual."
-      setSubmitError(message)
-      toast.error(message)
-      return
-    }
-
     if (form.recurrenceType === "infinite") {
       const message = "Recorrencia continua ainda nao esta habilitada nesta versao."
       setSubmitError(message)
@@ -430,13 +466,28 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
     setSaving(true)
     setSubmitError("")
     try {
+      const recurrenceCount = form.recurrenceType === "fixed" ? Number(form.recurrenceCount) : 1
+      const baseDate = parseLocalDate(form.dueDate)
+
+      if (!baseDate) {
+        const message = "Informe uma data de vencimento valida para calcular a recorrencia."
+        setSubmitError(message)
+        toast.error(message)
+        return
+      }
+
+      for (let index = 0; index < recurrenceCount; index += 1) {
+        const occurrenceDate = form.recurrenceType === "fixed"
+          ? formatLocalDate(addRecurrenceInterval(baseDate, form.recurrenceInterval, index))
+          : form.dueDate
+
       const created = await createFinancialEntry({
         type: form.type,
         status: getFinancialStatusForEntry(form.type, Boolean(form.paymentDate)),
-        description: form.description,
+        description: recurrenceCount > 1 ? `${form.description} ${index + 1}/${recurrenceCount}` : form.description,
         value: amount,
-        competence_date: form.dueDate,
-        due_date: form.dueDate || null,
+        competence_date: occurrenceDate,
+        due_date: occurrenceDate,
         payment_date: form.paymentDate || null,
         bank_account_id: form.bankAccountId,
         dre_category_id: form.dreCategoryId,
@@ -455,8 +506,9 @@ function NewLaunchDialog({ onCreated }: { onCreated: () => void | Promise<void> 
           },
         })
       }
+      }
       await onCreated()
-      toast.success("Lançamento salvo e DRE atualizado")
+      toast.success(recurrenceCount > 1 ? `${recurrenceCount} lancamentos salvos e DRE atualizada.` : "Lancamento salvo e DRE atualizado")
       setForm(initialLaunchForm)
       setAttachmentFile(null)
       setErrors({})

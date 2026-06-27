@@ -141,13 +141,13 @@ export function ClientesContent() {
     try {
       const counts = await getClientRelationCounts(client.id)
       if (counts.total > 0) {
-        toast.error(
-          `Cliente possui vinculos e nao pode ser excluido: ${counts.contracts} contrato(s), ${counts.financialEntries} lancamento(s), ${counts.documents} documento(s), ${counts.legalCases} caso(s) juridico(s).`
+        const confirmed = window.confirm(
+          `Cliente possui vinculos e nao pode ser excluido fisicamente: ${counts.contracts} contrato(s), ${counts.financialEntries} lancamento(s), ${counts.documents} documento(s), ${counts.legalCases} caso(s) juridico(s). Deseja inativar o cliente mesmo assim?`
         )
-        return
+        if (!confirmed) return
+      } else {
+        if (!window.confirm(`Inativar o cliente ${client.name}? Nenhum dado vinculado sera excluido.`)) return
       }
-
-      if (!window.confirm(`Inativar o cliente ${client.name}? Nenhum dado vinculado sera excluido.`)) return
 
       await inactivateClient(client.id)
       await refreshClients()
